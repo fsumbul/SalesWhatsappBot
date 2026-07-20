@@ -53,6 +53,25 @@ Multi-tenant SaaS. Sektör bazlı B2B potansiyel müşteri keşfi + WhatsApp Bus
 4. Migration 0001'de tüm tenant-scoped tabloların üstünde `ENABLE ROW LEVEL SECURITY` + `POLICY tenant_isolation USING (tenant_id::text = current_setting('app.current_tenant', true))`.
 5. Servis katmanında `.where(Model.tenant_id == tenant_id)` her zaman uygulanır (belt & suspenders).
 
+> **⚠️ BİLİNEN KRİTİK SORUN (P0, henüz düzeltilmedi):** `docker-compose.yml` /
+> `infra/docker-compose.yml`'daki `POSTGRES_USER` (`leadpulse`), Postgres init
+> image'ının ürettiği rol her zaman **superuser** olduğu için, PostgreSQL row
+> security'yi superuser bağlantılarına hiç uygulamaz — `FORCE ROW LEVEL
+> SECURITY` bile bunu değiştirmez. Yani API şu an bu rolle bağlanıyorsa, yukarı
+> 4. maddedeki RLS politikaları **fiilen devre dışı** ve izolasyon sadece 5.
+> maddedeki `.where(tenant_id == ...)` uygulama-katmanı filtresine dayanıyor
+> (bir sorguda bu filtre unutulursa tenant verisi sızar). `apps/api/tests/
+> test_rls_isolation.py` bunu ayrı bir NOSUPERUSER/NOBYPASSRLS rolüyle
+> (`leadpulse_app`) test ederek doğruluyor; gerçek superuser rolüyle çalıştırılırsa
+> test bilerek başarısız olur.
+>
+> **Önerilen düzeltme (henüz uygulanmadı — kimlik bilgisi/altyapı değişikliği
+> içerdiği için ayrıca onay gerekir):** migration'a `CREATE ROLE leadpulse_app
+> LOGIN NOSUPERUSER NOBYPASSRLS` + gerekli `GRANT`'lar eklenip, uygulamanın
+> `DATABASE_URL`'i bu role işaret edecek şekilde `.env` / docker-compose /
+> production secret'ları güncellenmeli. `leadpulse` (superuser) sadece migration
+> çalıştırmak için kullanılmalı.
+
 ## Auth akışı
 
 - **Access token**: 15 dk TTL, HS256, claims: `sub` (user_id), `tid` (tenant_id), `role`.

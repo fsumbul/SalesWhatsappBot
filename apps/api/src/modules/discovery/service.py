@@ -34,7 +34,8 @@ def extract_domain(url: str | None) -> str | None:
     if not url:
         return None
     try:
-        parsed = urlparse(url if url.startswith(("http://", "https://")) else f"http://{url}")
+        has_scheme = url.lower().startswith(("http://", "https://"))
+        parsed = urlparse(url if has_scheme else f"http://{url}")
         host = (parsed.hostname or "").lower()
         if host.startswith("www."):
             host = host[4:]
