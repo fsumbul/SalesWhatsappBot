@@ -1,0 +1,37 @@
+{
+  "home": {
+    "title": "LeadPulse",
+    "subtitle": "Branchenspezifische B2B-Lead-Generierung und WhatsApp-Outreach-Plattform.",
+    "apiDocs": "API-Dokumentation",
+    "docs": "Dokumentation",
+    "loginCta": "Anmelden",
+    "registerCta": "Registrieren"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "sectors": "Branchen",
+    "campaigns": "Kampagnen",
+    "leads": "Leads",
+    "templates": "Vorlagen",
+    "senders": "Absender",
+    "inbox": "Posteingang",
+    "compliance": "Compliance",
+    "reports": "Berichte",
+    "logout": "Abmelden"
+  },
+  "auth": {
+    "loginTitle": "Anmelden",
+    "registerTitle": "Unternehmen registrieren",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "tenantSlug": "Unternehmens-Slug",
+    "tenantName": "Firmenname",
+    "fullName": "Vollständiger Name",
+    "loginButton": "Anmelden",
+    "registerButton": "Konto erstellen",
+    "noAccount": "Noch kein Konto?",
+    "haveAccount": "Bereits ein Konto?",
+    "loginLink": "Anmelden",
+    "registerLink": "Registrieren"
+  }
+}

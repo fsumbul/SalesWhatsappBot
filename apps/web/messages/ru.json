@@ -1,0 +1,37 @@
+{
+  "home": {
+    "title": "LeadPulse",
+    "subtitle": "Отраслевая платформа генерации B2B-лидов и рассылки в WhatsApp.",
+    "apiDocs": "Документация API",
+    "docs": "Документация",
+    "loginCta": "Войти",
+    "registerCta": "Регистрация"
+  },
+  "nav": {
+    "dashboard": "Панель",
+    "sectors": "Отрасли",
+    "campaigns": "Кампании",
+    "leads": "Лиды",
+    "templates": "Шаблоны",
+    "senders": "Отправители",
+    "inbox": "Входящие",
+    "compliance": "Комплаенс",
+    "reports": "Отчёты",
+    "logout": "Выйти"
+  },
+  "auth": {
+    "loginTitle": "Войти",
+    "registerTitle": "Регистрация компании",
+    "email": "Эл. почта",
+    "password": "Пароль",
+    "tenantSlug": "Слаг компании",
+    "tenantName": "Название компании",
+    "fullName": "Полное имя",
+    "loginButton": "Войти",
+    "registerButton": "Создать аккаунт",
+    "noAccount": "Нет аккаунта?",
+    "haveAccount": "Уже есть аккаунт?",
+    "loginLink": "Войти",
+    "registerLink": "Регистрация"
+  }
+}

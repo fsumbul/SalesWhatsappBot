@@ -1,0 +1,37 @@
+{
+  "home": {
+    "title": "LeadPulse",
+    "subtitle": "Sector-based B2B lead generation and WhatsApp outreach platform.",
+    "apiDocs": "API Docs",
+    "docs": "Docs",
+    "loginCta": "Sign in",
+    "registerCta": "Sign up"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "sectors": "Sectors",
+    "campaigns": "Campaigns",
+    "leads": "Leads",
+    "templates": "Templates",
+    "senders": "Senders",
+    "inbox": "Inbox",
+    "compliance": "Compliance",
+    "reports": "Reports",
+    "logout": "Sign out"
+  },
+  "auth": {
+    "loginTitle": "Sign in",
+    "registerTitle": "Register a company",
+    "email": "Email",
+    "password": "Password",
+    "tenantSlug": "Company slug",
+    "tenantName": "Company name",
+    "fullName": "Full name",
+    "loginButton": "Sign in",
+    "registerButton": "Create account",
+    "noAccount": "No account yet?",
+    "haveAccount": "Already have an account?",
+    "loginLink": "Sign in",
+    "registerLink": "Sign up"
+  }
+}

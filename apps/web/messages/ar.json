@@ -1,0 +1,37 @@
+{
+  "home": {
+    "title": "LeadPulse",
+    "subtitle": "منصة توليد العملاء المحتملين والتواصل عبر واتساب حسب القطاع.",
+    "apiDocs": "وثائق واجهة برمجة التطبيقات",
+    "docs": "الوثائق",
+    "loginCta": "تسجيل الدخول",
+    "registerCta": "إنشاء حساب"
+  },
+  "nav": {
+    "dashboard": "لوحة التحكم",
+    "sectors": "القطاعات",
+    "campaigns": "الحملات",
+    "leads": "العملاء المحتملون",
+    "templates": "القوالب",
+    "senders": "المرسلون",
+    "inbox": "الوارد",
+    "compliance": "الامتثال",
+    "reports": "التقارير",
+    "logout": "تسجيل الخروج"
+  },
+  "auth": {
+    "loginTitle": "تسجيل الدخول",
+    "registerTitle": "تسجيل شركة",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "tenantSlug": "معرّف الشركة",
+    "tenantName": "اسم الشركة",
+    "fullName": "الاسم الكامل",
+    "loginButton": "دخول",
+    "registerButton": "إنشاء الحساب",
+    "noAccount": "ليس لديك حساب؟",
+    "haveAccount": "هل لديك حساب؟",
+    "loginLink": "تسجيل الدخول",
+    "registerLink": "إنشاء حساب"
+  }
+}

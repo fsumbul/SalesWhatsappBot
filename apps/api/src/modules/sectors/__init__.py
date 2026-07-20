@@ -1,0 +1,1 @@
+"""Sector configuration module."""

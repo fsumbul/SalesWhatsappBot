@@ -1,0 +1,37 @@
+{
+  "home": {
+    "title": "LeadPulse",
+    "subtitle": "Sektör bazlı B2B potansiyel müşteri bulma ve WhatsApp iletişim platformu.",
+    "apiDocs": "API Dokümanları",
+    "docs": "Doküman",
+    "loginCta": "Giriş yap",
+    "registerCta": "Kayıt ol"
+  },
+  "nav": {
+    "dashboard": "Panel",
+    "sectors": "Sektörler",
+    "campaigns": "Kampanyalar",
+    "leads": "Adaylar",
+    "templates": "Şablonlar",
+    "senders": "Gönderenler",
+    "inbox": "Gelen kutusu",
+    "compliance": "Uyumluluk",
+    "reports": "Raporlar",
+    "logout": "Çıkış"
+  },
+  "auth": {
+    "loginTitle": "Giriş yap",
+    "registerTitle": "Yeni şirket kaydı",
+    "email": "E-posta",
+    "password": "Şifre",
+    "tenantSlug": "Şirket kısa adı (slug)",
+    "tenantName": "Şirket adı",
+    "fullName": "Ad soyad",
+    "loginButton": "Giriş yap",
+    "registerButton": "Kayıt ol",
+    "noAccount": "Hesabın yok mu?",
+    "haveAccount": "Zaten hesabın var mı?",
+    "loginLink": "Giriş yap",
+    "registerLink": "Kayıt ol"
+  }
+}
