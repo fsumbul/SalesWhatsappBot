@@ -21,9 +21,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.integrations.iys import IYSClient, IYSDecision
+from src.modules.discovery.models import ConsentStatus, LeadContact
 
-from ..discovery.models import ConsentStatus, LeadContact
-from .models import AuditLog, ComplianceCheck, ComplianceResult, OptOut, OptOutSource
+from .models import AuditLog, ComplianceCheck, ComplianceResult, OptOut
 from .schemas import OptOutIn
 
 _QUIET_START = time(9, 0)

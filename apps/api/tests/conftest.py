@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import (
 # registry can resolve cross-module foreign keys (e.g. leads.sector_id ->
 # sectors.id) for any DB-backed test, regardless of which modules that test
 # imports directly. Same registry alembic/env.py and main.py use.
-from src import models_registry  # noqa: F401
+from src import models_registry  # noqa: F401 - populates Base.metadata
 
 # Ensure a valid secret key exists before Settings loads
 os.environ.setdefault("APP_SECRET_KEY", "test-secret-key-with-enough-length-1234567890")

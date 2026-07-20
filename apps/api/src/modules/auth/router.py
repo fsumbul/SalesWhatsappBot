@@ -5,19 +5,18 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request, status
+from fastapi import APIRouter, Header, status
 from fastapi.responses import Response
 
 from src.core.deps import ClaimsDep, ClientIPDep, DBSessionDep
-from src.core.errors import ForbiddenError, NotFoundError
-from src.core.rbac import RequireOwner, Role, role_at_least
+from src.core.errors import NotFoundError
+from src.core.rbac import RequireOwner
 
-from .models import Tenant
 from .repository import TenantRepo, UserRepo
 from .schemas import (
     AcceptInviteIn,
-    InviteIn,
     InvitationOut,
+    InviteIn,
     LoginIn,
     MeOut,
     RefreshIn,

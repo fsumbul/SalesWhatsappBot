@@ -13,8 +13,8 @@ from sqlalchemy.orm import selectinload
 
 from src.core.errors import NotFoundError
 from src.integrations.base import RawLead
+from src.modules.sectors.repository import SectorRepo
 
-from ..sectors.repository import SectorRepo
 from .models import Campaign, CampaignStatus, Lead, LeadSource, LeadStatus
 from .schemas import CampaignIn, CampaignPatchIn, LeadFilters
 

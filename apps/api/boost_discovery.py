@@ -7,6 +7,9 @@ queries broaden the demo. This bypasses the auto query-generator (whose
 double-quoted phrase queries are too restrictive for the free SERP scraper).
 """
 
+# The query list below is real Turkish sector-keyword text — not typos.
+# ruff: noqa: RUF001
+
 from __future__ import annotations
 
 import asyncio
@@ -68,7 +71,7 @@ async def main() -> None:
             async for rl in conn.search(q, country, lang):
                 raw.append(rl)
                 got += 1
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"[{i}/{len(QUERIES)}] FAIL {q!r}: {e}")
             continue
         print(f"[{i}/{len(QUERIES)}] {q!r} ({country}) -> {got}")

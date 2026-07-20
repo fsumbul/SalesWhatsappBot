@@ -108,7 +108,10 @@ class SectorService:
         if model is None:
             raise NotFoundError("Child collection")
         obj = await self.session.get(model, child_id)
-        if obj is None or getattr(obj, "tenant_id") != tenant_id:
+        # getattr, not direct access: `obj`'s static type is the shared Base
+        # class (mapping.get(table) erases which concrete model it is), which
+        # doesn't declare tenant_id — direct access fails `mypy --strict`.
+        if obj is None or getattr(obj, "tenant_id") != tenant_id:  # noqa: B009
             raise NotFoundError("Item", str(child_id))
         await self.session.delete(obj)
         await self.session.commit()

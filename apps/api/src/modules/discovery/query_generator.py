@@ -1,5 +1,8 @@
 """Query generator — produces search queries from a sector profile."""
 
+# Turkish comments below describe Turkish-market query logic; not typos.
+# ruff: noqa: RUF003
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -34,7 +37,7 @@ class SearchQuery:
 
 
 def generate_queries(sector: Sector, *, per_country_limit: int = 20) -> list[SearchQuery]:
-    """Generate search queries by combining keywords × target customers × contact qualifiers."""
+    """Generate search queries by combining keywords x target customers x contact qualifiers."""
     positive_kw = [k for k in sector.keywords if k.keyword_type == KeywordType.POSITIVE]
     customers = sector.target_customers
     countries = sector.countries
@@ -109,9 +112,12 @@ def generate_queries(sector: Sector, *, per_country_limit: int = 20) -> list[Sea
         if key in seen:
             continue
         # Overpass sorgusunu limitten muaf tut (ülke başına zaten 1 adet)
-        if per_country_limit and q.source_hint != "overpass":
-            if per_country_count.get(q.country, 0) >= per_country_limit:
-                continue
+        if (
+            per_country_limit
+            and q.source_hint != "overpass"
+            and per_country_count.get(q.country, 0) >= per_country_limit
+        ):
+            continue
         seen.add(key)
         result.append(q)
         per_country_count[q.country] = per_country_count.get(q.country, 0) + 1

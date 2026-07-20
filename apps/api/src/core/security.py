@@ -34,7 +34,7 @@ def create_token(
 ) -> str:
     settings = get_settings()
     now = datetime.now(UTC)
-    if token_type == "access":
+    if token_type == "access":  # noqa: S105 - JWT token category, not a secret
         exp = now + timedelta(minutes=settings.jwt_access_ttl_minutes)
     else:
         exp = now + timedelta(days=settings.jwt_refresh_ttl_days)

@@ -71,7 +71,7 @@ async def main() -> None:
         async with sem:
             try:
                 await _enrich_lead(TENANT, lid)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 print("err", e)
 
     await asyncio.gather(*(one(x) for x in ids))

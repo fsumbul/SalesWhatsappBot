@@ -1,5 +1,8 @@
 """Discovery orchestrator task."""
 
+# A comment below is partly in Turkish — not a typo.
+# ruff: noqa: RUF003
+
 from __future__ import annotations
 
 import asyncio
@@ -77,7 +80,7 @@ async def _run(
         for coro in asyncio.as_completed(tasks):
             try:
                 raw_leads.extend(await coro)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 logger.warning("connector_failed", error=str(e))
 
         inserted = await svc.ingest_raw_leads(
@@ -104,6 +107,6 @@ async def _collect(conn, query: str, country: str, language: str) -> list[RawLea
         await asyncio.wait_for(_iter(), timeout=45.0)
     except TimeoutError:
         logger.warning("connector_timeout", connector=conn.name, query=query)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.warning("connector_iter_failed", connector=conn.name, error=str(e))
     return out

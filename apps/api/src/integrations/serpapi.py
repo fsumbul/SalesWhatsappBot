@@ -1,5 +1,9 @@
 """SerpAPI Google Search connector."""
 
+# The separator characters below (en dash, em dash) match real punctuation
+# Google uses in result titles — not typos to "fix".
+# ruff: noqa: RUF001
+
 from __future__ import annotations
 
 import asyncio

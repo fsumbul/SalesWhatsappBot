@@ -7,7 +7,7 @@ Tenant isolation notes:
 """
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, ClassVar
 from uuid import UUID
 
 from sqlalchemy import text
@@ -25,7 +25,7 @@ from .config import get_settings
 class Base(DeclarativeBase):
     """Declarative base for all ORM models."""
 
-    metadata_naming_convention: dict[str, str] = {
+    metadata_naming_convention: ClassVar[dict[str, str]] = {
         "ix": "ix_%(column_0_label)s",
         "uq": "uq_%(table_name)s_%(column_0_name)s",
         "ck": "ck_%(table_name)s_%(constraint_name)s",

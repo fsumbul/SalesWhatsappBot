@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from src import models_registry  # noqa: F401  - populates SQLAlchemy metadata
+from src import models_registry  # noqa: F401 - populates Base.metadata
 from src.core.config import get_settings
 from src.core.db import dispose_engine
 from src.core.errors import DomainError

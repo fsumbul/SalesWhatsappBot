@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.db import set_tenant_context
@@ -83,6 +84,6 @@ async def test_cross_tenant_insert_is_rejected(db_session: AsyncSession) -> None
     db_session.add(
         OptOut(tenant_id=tenant_b, phone_e164="+905554440000", source=OptOutSource.MANUAL)
     )
-    with pytest.raises(Exception):  # noqa: B017 - asyncpg raises a generic DB error
+    with pytest.raises(DBAPIError):
         await db_session.commit()
     await db_session.rollback()

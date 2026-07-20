@@ -7,12 +7,12 @@ Alembic (which runs migrations synchronously), and uses metadata from
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
+from src import models_registry  # noqa: F401 - populates Base.metadata
 from src.core.config import get_settings
 from src.core.db import Base
-from src import models_registry  # noqa: F401 — populates Base.metadata
 
 # Alembic Config object
 config = context.config

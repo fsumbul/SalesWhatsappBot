@@ -49,7 +49,12 @@ extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM", "TID", "S", "RUF"]
-ignore = ["S101", "E501"]
+# S101: assert is fine in this codebase (used outside tests too, e.g. defensive checks).
+# E501: line length is handled by the formatter, not worth a hard error.
+# N811: `from sqlalchemy.dialects.postgresql import UUID as PgUUID` is a
+# deliberate, repeated project convention (every models.py does this) to
+# avoid shadowing `uuid.UUID`, which is also imported in the same files.
+ignore = ["S101", "E501", "N811"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S", "N"]

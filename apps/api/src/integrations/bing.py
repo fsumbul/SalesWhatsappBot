@@ -6,6 +6,10 @@ The free path is polite (in-process semaphore + inter-request delay) so
 we don't get soft-blocked.
 """
 
+# The separator characters below (en dash, angle quote, …) match real
+# punctuation Bing uses in titles/breadcrumbs — not typos to "fix".
+# ruff: noqa: RUF001
+
 from __future__ import annotations
 
 import asyncio

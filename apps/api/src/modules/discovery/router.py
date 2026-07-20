@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
@@ -93,10 +94,10 @@ async def discovery_status(
 async def list_leads(
     db: DBSessionDep,
     claims: ClaimsDep,
-    filters: LeadFilters = Depends(),
+    filters: Annotated[LeadFilters, Depends()],
 ) -> list[LeadOut]:
     items = await DiscoveryService(db).list_leads(_tid(claims), filters)
-    return [LeadOut.model_validate(l) for l in items]
+    return [LeadOut.model_validate(lead) for lead in items]
 
 
 @leads_router.get("/{lead_id}", response_model=LeadDetailOut)

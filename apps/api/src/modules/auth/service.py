@@ -126,7 +126,7 @@ class AuthService:
         access = create_token(
             subject=user.id,
             tenant_id=user.tenant_id,
-            token_type="access",
+            token_type="access",  # noqa: S106 - JWT token category, not a secret
             extra_claims={"role": user.role.value, "email": user.email},
         )
         refresh_plain = secrets.token_urlsafe(48)

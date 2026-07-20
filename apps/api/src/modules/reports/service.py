@@ -7,8 +7,8 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..discovery.models import Lead, LeadStatus
-from ..outreach.models import SenderProfile
+from src.modules.discovery.models import Lead, LeadStatus
+from src.modules.outreach.models import SenderProfile
 
 
 class ReportService:

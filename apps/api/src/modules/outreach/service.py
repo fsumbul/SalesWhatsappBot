@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -10,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.core.errors import ConflictError, NotFoundError, ValidationError
+from src.modules.discovery.models import ContactType, Lead, LeadContact
 
-from ..discovery.models import ContactType, Lead, LeadContact
 from .models import (
     Conversation,
     ConversationStatus,
@@ -59,7 +60,7 @@ class TemplateService:
         self.session.add(obj)
         try:
             await self.session.commit()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             await self.session.rollback()
             raise ConflictError("template already exists") from e
         return obj
@@ -104,7 +105,7 @@ class SenderService:
         self.session.add(obj)
         try:
             await self.session.commit()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             await self.session.rollback()
             raise ConflictError("sender already registered") from e
         return obj
@@ -232,10 +233,8 @@ class ConversationService:
         wa = WhatsAppClient()
         resp = await wa.send_text(contact.normalized_value, body)
         wa_id = None
-        try:
+        with contextlib.suppress(KeyError, IndexError):
             wa_id = resp.get("messages", [{}])[0].get("id")
-        except (KeyError, IndexError):
-            pass
 
         msg = Message(
             tenant_id=tenant_id,

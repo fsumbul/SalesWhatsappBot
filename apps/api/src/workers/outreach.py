@@ -7,6 +7,7 @@ that respects daily caps and warmup tier, then dispatches to WhatsApp.
 
 from __future__ import annotations
 
+import contextlib
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -131,10 +132,8 @@ async def _dispatch_for_tenant(tenant_id: UUID) -> tuple[int, int, int]:
                     components=components,
                 )
                 wa_id = None
-                try:
+                with contextlib.suppress(KeyError, IndexError, TypeError):
                     wa_id = resp.get("messages", [{}])[0].get("id")
-                except (KeyError, IndexError, TypeError):
-                    pass
                 job.wa_message_id = wa_id
                 job.sent_at = datetime.now(UTC)
                 job.status = OutreachJobStatus.SENT
@@ -169,7 +168,7 @@ async def _dispatch_for_tenant(tenant_id: UUID) -> tuple[int, int, int]:
                     )
                 )
                 sent += 1
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 job.status = OutreachJobStatus.FAILED
                 job.error = str(e)[:1000]
                 logger.warning("outreach_send_failed", job_id=str(job.id), error=str(e))

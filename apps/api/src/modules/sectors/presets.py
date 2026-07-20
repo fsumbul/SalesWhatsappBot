@@ -1,5 +1,8 @@
 """Preset sector: Elevator sheave (asansör kasnağı) — 5 languages."""
 
+# This file is full of real Turkish/Arabic/Russian sector keywords — not typos.
+# ruff: noqa: RUF001, RUF002, RUF003
+
 from __future__ import annotations
 
 from src.modules.sectors.models import KeywordType

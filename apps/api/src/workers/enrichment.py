@@ -1,5 +1,9 @@
 """Enrichment worker: phone normalization, website analysis, sector fit scoring."""
 
+# Comments below reference real Turkish sector keywords (asansör, kasnağı) —
+# not typos.
+# ruff: noqa: RUF003
+
 from __future__ import annotations
 
 import asyncio
@@ -70,7 +74,7 @@ async def _enrich_campaign(tenant_id: UUID, campaign_id: UUID) -> dict:
         async with sem:
             try:
                 res = await _enrich_lead(tenant_id, lid)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 logger.warning("enrich_lead_failed", lead_id=str(lid), error=str(e))
                 return
             counters["processed"] += 1
@@ -102,7 +106,7 @@ async def _enrich_campaign(tenant_id: UUID, campaign_id: UUID) -> dict:
             await DiscoveryService(session).set_status(
                 tenant_id, campaign_id, CampaignStatus.READY
             )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.warning(
             "campaign_finalize_failed", campaign_id=str(campaign_id), error=str(e)
         )
@@ -337,10 +341,7 @@ def _phrase_anchor_hit(phrase: str, lower: str) -> bool:
     the text (robust to inflection / word order across languages)."""
     if phrase in lower:
         return True
-    for anchor in _ANCHOR_STEMS:
-        if anchor in phrase and anchor in lower:
-            return True
-    return False
+    return any(anchor in phrase and anchor in lower for anchor in _ANCHOR_STEMS)
 
 
 def _score_fit(text: str, sector: Sector | None, website: str | None = None) -> int:

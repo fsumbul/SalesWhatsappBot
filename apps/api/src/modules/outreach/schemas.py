@@ -18,7 +18,6 @@ from .models import (
     TemplateStatus,
 )
 
-
 # --- Templates ---
 
 

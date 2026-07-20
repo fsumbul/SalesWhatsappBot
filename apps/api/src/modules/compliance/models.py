@@ -6,8 +6,10 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.core.db import Base
@@ -23,7 +25,7 @@ class OptOutSource(StrEnum):
 
 
 class ComplianceResult(StrEnum):
-    PASS = "pass"
+    PASS = "pass"  # noqa: S105 - compliance-check outcome, not a secret
     BLOCK = "block"
     DEFER = "defer"
 
