@@ -41,6 +41,11 @@ jobs:
       APP_ENV: test
       APP_SECRET_KEY: ci-secret-key-with-more-than-32-characters-length-123
       DATABASE_URL: postgresql+asyncpg://leadpulse:leadpulse_dev@localhost:5432/leadpulse_test
+      # Non-superuser role — RLS is never enforced for a Postgres superuser
+      # (not even with FORCE ROW LEVEL SECURITY), so tenant-isolation tests
+      # must run as a restricted role or they'd pass without proving anything.
+      # See docs/architecture.md "Multi-tenant izolasyon" for the full story.
+      LEADPULSE_TEST_DATABASE_URL: postgresql+asyncpg://leadpulse_app:leadpulse_app_ci@localhost:5432/leadpulse_test
       REDIS_URL: redis://localhost:6379/9
       CELERY_BROKER_URL: redis://localhost:6379/10
       CELERY_RESULT_BACKEND: redis://localhost:6379/11
@@ -69,6 +74,23 @@ jobs:
 
       - name: Type check (mypy)
         run: poetry run mypy src
+
+      - name: Apply migrations
+        run: poetry run alembic upgrade head
+
+      - name: Create restricted app role (for RLS tests)
+        run: |
+          PGPASSWORD=leadpulse_dev psql -h localhost -U leadpulse -d leadpulse_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'leadpulse_app') THEN
+              CREATE ROLE leadpulse_app LOGIN PASSWORD 'leadpulse_app_ci' NOSUPERUSER NOBYPASSRLS;
+            END IF;
+          END
+          $$;
+          GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO leadpulse_app;
+          GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO leadpulse_app;
+          SQL
 
       - name: Test (pytest)
         run: poetry run pytest -v

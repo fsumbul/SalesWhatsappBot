@@ -40,7 +40,7 @@ async def _db_reachable(session: AsyncSession) -> bool:
     try:
         await session.execute(text("SELECT 1"))
         return True
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
 
 

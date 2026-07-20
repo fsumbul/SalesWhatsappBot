@@ -26,7 +26,7 @@ async def _db_reachable(session: AsyncSession) -> bool:
     try:
         await session.execute(text("SELECT 1"))
         return True
-    except Exception:  # noqa: BLE001 - any connection failure means "skip"
+    except Exception:
         return False
 
 
@@ -83,6 +83,6 @@ async def test_cross_tenant_insert_is_rejected(db_session: AsyncSession) -> None
     db_session.add(
         OptOut(tenant_id=tenant_b, phone_e164="+905554440000", source=OptOutSource.MANUAL)
     )
-    with pytest.raises(Exception):  # noqa: B017, PT011 - asyncpg raises a generic DB error
+    with pytest.raises(Exception):  # noqa: B017 - asyncpg raises a generic DB error
         await db_session.commit()
     await db_session.rollback()

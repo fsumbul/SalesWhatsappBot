@@ -13,7 +13,12 @@ from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
 
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 # Import every ORM module so SQLAlchemy's mapper registry can resolve
 # cross-module foreign keys (e.g. leads.sector_id -> sectors.id) for any

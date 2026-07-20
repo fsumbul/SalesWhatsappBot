@@ -2,6 +2,10 @@
 fit scoring (no DB required — Sector/SectorKeyword are constructed in-memory,
 never flushed to a session)."""
 
+# Turkish sector keywords are the actual thing under test here, so this file
+# is exempt from ruff's ambiguous-unicode check (RUF001/RUF003).
+# ruff: noqa: RUF001, RUF003
+
 from types import SimpleNamespace
 
 from src.modules.sectors.models import KeywordType
