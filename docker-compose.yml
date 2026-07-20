@@ -39,11 +39,18 @@ services:
       APP_ENV: development
       APP_DEBUG: "true"
       APP_SECRET_KEY: dev-secret-key-please-change-at-least-32-chars-long
-      DATABASE_URL: postgresql+asyncpg://leadpulse:leadpulse_dev@postgres:5432/leadpulse
+      # Restricted, non-superuser role — required for Postgres to actually
+      # enforce Row-Level Security (see docs/architecture.md). Created by
+      # migration 0ba5bf6fe643_create_restricted_app_role.
+      DATABASE_URL: postgresql+asyncpg://leadpulse_app:${LEADPULSE_APP_DB_PASSWORD:-leadpulse_app_dev}@postgres:5432/leadpulse
+      # Superuser — used only to run `alembic upgrade head` (entrypoint below).
+      MIGRATIONS_DATABASE_URL: postgresql+asyncpg://leadpulse:leadpulse_dev@postgres:5432/leadpulse
+      LEADPULSE_APP_DB_PASSWORD: ${LEADPULSE_APP_DB_PASSWORD:-leadpulse_app_dev}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       CORS_ORIGINS: http://localhost:3000
+    entrypoint: ["sh", "-c", "alembic upgrade head && exec \"$$@\"", "--"]
     ports:
       - "8001:8000"
     volumes:

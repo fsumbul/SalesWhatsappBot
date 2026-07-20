@@ -52,25 +52,10 @@ Multi-tenant SaaS. Sektör bazlı B2B potansiyel müşteri keşfi + WhatsApp Bus
 3. `get_db()` her istek başlangıcında `set_tenant_context()` çağırıp `SELECT set_config('app.current_tenant', :tid, true)` yapar.
 4. Migration 0001'de tüm tenant-scoped tabloların üstünde `ENABLE ROW LEVEL SECURITY` + `POLICY tenant_isolation USING (tenant_id::text = current_setting('app.current_tenant', true))`.
 5. Servis katmanında `.where(Model.tenant_id == tenant_id)` her zaman uygulanır (belt & suspenders).
-
-> **⚠️ BİLİNEN KRİTİK SORUN (P0, henüz düzeltilmedi):** `docker-compose.yml` /
-> `infra/docker-compose.yml`'daki `POSTGRES_USER` (`leadpulse`), Postgres init
-> image'ının ürettiği rol her zaman **superuser** olduğu için, PostgreSQL row
-> security'yi superuser bağlantılarına hiç uygulamaz — `FORCE ROW LEVEL
-> SECURITY` bile bunu değiştirmez. Yani API şu an bu rolle bağlanıyorsa, yukarı
-> 4. maddedeki RLS politikaları **fiilen devre dışı** ve izolasyon sadece 5.
-> maddedeki `.where(tenant_id == ...)` uygulama-katmanı filtresine dayanıyor
-> (bir sorguda bu filtre unutulursa tenant verisi sızar). `apps/api/tests/
-> test_rls_isolation.py` bunu ayrı bir NOSUPERUSER/NOBYPASSRLS rolüyle
-> (`leadpulse_app`) test ederek doğruluyor; gerçek superuser rolüyle çalıştırılırsa
-> test bilerek başarısız olur.
->
-> **Önerilen düzeltme (henüz uygulanmadı — kimlik bilgisi/altyapı değişikliği
-> içerdiği için ayrıca onay gerekir):** migration'a `CREATE ROLE leadpulse_app
-> LOGIN NOSUPERUSER NOBYPASSRLS` + gerekli `GRANT`'lar eklenip, uygulamanın
-> `DATABASE_URL`'i bu role işaret edecek şekilde `.env` / docker-compose /
-> production secret'ları güncellenmeli. `leadpulse` (superuser) sadece migration
-> çalıştırmak için kullanılmalı.
+6. **İki ayrı DB rolü.** Postgres, superuser bağlantılarında row security'yi hiç uygulamaz (`FORCE ROW LEVEL SECURITY` bile bunu değiştirmez). Bu yüzden:
+   - **`leadpulse`** (Postgres init image'ının ürettiği superuser) **sadece** migration çalıştırmak için kullanılır — `MIGRATIONS_DATABASE_URL` (bkz. `Settings.migrations_database_url`, `alembic/env.py`).
+   - **`leadpulse_app`** (`NOSUPERUSER NOBYPASSRLS`, migration `0ba5bf6fe643_create_restricted_app_role` ile oluşturulur, sadece `SELECT/INSERT/UPDATE/DELETE` + sequence `USAGE` yetkisine sahip) API/worker süreçlerinin bağlandığı roldür — `DATABASE_URL`.
+   - `apps/api/tests/test_rls_isolation.py`, izolasyonun gerçekten `leadpulse_app` ile tutulduğunu (ve superuser ile bilerek başarısız olduğunu) doğrular.
 
 ## Auth akışı
 

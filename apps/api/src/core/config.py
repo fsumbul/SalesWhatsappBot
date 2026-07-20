@@ -26,7 +26,15 @@ class Settings(BaseSettings):
     web_base_url: str = "http://localhost:3000"
 
     # --- DB ---
+    # `database_url` is what the running API/worker processes connect with —
+    # must be a restricted, non-superuser role or Postgres Row-Level Security
+    # is silently never enforced (Postgres never applies RLS to superusers,
+    # not even with FORCE ROW LEVEL SECURITY). `migrations_database_url` is
+    # the privileged role used only to run Alembic migrations (which need
+    # DDL + role/grant management); it falls back to `database_url` if unset
+    # so a single-role setup still works. See docs/architecture.md.
     database_url: PostgresDsn
+    migrations_database_url: PostgresDsn | None = None
 
     # --- Redis / Celery ---
     redis_url: RedisDsn

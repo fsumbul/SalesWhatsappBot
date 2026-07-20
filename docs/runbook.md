@@ -55,6 +55,8 @@ docker compose exec api alembic upgrade head
 
 Caddy otomatik Let's Encrypt sertifikası alır. Firewall'da 80/443 açık olmalı.
 
+**Zorunlu prod secret'ları (`.env`'de gerçek değerlerle değiştirilmeli):** `POSTGRES_PASSWORD` (superuser, sadece migration için), `LEADPULSE_APP_DB_PASSWORD` (API/worker'ın bağlandığı kısıtlı `leadpulse_app` rolü — bkz. `docs/architecture.md` "Multi-tenant izolasyon"). İkisi de `.env.example`'daki dev placeholder değerleriyle prod'a çıkılmamalı; `DATABASE_URL` ve `MIGRATIONS_DATABASE_URL` bu şifrelerle tutarlı olmalı.
+
 ## Sık karşılaşılan sorunlar
 
 ### `alembic upgrade head` başarısız — enum zaten var

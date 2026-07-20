@@ -20,9 +20,13 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Inject the database URL (convert asyncpg → psycopg for offline/sync migrations)
+# Inject the database URL (convert asyncpg → psycopg for offline/sync migrations).
+# Migrations run as the privileged role (DDL, role/grant management) — see
+# Settings.migrations_database_url — which is distinct from the restricted
+# role the running app uses.
 _settings = get_settings()
-_url = str(_settings.database_url).replace("+asyncpg", "+psycopg2")
+_migrations_url = _settings.migrations_database_url or _settings.database_url
+_url = str(_migrations_url).replace("+asyncpg", "+psycopg2")
 config.set_main_option("sqlalchemy.url", _url)
 
 target_metadata = Base.metadata

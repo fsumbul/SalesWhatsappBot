@@ -20,14 +20,11 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-# Import every ORM module so SQLAlchemy's mapper registry can resolve
-# cross-module foreign keys (e.g. leads.sector_id -> sectors.id) for any
-# DB-backed test, regardless of which modules that test imports directly.
-from src.modules.auth import models as _auth_models  # noqa: F401
-from src.modules.compliance import models as _compliance_models  # noqa: F401
-from src.modules.discovery import models as _discovery_models  # noqa: F401
-from src.modules.outreach import models as _outreach_models  # noqa: F401
-from src.modules.sectors import models as _sectors_models  # noqa: F401
+# Populates Base.metadata with every ORM module, so SQLAlchemy's mapper
+# registry can resolve cross-module foreign keys (e.g. leads.sector_id ->
+# sectors.id) for any DB-backed test, regardless of which modules that test
+# imports directly. Same registry alembic/env.py and main.py use.
+from src import models_registry  # noqa: F401
 
 # Ensure a valid secret key exists before Settings loads
 os.environ.setdefault("APP_SECRET_KEY", "test-secret-key-with-enough-length-1234567890")
@@ -43,9 +40,15 @@ os.environ.setdefault("APP_ENV", "test")
 # Deliberately independent of `src.core.db.get_engine()` / global Settings, so
 # DB-backed tests never risk touching whatever DATABASE_URL happens to be
 # configured in the environment (e.g. a developer's real dev DB).
+#
+# Defaults to the restricted `leadpulse_app` role, not the Postgres
+# superuser: RLS is never enforced for a superuser connection, so testing
+# against one would let tenant-isolation bugs pass silently. Run migrations
+# (as the superuser) against this database first — see
+# tests/test_rls_isolation.py and docs/architecture.md.
 TEST_DATABASE_URL = os.environ.get(
     "LEADPULSE_TEST_DATABASE_URL",
-    "postgresql+asyncpg://leadpulse:leadpulse_dev@localhost:5433/leadpulse_test",
+    "postgresql+asyncpg://leadpulse_app:leadpulse_app_dev@localhost:5433/leadpulse_test",
 )
 
 
