@@ -21,13 +21,13 @@ This plan takes the project from its **current state** (feature-complete core, m
 
 > Goal: trust the code we already have. Nothing ships on top of an untested core.
 
-- [ ] **Unit tests** for the highest-risk logic: compliance engine (opt-out, cooldown, quiet hours), phone normalization, fit scoring, dedup fuzzy matching. Target ≥70% on `modules/compliance` and `modules/discovery`.
-- [ ] **Integration tests** with Testcontainers (Postgres + Redis): RLS tenant isolation, auth flows, lead status machine transitions.
-- [ ] **Mock-based integration tests** for each external connector (WhatsApp, Places, SerpAPI, Bing, IYS) using recorded fixtures.
-- [ ] **One E2E happy path** (Playwright): register → create sector → run discovery (mocked) → lead appears → campaign created.
-- [ ] CI gates: tests + lint must pass to merge; add coverage reporting.
+- [x] **Unit tests** for the highest-risk logic: compliance engine (opt-out, cooldown, quiet hours), phone normalization, fit scoring, dedup fuzzy matching, query generation. `modules/compliance` ~85%, `modules/discovery` ~76% — both above the 70% target.
+- [x] **Integration tests** with a real Postgres: RLS tenant isolation (the P0 regression test), compliance engine end-to-end. Auth flows and lead-status-machine transitions are *not* covered yet — narrower gap than the original item implied.
+- [x] **Mock-based integration tests** for each external connector (WhatsApp, Google Places, SerpAPI, Bing, Overpass, IYS) using respx-mocked HTTP fixtures — including the free-scrape HTML regex parsing path for Bing, the most fragile code in that connector.
+- [ ] **One E2E happy path** (Playwright): register → create sector → run discovery (mocked) → lead appears → campaign created. Not attempted — no frontend test infrastructure exists yet (no Playwright config, no test-mode dev-server wiring); this is a separate initiative, not a quick add.
+- [x] CI gates: lint (ruff) + type-check (mypy) + tests must pass — and now actually do (both had never been green before this phase). Coverage reporting wired in (term output + XML artifact per CI run), not gated on a hard threshold — total repo coverage (~63%) isn't realistic to gate yet given large untested surfaces (outreach dispatch, webhooks, auth service).
 
-**Exit criteria:** CI green with the above suites; RLS isolation proven by a test that fails when policies are dropped.
+**Exit criteria:** CI green with the above suites (✅); RLS isolation proven by a test that fails when policies are dropped (✅ — also caught a real bypass bug, see commit history).
 
 ## Phase B — Production Infrastructure & External Go-Live (Weeks 2–3, overlaps A)
 
