@@ -4,7 +4,7 @@ Kept intentionally small; real auth logic lives in `modules.auth` (Phase 1).
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from jose import JWTError, jwt
@@ -18,11 +18,11 @@ TokenType = Literal["access", "refresh"]
 
 
 def hash_password(plain: str) -> str:
-    return _pwd_context.hash(plain)
+    return cast(str, _pwd_context.hash(plain))
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return _pwd_context.verify(plain, hashed)
+    return cast(bool, _pwd_context.verify(plain, hashed))
 
 
 def create_token(
@@ -49,13 +49,16 @@ def create_token(
     if extra_claims:
         payload.update(extra_claims)
 
-    return jwt.encode(payload, settings.app_secret_key, algorithm=settings.jwt_algorithm)
+    return cast(str, jwt.encode(payload, settings.app_secret_key, algorithm=settings.jwt_algorithm))
 
 
 def decode_token(token: str) -> dict[str, Any]:
     """Decode and validate a JWT. Raises `JWTError` on invalid/expired tokens."""
     settings = get_settings()
-    return jwt.decode(token, settings.app_secret_key, algorithms=[settings.jwt_algorithm])
+    return cast(
+        dict[str, Any],
+        jwt.decode(token, settings.app_secret_key, algorithms=[settings.jwt_algorithm]),
+    )
 
 
 __all__ = [

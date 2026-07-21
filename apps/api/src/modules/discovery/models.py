@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -82,7 +83,7 @@ class Campaign(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     status: Mapped[CampaignStatus] = mapped_column(
         SAEnum(CampaignStatus, name="campaign_status", values_callable=lambda e: [x.value for x in e]), default=CampaignStatus.DRAFT, nullable=False
     )
-    filters: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    filters: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     daily_quota: Mapped[int] = mapped_column(Integer, default=200, nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -166,7 +167,7 @@ class LeadSource(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     )
     source_type: Mapped[str] = mapped_column(String(80), nullable=False)
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    raw_data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    raw_data: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
     lead: Mapped[Lead] = relationship(back_populates="sources")
 
@@ -185,7 +186,7 @@ class LeadEnrichment(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     employees_est: Mapped[int | None] = mapped_column(Integer, nullable=True)
     categories: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
     contact_page_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    meta: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    meta: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     lead: Mapped[Lead] = relationship(back_populates="enrichment")

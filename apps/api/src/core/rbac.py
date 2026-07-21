@@ -1,7 +1,7 @@
 """Role-based access control primitives."""
 
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends
 
@@ -35,8 +35,8 @@ def role_at_least(actual: str | None, required: Role) -> bool:
         return False
 
 
-def require_role(min_role: Role):
-    async def _dep(claims: ClaimsDep) -> dict:
+def require_role(min_role: Role) -> Any:
+    async def _dep(claims: ClaimsDep) -> dict[str, Any]:
         if not role_at_least(claims.get("role"), min_role):
             raise ForbiddenError(f"Requires role >= {min_role}")
         return claims
@@ -44,7 +44,7 @@ def require_role(min_role: Role):
     return Depends(_dep)
 
 
-RequireAgent = Annotated[dict, require_role(Role.SALES_AGENT)]
-RequireManager = Annotated[dict, require_role(Role.SALES_MANAGER)]
-RequireOwner = Annotated[dict, require_role(Role.TENANT_OWNER)]
-RequireSuperAdmin = Annotated[dict, require_role(Role.SUPER_ADMIN)]
+RequireAgent = Annotated[dict[str, Any], require_role(Role.SALES_AGENT)]
+RequireManager = Annotated[dict[str, Any], require_role(Role.SALES_MANAGER)]
+RequireOwner = Annotated[dict[str, Any], require_role(Role.TENANT_OWNER)]
+RequireSuperAdmin = Annotated[dict[str, Any], require_role(Role.SUPER_ADMIN)]

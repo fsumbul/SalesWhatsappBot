@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, status
@@ -17,7 +18,7 @@ router = APIRouter(tags=["compliance"])
 opt_outs_router = APIRouter(prefix="/opt-outs", tags=["opt-outs"])
 
 
-def _tid(claims: dict) -> UUID:
+def _tid(claims: dict[str, Any]) -> UUID:
     return UUID(claims["tid"])
 
 

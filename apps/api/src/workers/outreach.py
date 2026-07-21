@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import contextlib
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import structlog
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.celery_app import celery_app
 from src.core.db import get_sessionmaker, set_tenant_context
@@ -39,11 +41,11 @@ logger = structlog.get_logger(__name__)
 
 
 @celery_app.task(name="src.workers.outreach.dispatch_outreach")
-def dispatch_outreach() -> dict:
+def dispatch_outreach() -> dict[str, Any]:
     return run_async(_dispatch())
 
 
-async def _dispatch() -> dict:
+async def _dispatch() -> dict[str, Any]:
     sm = get_sessionmaker()
     async with sm() as session:
         tenants = list((await session.execute(select(Tenant))).scalars().all())
@@ -177,7 +179,9 @@ async def _dispatch_for_tenant(tenant_id: UUID) -> tuple[int, int, int]:
         return (sent, blocked, deferred)
 
 
-async def _pick_sender(session, tenant_id: UUID, preferred: UUID | None) -> SenderProfile | None:
+async def _pick_sender(
+    session: AsyncSession, tenant_id: UUID, preferred: UUID | None
+) -> SenderProfile | None:
     if preferred is not None:
         sender = await session.get(SenderProfile, preferred)
         if (
@@ -202,7 +206,9 @@ async def _pick_sender(session, tenant_id: UUID, preferred: UUID | None) -> Send
     return (await session.execute(stmt)).scalars().first()
 
 
-def _build_template_components(template: MessageTemplate, variables: dict) -> list[dict]:
+def _build_template_components(
+    template: MessageTemplate, variables: dict[str, Any]
+) -> list[dict[str, Any]]:
     if not template.variables:
         return []
     return [
@@ -216,7 +222,7 @@ def _build_template_components(template: MessageTemplate, variables: dict) -> li
     ]
 
 
-def _render(body: str, variables: dict) -> str:
+def _render(body: str, variables: dict[str, Any]) -> str:
     out = body
     for k, v in (variables or {}).items():
         out = out.replace("{{" + k + "}}", str(v))

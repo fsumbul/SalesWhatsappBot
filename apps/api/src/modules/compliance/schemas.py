@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,7 +31,7 @@ class ComplianceDecisionOut(BaseModel):
     decision: ComplianceResult
     reason: str
     next_allowed_at: datetime | None = None
-    checks: list[dict]
+    checks: list[dict[str, Any]]
 
 
 class ComplianceReportOut(BaseModel):

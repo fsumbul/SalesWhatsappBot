@@ -1,7 +1,7 @@
 """FastAPI dependencies shared across modules."""
 
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Depends, Header, Request
@@ -36,7 +36,7 @@ DBSessionDep = Annotated[AsyncSession, Depends(get_db)]
 async def get_current_claims(
     request: Request,
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
-) -> dict:
+) -> dict[str, Any]:
     if creds is None:
         raise UnauthorizedError("Missing bearer token")
     try:
@@ -58,7 +58,7 @@ async def get_current_claims(
     return claims
 
 
-ClaimsDep = Annotated[dict, Depends(get_current_claims)]
+ClaimsDep = Annotated[dict[str, Any], Depends(get_current_claims)]
 
 
 def get_client_ip(x_forwarded_for: Annotated[str | None, Header()] = None) -> str:

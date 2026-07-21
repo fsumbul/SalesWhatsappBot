@@ -156,7 +156,7 @@ class BingSearchConnector:
         if wait > 0:
             await asyncio.sleep(wait)
         headers = {"Ocp-Apim-Subscription-Key": self.key}
-        params = {
+        params: dict[str, str | int] = {
             "q": query,
             "mkt": f"{language}-{country.upper()}",
             "count": 20,
@@ -189,7 +189,7 @@ class BingSearchConnector:
     ) -> AsyncIterator[RawLead]:
         global _last_call_ts
         mkt = _MKT.get((country.upper(), language.lower()), "en-US")
-        params = {"q": query, "cc": country.upper(), "count": 30, "mkt": mkt}
+        params: dict[str, str | int] = {"q": query, "cc": country.upper(), "count": 30, "mkt": mkt}
 
         # Pace request dispatch under a short lock, then run the actual fetch
         # concurrently (bounded by _FREE_LOCK) so slow SERP responses overlap

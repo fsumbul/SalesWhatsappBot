@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import re
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import httpx
@@ -47,16 +48,16 @@ _QUALIFY_THRESHOLD = 80
 
 
 @celery_app.task(name="src.workers.enrichment.enrich_campaign")
-def enrich_campaign(tenant_id: str, campaign_id: str) -> dict:
+def enrich_campaign(tenant_id: str, campaign_id: str) -> dict[str, Any]:
     return run_async(_enrich_campaign(UUID(tenant_id), UUID(campaign_id)))
 
 
 @celery_app.task(name="src.workers.enrichment.enrich_lead")
-def enrich_lead(tenant_id: str, lead_id: str) -> dict:
+def enrich_lead(tenant_id: str, lead_id: str) -> dict[str, Any]:
     return run_async(_enrich_lead(UUID(tenant_id), UUID(lead_id)))
 
 
-async def _enrich_campaign(tenant_id: UUID, campaign_id: UUID) -> dict:
+async def _enrich_campaign(tenant_id: UUID, campaign_id: UUID) -> dict[str, Any]:
     sm = get_sessionmaker()
     async with sm() as session:
         await set_tenant_context(session, tenant_id)
@@ -120,7 +121,7 @@ async def _enrich_campaign(tenant_id: UUID, campaign_id: UUID) -> dict:
     return counters
 
 
-async def _enrich_lead(tenant_id: UUID, lead_id: UUID) -> dict:
+async def _enrich_lead(tenant_id: UUID, lead_id: UUID) -> dict[str, Any]:
     sm = get_sessionmaker()
     async with sm() as session:
         await set_tenant_context(session, tenant_id)

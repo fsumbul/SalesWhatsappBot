@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, status
@@ -30,7 +31,7 @@ from .service import SectorService
 router = APIRouter(prefix="/sectors", tags=["sectors"])
 
 
-def _tid(claims: dict) -> UUID:
+def _tid(claims: dict[str, Any]) -> UUID:
     return UUID(claims["tid"])
 
 

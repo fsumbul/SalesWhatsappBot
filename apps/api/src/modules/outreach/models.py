@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -168,7 +169,7 @@ class OutreachJob(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
         ForeignKey("sender_profiles.id", ondelete="SET NULL"),
         nullable=True,
     )
-    variables: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    variables: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     status: Mapped[OutreachJobStatus] = mapped_column(
         SAEnum(OutreachJobStatus, name="outreach_job_status", values_callable=lambda e: [x.value for x in e]),
         default=OutreachJobStatus.PENDING,
@@ -238,6 +239,6 @@ class Message(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
         ForeignKey("outreach_jobs.id", ondelete="SET NULL"),
         nullable=True,
     )
-    raw: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    raw: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")

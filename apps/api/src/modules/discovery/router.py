@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
@@ -28,7 +28,7 @@ campaigns_router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 leads_router = APIRouter(prefix="/leads", tags=["leads"])
 
 
-def _tid(claims: dict) -> UUID:
+def _tid(claims: dict[str, Any]) -> UUID:
     return UUID(claims["tid"])
 
 

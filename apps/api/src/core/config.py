@@ -97,4 +97,4 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Cached settings accessor. Reset the cache in tests via `get_settings.cache_clear()`."""
-    return Settings()  # type: ignore[call-arg]
+    return Settings()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
@@ -57,7 +58,7 @@ class ComplianceCheck(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     result: Mapped[ComplianceResult] = mapped_column(
         SAEnum(ComplianceResult, name="compliance_result", values_callable=lambda e: [x.value for x in e]), nullable=False
     )
-    details: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     next_allowed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -70,4 +71,4 @@ class AuditLog(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     entity_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    meta: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    meta: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)

@@ -23,7 +23,8 @@ class TokenBucket:
 
     async def _r(self) -> aioredis.Redis:
         if self._client is None:
-            self._client = aioredis.from_url(
+            # redis-py's async from_url() is untyped in its stubs.
+            self._client = aioredis.from_url(  # type: ignore[no-untyped-call]
                 str(get_settings().redis_url), decode_responses=True
             )
         return self._client
@@ -44,6 +45,8 @@ class TokenBucket:
             tokens = 0.0
         else:
             tokens -= cost
-        await r.hset(self.key, mapping={"tokens": tokens, "ts": now})
+        # redis-py's stubs mis-type hset's return as `int | Awaitable[int]` for
+        # the async client; at runtime this is always awaitable here.
+        await r.hset(self.key, mapping={"tokens": tokens, "ts": now})  # type: ignore[misc]
         await r.expire(self.key, 3600)
         return wait

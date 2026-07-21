@@ -14,6 +14,7 @@ Returns a `ComplianceDecision` with result, reason, and next_allowed_at
 from __future__ import annotations
 
 from datetime import UTC, datetime, time, timedelta
+from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -46,7 +47,7 @@ class ComplianceDecision:
         decision: ComplianceResult,
         reason: str,
         next_allowed_at: datetime | None = None,
-        checks: list[dict] | None = None,
+        checks: list[dict[str, Any]] | None = None,
     ) -> None:
         self.decision = decision
         self.reason = reason
@@ -64,7 +65,7 @@ class ComplianceService:
     async def check_contact(
         self, tenant_id: UUID, contact: LeadContact, country: str | None
     ) -> ComplianceDecision:
-        checks: list[dict] = []
+        checks: list[dict[str, Any]] = []
 
         # 1. Opt-out
         opt_stmt = select(OptOut).where(
@@ -151,7 +152,7 @@ class ComplianceService:
         result: ComplianceResult,
         reason: str,
         next_allowed_at: datetime | None,
-        checks: list[dict],
+        checks: list[dict[str, Any]],
     ) -> ComplianceDecision:
         record = ComplianceCheck(
             tenant_id=tenant_id,
@@ -216,7 +217,7 @@ class ComplianceService:
             await self.session.delete(obj)
             await self.session.commit()
 
-    async def report(self, tenant_id: UUID) -> dict:
+    async def report(self, tenant_id: UUID) -> dict[str, Any]:
         total_stmt = select(func.count()).select_from(OptOut).where(
             OptOut.tenant_id == tenant_id
         )

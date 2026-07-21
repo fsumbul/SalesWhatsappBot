@@ -36,7 +36,7 @@ class SerpAPIConnector:
         wait = await self._bucket.acquire()
         if wait > 0:
             await asyncio.sleep(wait)
-        params = {
+        params: dict[str, str | int] = {
             "engine": "google",
             "q": query,
             "hl": language,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 import structlog
@@ -80,7 +81,7 @@ class GooglePlacesConnector:
             )
 
 
-def _find_city(components: list[dict]) -> str | None:
+def _find_city(components: list[dict[str, Any]]) -> str | None:
     for c in components:
         types = c.get("types", [])
         if "locality" in types or "administrative_area_level_1" in types:

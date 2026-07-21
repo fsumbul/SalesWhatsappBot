@@ -37,6 +37,7 @@ ruff = "^0.7.4"
 mypy = "^1.13.0"
 testcontainers = { extras = ["postgres", "redis"], version = "^4.8.2" }
 httpx = "^0.27.2"
+celery-types = "^0.26.0"
 
 [build-system]
 requires = ["poetry-core"]

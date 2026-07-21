@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -134,14 +135,19 @@ class DiscoveryService:
             raise NotFoundError("Lead", str(lead_id))
         return lead
 
-    async def status_summary(self, tenant_id: UUID, campaign_id: UUID) -> dict:
+    async def status_summary(self, tenant_id: UUID, campaign_id: UUID) -> dict[str, Any]:
         camp = await self.get_campaign(tenant_id, campaign_id)
         counts_stmt = (
             select(Lead.status, func.count())
             .where(Lead.tenant_id == tenant_id, Lead.campaign_id == campaign_id)
             .group_by(Lead.status)
         )
-        counts = dict((await self.session.execute(counts_stmt)).all())
+        # Comprehension, not dict(rows): SQLAlchemy Row isn't a tuple[K, V] as
+        # far as mypy's dict() overloads are concerned, even with this
+        # explicit annotation.
+        counts: dict[LeadStatus, int] = {  # noqa: C416
+            status: count for status, count in (await self.session.execute(counts_stmt)).all()
+        }
         total = sum(counts.values())
         discovered = counts.get(LeadStatus.DISCOVERED, 0)
         return {

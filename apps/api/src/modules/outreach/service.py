@@ -179,7 +179,7 @@ class ConversationService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def list(self, tenant_id: UUID) -> list[Conversation]:
+    async def list_conversations(self, tenant_id: UUID) -> list[Conversation]:
         stmt = (
             select(Conversation)
             .where(Conversation.tenant_id == tenant_id)

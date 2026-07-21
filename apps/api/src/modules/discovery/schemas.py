@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -19,7 +20,7 @@ from .models import (
 class CampaignIn(BaseModel):
     sector_id: UUID
     name: str = Field(min_length=2, max_length=160)
-    filters: dict = Field(default_factory=dict)
+    filters: dict[str, Any] = Field(default_factory=dict)
     daily_quota: int = Field(default=200, ge=1, le=100000)
 
 
@@ -31,7 +32,7 @@ class DiscoverIn(BaseModel):
 
 class CampaignPatchIn(BaseModel):
     name: str | None = None
-    filters: dict | None = None
+    filters: dict[str, Any] | None = None
     daily_quota: int | None = Field(default=None, ge=1, le=100000)
     status: CampaignStatus | None = None
 
@@ -43,7 +44,7 @@ class CampaignOut(BaseModel):
     sector_id: UUID
     name: str
     status: CampaignStatus
-    filters: dict
+    filters: dict[str, Any]
     daily_quota: int
     started_at: datetime | None
     completed_at: datetime | None

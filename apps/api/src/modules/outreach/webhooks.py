@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from typing import Any
+from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Header, HTTPException, Query, Request, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import get_settings
 from src.core.db import get_sessionmaker, set_tenant_context
@@ -53,7 +56,7 @@ async def receive_webhook(
     tenant_slug: str,
     request: Request,
     x_hub_signature_256: str | None = Header(default=None, alias="X-Hub-Signature-256"),
-) -> dict:
+) -> dict[str, Any]:
     raw = await request.body()
     wa = WhatsAppClient()
     if get_settings().whatsapp_app_secret and not wa.verify_signature(raw, x_hub_signature_256):
@@ -79,7 +82,9 @@ async def receive_webhook(
     return {"ok": True}
 
 
-async def _handle_statuses(session, tenant_id, statuses: list[dict]) -> None:
+async def _handle_statuses(
+    session: AsyncSession, tenant_id: UUID, statuses: list[dict[str, Any]]
+) -> None:
     for st in statuses:
         wa_id = st.get("id")
         status_name = st.get("status")
@@ -106,7 +111,9 @@ async def _handle_statuses(session, tenant_id, statuses: list[dict]) -> None:
             job.error = str(st.get("errors"))[:1000]
 
 
-async def _handle_messages(session, tenant_id, messages: list[dict]) -> None:
+async def _handle_messages(
+    session: AsyncSession, tenant_id: UUID, messages: list[dict[str, Any]]
+) -> None:
     for m in messages:
         from_number = "+" + m.get("from", "") if not m.get("from", "").startswith("+") else m["from"]
         body = (m.get("text") or {}).get("body")

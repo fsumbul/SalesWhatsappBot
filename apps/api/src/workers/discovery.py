@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -13,7 +14,7 @@ import structlog
 from src.core.celery_app import celery_app
 from src.core.config import get_settings
 from src.core.db import get_sessionmaker, set_tenant_context
-from src.integrations.base import RawLead
+from src.integrations.base import LeadConnector, RawLead
 from src.integrations.bing import BingSearchConnector
 from src.integrations.google_places import GooglePlacesConnector
 from src.integrations.overpass import OverpassConnector
@@ -41,13 +42,13 @@ CONNECTOR_MAP = {
 @celery_app.task(name="src.workers.discovery.run_discovery_for_campaign")
 def run_discovery_for_campaign(
     tenant_id: str, campaign_id: str, countries: list[str] | None = None
-) -> dict:
+) -> dict[str, Any]:
     return run_async(_run(UUID(tenant_id), UUID(campaign_id), countries))
 
 
 async def _run(
     tenant_id: UUID, campaign_id: UUID, countries: list[str] | None = None
-) -> dict:
+) -> dict[str, Any]:
     sm = get_sessionmaker()
     async with sm() as session:
         await set_tenant_context(session, tenant_id)
@@ -95,7 +96,9 @@ async def _run(
         return {"leads_inserted": inserted, "raw_collected": len(raw_leads)}
 
 
-async def _collect(conn, query: str, country: str, language: str) -> list[RawLead]:
+async def _collect(
+    conn: LeadConnector, query: str, country: str, language: str
+) -> list[RawLead]:
     out: list[RawLead] = []
 
     async def _iter() -> None:

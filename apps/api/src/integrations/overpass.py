@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 import structlog
@@ -62,7 +63,7 @@ class OverpassConnector:
         out center tags 300;
         """.strip()
 
-        data: dict | None = None
+        data: dict[str, Any] | None = None
         # Try at most two mirrors, each tightly bounded, so a slow / over-capacity
         # Overpass server can't stall the whole discovery run.
         for endpoint in _ENDPOINTS[:2]:

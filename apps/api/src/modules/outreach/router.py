@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, status
@@ -35,7 +36,7 @@ outreach_router = APIRouter(prefix="/outreach", tags=["outreach"])
 conversations_router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 
-def _tid(claims: dict) -> UUID:
+def _tid(claims: dict[str, Any]) -> UUID:
     return UUID(claims["tid"])
 
 
@@ -119,7 +120,7 @@ async def list_jobs(db: DBSessionDep, claims: ClaimsDep) -> list[OutreachJobOut]
 
 @conversations_router.get("", response_model=list[ConversationOut])
 async def list_conversations(db: DBSessionDep, claims: ClaimsDep) -> list[ConversationOut]:
-    items = await ConversationService(db).list(_tid(claims))
+    items = await ConversationService(db).list_conversations(_tid(claims))
     return [ConversationOut.model_validate(c) for c in items]
 
 

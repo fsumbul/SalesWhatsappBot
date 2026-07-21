@@ -107,18 +107,18 @@ def generate_queries(sector: Sector, *, per_country_limit: int = 20) -> list[Sea
     seen: set[tuple[str, str, str]] = set()
     per_country_count: dict[str, int] = {}
     result: list[SearchQuery] = []
-    for q in queries:
-        key = (q.text, q.language, q.country)
+    for sq in queries:
+        key = (sq.text, sq.language, sq.country)
         if key in seen:
             continue
         # Overpass sorgusunu limitten muaf tut (ülke başına zaten 1 adet)
         if (
             per_country_limit
-            and q.source_hint != "overpass"
-            and per_country_count.get(q.country, 0) >= per_country_limit
+            and sq.source_hint != "overpass"
+            and per_country_count.get(sq.country, 0) >= per_country_limit
         ):
             continue
         seen.add(key)
-        result.append(q)
-        per_country_count[q.country] = per_country_count.get(q.country, 0) + 1
+        result.append(sq)
+        per_country_count[sq.country] = per_country_count.get(sq.country, 0) + 1
     return result

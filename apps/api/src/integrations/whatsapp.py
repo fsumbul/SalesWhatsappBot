@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import structlog
@@ -42,7 +42,7 @@ class WhatsAppClient:
         to: str,
         template_name: str,
         language: str,
-        components: list[dict] | None = None,
+        components: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         body = {
             "messaging_product": "whatsapp",
@@ -66,7 +66,7 @@ class WhatsAppClient:
         }
         return await self._post_message(body)
 
-    async def _post_message(self, body: dict) -> dict:
+    async def _post_message(self, body: dict[str, Any]) -> dict[str, Any]:
         if not self.access_token or not self.phone_number_id:
             raise RuntimeError("WhatsApp credentials not configured")
         url = f"{_BASE}/{self.phone_number_id}/messages"
@@ -79,7 +79,7 @@ class WhatsAppClient:
             if resp.status_code >= 400:
                 logger.warning("wa_send_error", status=resp.status_code, body=resp.text[:500])
                 resp.raise_for_status()
-            return resp.json()
+            return cast(dict[str, Any], resp.json())
 
     # --- Contacts ---
 
