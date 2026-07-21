@@ -63,6 +63,24 @@ class Settings(BaseSettings):
     iys_api_url: str = ""
     iys_api_key: str = ""
 
+    # --- Web crawler (Phase D) ---
+    # Off by default: unlike the API connectors above, this one drives a real
+    # headless browser against arbitrary third-party sites, so it should be
+    # an explicit opt-in per deployment.
+    web_crawl_enabled: bool = False
+    # Comma-separated seed URLs, each containing a literal "{query}" that gets
+    # replaced with the URL-encoded search query. No default seeds are
+    # shipped: Kompass and Europages — the two directories named in the
+    # original roadmap — turned out to disallow generic crawlers (or their
+    # most valuable paths) in their own robots.txt, so hardcoding them would
+    # either violate the "zero robots.txt violations" requirement or scrape
+    # nothing useful. Operators must configure sites they've confirmed permit
+    # crawling. See docs/architecture.md "Web crawler (Phase D)".
+    web_crawl_seed_urls: str = ""
+    # Comma-separated proxy URLs (e.g. http://user:pass@host:port), rotated
+    # round-robin per crawl session. Empty = no proxy (direct connection).
+    web_crawl_proxies: str = ""
+
     # --- Observability ---
     sentry_dsn: str = ""
     log_level: str = "INFO"
@@ -83,6 +101,14 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def web_crawl_seed_urls_list(self) -> list[str]:
+        return [u.strip() for u in self.web_crawl_seed_urls.split(",") if u.strip()]
+
+    @property
+    def web_crawl_proxies_list(self) -> list[str]:
+        return [p.strip() for p in self.web_crawl_proxies.split(",") if p.strip()]
 
     @property
     def is_production(self) -> bool:

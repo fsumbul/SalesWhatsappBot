@@ -74,6 +74,9 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
+      - name: Install Playwright browser (chromium)
+        run: poetry run playwright install --with-deps chromium
+
       - name: Lint (ruff)
         run: poetry run ruff check .
 

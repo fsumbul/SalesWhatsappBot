@@ -36,7 +36,9 @@ class SearchQuery:
     source_hint: str  # "google_places" | "serpapi" | "bing"
 
 
-def generate_queries(sector: Sector, *, per_country_limit: int = 20) -> list[SearchQuery]:
+def generate_queries(
+    sector: Sector, *, per_country_limit: int = 20, include_web_crawl: bool = False
+) -> list[SearchQuery]:
     """Generate search queries by combining keywords x target customers x contact qualifiers."""
     positive_kw = [k for k in sector.keywords if k.keyword_type == KeywordType.POSITIVE]
     customers = sector.target_customers
@@ -90,6 +92,21 @@ def generate_queries(sector: Sector, *, per_country_limit: int = 20) -> list[Sea
                         source_hint="google_places",
                     )
                 )
+            # Web crawler: raw keyword, same as Places. Gated behind an
+            # explicit flag (not read from Settings here — this function
+            # stays config-free and unit-testable) so a disabled/unconfigured
+            # crawler doesn't consume per-country query budget that would
+            # otherwise go to connectors that actually run.
+            if include_web_crawl:
+                for kw in lang_kws:
+                    queries.append(
+                        SearchQuery(
+                            text=kw,
+                            language=lang,
+                            country=country.country_code,
+                            source_hint="web_crawl",
+                        )
+                    )
             # Country TLD-restricted variant for Serp/Bing
             tld = _COUNTRY_TLD.get(country.country_code)
             if tld:
@@ -103,12 +120,15 @@ def generate_queries(sector: Sector, *, per_country_limit: int = 20) -> list[Sea
                         )
                     )
 
-    # Deduplicate & cap per country
-    seen: set[tuple[str, str, str]] = set()
+    # Deduplicate & cap per country. Keyed on source_hint too: two queries
+    # with identical text/language/country but different source_hint route
+    # to different connectors and are not redundant work (e.g. the same raw
+    # keyword sent to both google_places and web_crawl).
+    seen: set[tuple[str, str, str, str]] = set()
     per_country_count: dict[str, int] = {}
     result: list[SearchQuery] = []
     for sq in queries:
-        key = (sq.text, sq.language, sq.country)
+        key = (sq.text, sq.language, sq.country, sq.source_hint)
         if key in seen:
             continue
         # Overpass sorgusunu limitten muaf tut (ülke başına zaten 1 adet)

@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -20,6 +19,7 @@ from sqlalchemy.orm import selectinload
 
 from src.core.celery_app import celery_app
 from src.core.db import get_sessionmaker, set_tenant_context
+from src.core.text_extract import CONTACT_PATHS, DATE_RE, EMAIL_RE, PHONE_RE, strip_html
 from src.modules.discovery.models import (
     CampaignStatus,
     ContactType,
@@ -34,12 +34,6 @@ from src.modules.sectors.models import KeywordType, Sector
 from ._asyncrun import run_async
 
 logger = structlog.get_logger(__name__)
-
-_EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-_PHONE_RE = re.compile(r"[\+\d][\d\s\-\(\)\.]{7,}\d")
-_DATE_RE = re.compile(r"^\s*\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}\s*$")
-# Only probe the highest-signal contact pages; the first one that responds wins.
-_CONTACT_PATHS = ["/iletisim", "/contact", "/kontakt", "/impressum", "/hakkimizda"]
 
 # How many leads to enrich in parallel per campaign run (bounded by the DB pool).
 _ENRICH_CONCURRENCY = 12
@@ -141,8 +135,8 @@ async def _enrich_lead(tenant_id: UUID, lead_id: UUID) -> dict[str, Any]:
 
         if lead.website:
             website_text, contact_url = await _fetch_site_text(lead.website)
-            found_phones.extend(_PHONE_RE.findall(website_text))
-            found_emails.extend(_EMAIL_RE.findall(website_text))
+            found_phones.extend(PHONE_RE.findall(website_text))
+            found_emails.extend(EMAIL_RE.findall(website_text))
 
         # 2. Sector fit scoring
         sector = (
@@ -158,7 +152,7 @@ async def _enrich_lead(tenant_id: UUID, lead_id: UUID) -> dict[str, Any]:
         seen_phone_norm: set[str] = set()
         seen_email_norm: set[str] = set()
         for raw in set(found_phones):
-            if _DATE_RE.match(raw.strip()):
+            if DATE_RE.match(raw.strip()):
                 continue
             e164, country = _normalize_phone(raw, lead.country)
             if not e164:
@@ -270,30 +264,22 @@ async def _fetch_site_text(url: str) -> tuple[str, str | None]:
         ) as client:
             try:
                 base = await client.get(normalized)
-                text_all += _strip_html(base.text)
+                text_all += strip_html(base.text)
             except httpx.HTTPError:
                 return "", None
             # Probe contact pages but stop at the FIRST hit to stay fast.
-            for path in _CONTACT_PATHS:
+            for path in CONTACT_PATHS:
                 try:
                     r = await client.get(f"{root}{path}")
                 except httpx.HTTPError:
                     continue
                 if r.status_code == 200 and len(r.text) > 100:
-                    text_all += "\n" + _strip_html(r.text)
+                    text_all += "\n" + strip_html(r.text)
                     contact_url = str(r.url)
                     break
     except httpx.HTTPError:
         pass
     return text_all[:30_000], contact_url
-
-
-def _strip_html(html: str) -> str:
-    text = re.sub(r"<script[\s\S]*?</script>", " ", html, flags=re.IGNORECASE)
-    text = re.sub(r"<style[\s\S]*?</style>", " ", text, flags=re.IGNORECASE)
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"\s+", " ", text)
-    return text
 
 
 # Distinctive, sector-specific anchor stems. A page must contain at least one

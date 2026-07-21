@@ -19,6 +19,7 @@ from src.integrations.bing import BingSearchConnector
 from src.integrations.google_places import GooglePlacesConnector
 from src.integrations.overpass import OverpassConnector
 from src.integrations.serpapi import SerpAPIConnector
+from src.integrations.web_crawler import WebCrawlerConnector
 from src.modules.discovery.query_generator import generate_queries
 from src.modules.discovery.service import DiscoveryService
 from src.modules.sectors.repository import SectorRepo
@@ -36,6 +37,14 @@ CONNECTOR_MAP = {
     "serpapi": SerpAPIConnector if _s.serpapi_key else BingSearchConnector,
     "bing": BingSearchConnector,
     "overpass": OverpassConnector,
+    # No-op unless WEB_CRAWL_ENABLED + WEB_CRAWL_SEED_URLS are set (see
+    # src/integrations/web_crawler.py) — safe to always register.
+    # NOTE: the 45s per-query cap in _collect() below was sized for the
+    # API-backed connectors; a web_crawl query visiting several candidate
+    # pages through a real browser can plausibly exceed it. Revisit that
+    # cap (or lower _MAX_CANDIDATES_PER_SEED) once real seed sites are
+    # configured and this is observed running for real.
+    "web_crawl": WebCrawlerConnector,
 }
 
 
@@ -59,7 +68,9 @@ async def _run(
             logger.warning("discovery_no_sector", campaign_id=str(campaign_id))
             return {"leads": 0}
 
-        queries = generate_queries(sector, per_country_limit=15)
+        queries = generate_queries(
+            sector, per_country_limit=15, include_web_crawl=_s.web_crawl_enabled
+        )
         if countries:
             wanted = {c.strip().upper() for c in countries if c.strip()}
             if wanted:

@@ -34,3 +34,16 @@ class SalesPerformanceOut(BaseModel):
     contacted: int
     reply_rate: float
     conversion_rate: float
+
+
+class SourcePrecisionEntry(BaseModel):
+    source: str
+    qualified_or_later: int
+    pending: int
+    discarded_currently_visible: int
+    qualification_rate_of_settled: float | None
+
+
+class SourcePrecisionOut(BaseModel):
+    sources: list[SourcePrecisionEntry]
+    caveat: str

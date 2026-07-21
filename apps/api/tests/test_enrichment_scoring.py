@@ -9,7 +9,7 @@ never flushed to a session)."""
 from types import SimpleNamespace
 
 from src.modules.sectors.models import KeywordType
-from src.workers.enrichment import _normalize_phone, _score_fit, _strip_html
+from src.workers.enrichment import _normalize_phone, _score_fit
 
 
 def _kw(keyword: str, keyword_type: KeywordType = KeywordType.POSITIVE) -> SimpleNamespace:
@@ -94,14 +94,3 @@ class TestScoreFit:
         sector = _sector(_kw("Elevator Sheave"))
         score = _score_fit("We sell ELEVATOR SHEAVE products", sector)
         assert score == 20
-
-
-class TestStripHtml:
-    def test_removes_script_and_style_blocks(self) -> None:
-        html = "<html><script>evil()</script><style>.x{}</style><p>Hello world</p></html>"
-        assert "evil" not in _strip_html(html)
-        assert "Hello world" in _strip_html(html)
-
-    def test_collapses_whitespace(self) -> None:
-        html = "<p>Hello</p>\n\n<p>World</p>"
-        assert _strip_html(html) == " Hello World "

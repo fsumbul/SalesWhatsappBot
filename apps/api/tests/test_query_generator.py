@@ -142,3 +142,24 @@ class TestGenerateQueries:
         serpapi_texts = {q.text for q in queries if q.source_hint == "serpapi"}
         assert '"kasnak" "iletişim"' in serpapi_texts
         assert '"sheave" "contact"' in serpapi_texts
+
+    def test_web_crawl_queries_omitted_by_default(self) -> None:
+        sector = _sector(keywords=[_keyword("kasnak", "tr")], countries=[_country("TR")])
+        queries = generate_queries(sector)
+        assert not any(q.source_hint == "web_crawl" for q in queries)
+
+    def test_web_crawl_queries_included_when_requested(self) -> None:
+        sector = _sector(keywords=[_keyword("kasnak", "tr")], countries=[_country("TR")])
+        queries = generate_queries(sector, include_web_crawl=True)
+        web_crawl = [q for q in queries if q.source_hint == "web_crawl"]
+        assert any(q.text == "kasnak" for q in web_crawl)
+
+    def test_web_crawl_disabled_matches_pre_web_crawl_behavior_exactly(self) -> None:
+        """include_web_crawl defaults to False specifically so campaigns that
+        don't use the crawler see zero behavior change — this pins that."""
+        many_keywords = [_keyword(f"kw{i}", "tr") for i in range(20)]
+        sector = _sector(keywords=many_keywords, countries=[_country("TR")])
+        default_call = generate_queries(sector, per_country_limit=5)
+        explicit_false = generate_queries(sector, per_country_limit=5, include_web_crawl=False)
+        assert default_call == explicit_false
+        assert not any(q.source_hint == "web_crawl" for q in default_call)

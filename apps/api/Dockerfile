@@ -6,7 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     POETRY_VERSION=1.8.4 \
     POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_CREATE=false
+    POETRY_VIRTUALENVS_CREATE=false \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential curl libpq-dev \
@@ -18,12 +19,14 @@ WORKDIR /app
 # --- deps layer ---
 FROM base AS deps
 COPY pyproject.toml poetry.lock* ./
-RUN poetry install --no-root --only main
+RUN poetry install --no-root --only main \
+    && playwright install --with-deps chromium
 
 # --- dev layer (with dev deps) ---
 FROM base AS dev
 COPY pyproject.toml poetry.lock* ./
-RUN poetry install --no-root
+RUN poetry install --no-root \
+    && playwright install --with-deps chromium
 COPY . .
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
@@ -31,8 +34,9 @@ CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload
 FROM base AS prod
 COPY --from=deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=deps /usr/local/bin /usr/local/bin
+COPY --from=deps /ms-playwright /ms-playwright
 COPY . .
-RUN useradd --system --uid 1001 leadpulse && chown -R leadpulse:leadpulse /app
+RUN useradd --system --uid 1001 leadpulse && chown -R leadpulse:leadpulse /app /ms-playwright
 USER leadpulse
 EXPOSE 8000
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

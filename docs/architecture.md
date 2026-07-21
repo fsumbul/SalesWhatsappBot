@@ -67,15 +67,30 @@ Multi-tenant SaaS. Sektör bazlı B2B potansiyel müşteri keşfi + WhatsApp Bus
 
 1. `POST /api/v1/campaigns/{id}/discover` — status → DISCOVERING, Celery task fırlatır.
 2. Worker sektörün `keywords × customers × contact_qualifiers × country` kombinasyonlarını üretir.
-3. Connector'lar (Google Places, SerpAPI, Bing) paralel çağrılır; hepsi rate-limited (Redis token bucket).
+3. Connector'lar (Google Places, SerpAPI, Bing, Overpass, ve opsiyonel olarak Web Crawler — bkz. aşağı) paralel çağrılır; hepsi rate-limited (Redis token bucket).
 4. Sonuçlar `DiscoveryService.ingest_raw_leads()` üzerinden fuzzy dedup ile Lead tablosuna yazılır (normalized_name + domain).
 5. Campaign status → READY; ardından enrichment task'i chain edilir.
+
+## Web crawler (Phase D)
+
+`src/integrations/web_crawler.py` — Playwright tabanlı, jenerik (site'a özel değil) bir crawler connector. `ROADMAP.md`'nin Phase D bölümündeki TODO #2'nin ("anahtar keyword'ler sayesinde web scraping") ilk iskeleti.
+
+- **Varsayılan olarak kapalı** (`WEB_CRAWL_ENABLED=false`) — diğer connector'ların aksine gerçek bir headless browser ile üçüncü parti sitelere gidiyor, bu yüzden deployment başına açık bir onay gerekiyor.
+- **robots.txt her fetch'ten önce kontrol edilir** (`src/core/robots.py`), sabit değil — bir site crawl'a izin vermiyorsa asla crawl edilmez. Bu ROADMAP.md'deki "zero robots.txt violations" şartı için tasarım seviyesinde bir garanti, sadece "best effort" değil.
+- **Kompass ve Europages hardcode edilmedi.** Orijinal roadmap bu iki dizini örnek olarak veriyordu, ama gerçek robots.txt'leri kontrol edildiğinde: Europages `User-agent: *` için `Disallow: /` (jenerik crawler'lara tamamen kapalı), Kompass ise `/c/` (şirket profili path'i) ve `/search*`'ü disallow ediyor — yani asıl değerli sayfalar zaten engelli. İkisini de hardcode etmek ya robots.txt ihlali ya da işe yaramaz bir scrape anlamına gelirdi. Bunun yerine `WEB_CRAWL_SEED_URLS` operatör tarafından, crawl'a izin verdiği doğrulanmış sitelerle konfigüre edilir.
+- Rate limiting diğer connector'larla aynı `TokenBucket` + insan-benzeri rastgele gecikme (1–3s).
+- `query_generator.generate_queries(..., include_web_crawl=...)` parametresiyle kapalıyken sorgu bütçesini (`per_country_limit`) tüketmez — kapalı olduğunda diğer connector'ların davranışında hiçbir değişiklik olmaz (bkz. `tests/test_query_generator.py`).
+
+**Henüz yapılmadı / operatör kararı bekliyor (bilerek scaffold dışı bırakıldı):**
+- Proxy rotasyonu için gerçek bir proxy sağlayıcı hesabı (`WEB_CRAWL_PROXIES` config'i hazır, ama boş).
+- Quality dashboard'un web UI'ı (`GET /api/v1/reports/source-precision` endpoint'i var, bkz. `ReportService.source_precision` docstring'indeki önemli kısıtlama — enrichment eşik-altı Lead satırlarını fiziksel olarak sildiği için gerçek "precision" ölçümü şu an mimari olarak mümkün değil).
+- Celery worker autoscaling (Phase B'nin deployment altyapısı henüz yok).
 
 ## Enrichment akışı
 
 - Website fetch + strip HTML → keyword-hit tabanlı fit skoru (0–100).
 - `phonenumbers` ile E.164 normalizasyon.
-- Fit < 30 → DISCARDED, ≥ 60 → QUALIFIED, ≥ 75 → priority=HIGH.
+- Fit ≥ 80 → QUALIFIED (≥ 90 → priority=HIGH, aksi halde MEDIUM); < 80 → DISCARDED, ardından fiziksel olarak silinir (`workers/enrichment.py::_enrich_campaign`).
 
 ## Outreach akışı
 

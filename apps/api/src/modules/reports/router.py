@@ -14,6 +14,7 @@ from .schemas import (
     SalesPerformanceOut,
     SenderHealthOut,
     SenderHealthReportOut,
+    SourcePrecisionOut,
 )
 from .service import ReportService
 
@@ -38,3 +39,10 @@ async def senders(db: DBSessionDep, claims: ClaimsDep) -> SenderHealthReportOut:
 @router.get("/sales", response_model=SalesPerformanceOut)
 async def sales(db: DBSessionDep, claims: ClaimsDep) -> SalesPerformanceOut:
     return SalesPerformanceOut(**await ReportService(db).sales_performance(_tid(claims)))
+
+
+@router.get("/source-precision", response_model=SourcePrecisionOut)
+async def source_precision(db: DBSessionDep, claims: ClaimsDep) -> SourcePrecisionOut:
+    """See ReportService.source_precision docstring for an important caveat
+    about what this number does and doesn't mean today."""
+    return SourcePrecisionOut(**await ReportService(db).source_precision(_tid(claims)))
