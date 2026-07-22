@@ -43,7 +43,8 @@ Multi-tenant SaaS. Sektör bazlı B2B potansiyel müşteri keşfi + WhatsApp Bus
 - **discovery** — Campaign, Lead, LeadContact, LeadSource, LeadEnrichment; query üretici + fuzzy dedup
 - **compliance** — OptOut, ComplianceCheck, AuditLog; her outbound mesajın geçtiği kapı
 - **outreach** — MessageTemplate, SenderProfile, OutreachJob, Conversation, Message + WA webhook
-- **reports** — Funnel, sender health, sales performance
+- **reports** — Funnel, sender health, sales performance, per-source precision
+- **agents** — Agent + AgentVersion (draft/testing/live/archived, immutable history); Phase E1 scaffold, bkz. aşağı
 
 ## Multi-tenant izolasyon (defense in depth)
 
@@ -101,6 +102,23 @@ Her dakika `dispatch_outreach` çalışır:
 3. Sender seç (aktif + healthy + `daily_sent < daily_cap`, en boş olan).
 4. WhatsApp template message gönder → Job status güncelle, Conversation + Message log'la.
 5. Webhook (`POST /webhooks/whatsapp/{tenant_slug}`) status güncellemeleri ve inbound mesajları işler; STOP-benzeri kelimeleri regex ile yakalayıp otomatik opt-out açar.
+
+## Agents (Phase E1)
+
+`src/modules/agents/` — TODO #1'in ("her müşterinin adminden WhatsApp üzerinden kendi agent'ını kendisinin geliştirmesi") ilk parçası: tenant başına agent kimliği + versiyonlanmış konfigürasyon. WhatsApp üzerinden konuşarak agent oluşturma (E2) ve canlı otomatik cevap runtime'ı (E3) **henüz yok** — bkz. aşağı.
+
+- **`Agent`** — tenant başına kararlı kimlik (isim, slug, opsiyonel sector bağlantısı).
+- **`AgentVersion`** — persona/tone, dil listesi, ürün bilgisi, qualification soruları, guardrails (yasaklı konular, escalation kuralları), reply policies. `status`: `draft → testing → live → archived`.
+- **Versiyon geçmişi asla silinmez/üzerine yazılmaz.** Draft düzenleme sadece o an DRAFT olan satırı değiştirir; promote sadece status bayrağını taşır; **rollback eski bir versiyonun içeriğini YENİ bir versiyona kopyalayıp onu live yapar** — eski satırı diriltmez. Bu yüzden "ne zaman rollback yapıldı" bilgisi de geçmişte kalıcı olarak görünür kalır (`rolled_back_from_version` alanı).
+- Her state-değiştiren aksiyon (`create_agent`, `create_draft`, `update_draft`, `promote_to_testing`, `promote_to_live`, `rollback`) mevcut genel `compliance.models.AuditLog` tablosuna yazar — ayrı bir audit mekanizması kurulmadı.
+- Aynı anda agent başına en fazla bir DRAFT ve bir LIVE versiyon — uygulama katmanında zorlanıyor (DB constraint değil).
+
+**Henüz yapılmadı (E2/E3 — LLM sağlayıcı kararı olmadan mimari olarak ilerlemez):**
+- `src/integrations/llm.py` sadece bir arayüz (`LLMClient` Protocol) + `NullLLMClient` (her çağrıda `LLMNotConfiguredError` fırlatır — sessizce boş/uydurma cevap dönmez). Gerçek bir sağlayıcı (Anthropic, OpenAI, ...) bağlanması operatör kararı: hangi sağlayıcı, hangi API key/bütçe — Phase B'yi bekleten Meta Business doğrulaması ile aynı kategoride bir dış bağımlılık.
+- WhatsApp üzerinden "agent builder bot" konuşma akışı (tenant'ın doğal dilde anlattığını `AgentVersion`'a çeviren LLM çağrısı) — yok.
+- Canlı runtime: LIVE versiyonun inbound mesajlara otomatik cevap vermesi, düşük güvenilirlikte insana devretme (Inbox assignment) — yok.
+- Kullanım/maliyet metering (billing için ön koşul) — yok.
+- Prompt-injection sertleştirmesi, agent cevaplarının compliance filtresinden geçmesi — henüz yapılmadı; runtime yazılmadan önce bu güvenlik incelemesi ayrıca ele alınmalı.
 
 ## Deployment
 

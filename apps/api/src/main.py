@@ -13,6 +13,7 @@ from src.core.config import get_settings
 from src.core.db import dispose_engine
 from src.core.errors import DomainError
 from src.core.logging import configure_logging
+from src.modules.agents.router import router as agents_router
 from src.modules.auth.router import router as auth_router
 from src.modules.auth.router import users_router
 from src.modules.compliance.router import opt_outs_router
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     # --- API v1 routers ---
     api_prefix = "/api/v1"
     app.include_router(auth_router, prefix=api_prefix)
+    app.include_router(agents_router, prefix=api_prefix)
     app.include_router(users_router, prefix=api_prefix)
     app.include_router(sectors_router, prefix=api_prefix)
     app.include_router(campaigns_router, prefix=api_prefix)

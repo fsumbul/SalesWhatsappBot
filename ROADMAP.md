@@ -76,22 +76,24 @@ This plan takes the project from its **current state** (feature-complete core, m
 > TODO #1 — *"Her müşterinin adminden WhatsApp üzerinden kendi agent'ını kendisinin geliştirmesi."*
 > Goal: each tenant builds and evolves their own AI agent themselves, through a chat-driven flow on WhatsApp. Also unlocks the V2 "AI auto-reply" item.
 
-**E1 — Agent definition model (Weeks 9–10)**
-- [ ] Per-tenant agent schema: persona/tone, product knowledge base, languages, qualification questions, guardrails (forbidden topics, escalation rules), reply policies.
-- [ ] Versioned configs (draft → testing → live) with rollback; audit log of who changed what.
+**E1 — Agent definition model (Weeks 9–10)** ✅ scaffolded
+- [x] Per-tenant agent schema: persona/tone, product knowledge base, languages, qualification questions, guardrails (forbidden topics, escalation rules), reply policies. `src/modules/agents/` — `Agent` + `AgentVersion`, following the same module conventions (models/schemas/service/router) as every other bounded context.
+- [x] Versioned configs (draft → testing → live) with rollback; audit log of who changed what. History is immutable: editing only ever mutates the current draft row; promotion moves a status flag; rollback clones the target version's *content* into a brand-new version rather than resurrecting the old row, so "a rollback happened" stays visible in the history forever. Audit trail reuses the existing `compliance.models.AuditLog` table rather than a parallel mechanism. Verified against a real Postgres: full lifecycle (create → edit → promote → promote → rollback → history intact) + RLS tenant isolation (`tests/test_agents.py`, 7 tests).
 
-**E2 — Agent builder bot (Weeks 10–12)**
+**E2 — Agent builder bot (Weeks 10–12)** ❌ not started — blocked on an LLM provider decision
 - [ ] WhatsApp conversation flow, launched from the admin panel, where the tenant *describes* their agent conversationally ("agent builder bot"); LLM translates the dialogue into the agent definition.
 - [ ] Builder supports iteration: tenant sends feedback messages, config updates as a new draft version.
 - [ ] Admin UI mirror: view/edit the same definition in the web panel (fallback for non-chat editing).
 
-**E3 — Sandbox & runtime (Weeks 12–14)**
+**Prerequisite scaffolded, not the feature itself:** `src/integrations/llm.py` defines `LLMClient` (a Protocol shaped after the common "messages + system prompt" chat-completion pattern, so a real provider is a thin adapter later) and `NullLLMClient`, the only implementation today — every call raises `LLMNotConfiguredError` rather than fabricating a reply. **This needs an operator decision before E2 can start for real: which LLM provider (Anthropic, OpenAI, ...), and an API key/budget.** Same category of external blocker as the Meta Business verification gating Phase B — not something to default or silently work around.
+
+**E3 — Sandbox & runtime (Weeks 12–14)** ❌ not started — blocked on E2
 - [ ] **Sandbox mode:** tenant chats with their draft agent on WhatsApp before going live; test transcripts saved.
 - [ ] **Runtime:** live agent answers inbound conversation messages within its guardrails; hands off to a human (Inbox assignment) on low confidence, escalation triggers, or explicit request.
 - [ ] Per-tenant usage metering (LLM cost tracking) — prerequisite for billing later.
 - [ ] Safety review: prompt-injection hardening, PII handling, compliance-filter applies to agent replies too.
 
-**Exit criteria:** one pilot tenant builds an agent end-to-end over WhatsApp without developer help; agent handles ≥50% of inbound messages without human takeover, with clean handoffs on the rest.
+**Exit criteria:** one pilot tenant builds an agent end-to-end over WhatsApp without developer help; agent handles ≥50% of inbound messages without human takeover, with clean handoffs on the rest. **Not reachable without E2/E3**, which are blocked on the LLM provider decision above.
 
 ## Phase F — Hardening & V2 Commercial (Weeks 14+)
 

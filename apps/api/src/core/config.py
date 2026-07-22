@@ -81,6 +81,14 @@ class Settings(BaseSettings):
     # round-robin per crawl session. Empty = no proxy (direct connection).
     web_crawl_proxies: str = ""
 
+    # --- LLM provider (Phase E2/E3) ---
+    # Empty by default: no provider is implemented yet (see
+    # src/integrations/llm.py). Not just "off" like web_crawl_enabled —
+    # there is currently nothing to turn on.
+    llm_provider: str = ""
+    llm_api_key: str = ""
+    llm_model: str = ""
+
     # --- Observability ---
     sentry_dsn: str = ""
     log_level: str = "INFO"
