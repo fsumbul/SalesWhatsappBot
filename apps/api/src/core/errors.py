@@ -45,3 +45,16 @@ class ComplianceBlockError(DomainError):
             status.HTTP_412_PRECONDITION_FAILED,
             detail=f"Compliance block: {reason}",
         )
+
+
+class ServiceUnavailableError(DomainError):
+    def __init__(self, detail: str) -> None:
+        super().__init__(status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail)
+
+
+class BadGatewayError(DomainError):
+    """An upstream service responded, but with something we can't use —
+    distinct from ServiceUnavailableError (we know it's not configured/down)."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(status.HTTP_502_BAD_GATEWAY, detail=detail)

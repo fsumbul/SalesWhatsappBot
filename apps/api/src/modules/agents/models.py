@@ -31,6 +31,12 @@ class AgentVersionStatus(StrEnum):
     ARCHIVED = "archived"
 
 
+class BuilderSessionStatus(StrEnum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    ABANDONED = "abandoned"
+
+
 class Agent(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     __tablename__ = "agents"
     __table_args__ = (UniqueConstraint("tenant_id", "slug", name="uq_agents_tenant_slug"),)
@@ -85,3 +91,31 @@ class AgentVersion(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     rolled_back_from_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     agent: Mapped[Agent] = relationship(back_populates="versions")
+
+
+class BuilderSession(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
+    """A tenant's in-progress conversation with the agent-builder bot
+    (roadmap E2). Tied to one draft AgentVersion at a time — messages
+    accumulate here and get turned into patches applied to that draft via
+    AgentBuilderService, not stored as their own AgentVersion history."""
+
+    __tablename__ = "agent_builder_sessions"
+
+    agent_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    draft_version_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[BuilderSessionStatus] = mapped_column(
+        SAEnum(
+            BuilderSessionStatus, name="builder_session_status", values_callable=lambda e: [x.value for x in e]
+        ),
+        default=BuilderSessionStatus.ACTIVE,
+        nullable=False,
+        index=True,
+    )
+    # [{"role": "user"|"assistant", "content": str}, ...] — full transcript,
+    # oldest first. Sent back to the LLM in full on every turn.
+    messages: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, nullable=False)
+    started_by: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)

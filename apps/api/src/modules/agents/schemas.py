@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .models import AgentVersionStatus
+from .models import AgentVersionStatus, BuilderSessionStatus
 
 
 class AgentIn(BaseModel):
@@ -58,3 +58,28 @@ class AgentVersionOut(BaseModel):
     rolled_back_from_version: int | None
     created_at: datetime
     updated_at: datetime
+
+
+class BuilderMessageOut(BaseModel):
+    role: str
+    content: str
+
+
+class BuilderSessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    agent_id: UUID
+    draft_version_id: UUID
+    status: BuilderSessionStatus
+    messages: list[BuilderMessageOut]
+    created_at: datetime
+
+
+class BuilderMessageIn(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class BuilderReplyOut(BaseModel):
+    reply: str
+    draft_patch: dict[str, Any]
+    ready_to_promote: bool

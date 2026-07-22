@@ -10,7 +10,16 @@ from fastapi import APIRouter, status
 from src.core.deps import ClaimsDep, DBSessionDep
 from src.core.rbac import RequireManager
 
-from .schemas import AgentIn, AgentOut, AgentVersionOut, AgentVersionPatchIn
+from .builder_service import AgentBuilderService
+from .schemas import (
+    AgentIn,
+    AgentOut,
+    AgentVersionOut,
+    AgentVersionPatchIn,
+    BuilderMessageIn,
+    BuilderReplyOut,
+    BuilderSessionOut,
+)
 from .service import AgentService
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -114,3 +123,45 @@ async def rollback(
         _tid(claims), agent_id, version_id, actor_id=_uid(claims)
     )
     return AgentVersionOut.model_validate(version)
+
+
+# --- Agent builder bot (Phase E2 scaffolding) ---
+#
+# These endpoints are the admin-panel-facing surface the roadmap describes
+# ("launched from the admin panel"). Routing *inbound WhatsApp messages*
+# into this flow (vs. the normal outreach conversation / live-agent runtime)
+# is a separate decision not made here — see docs/architecture.md
+# "Agents (Phase E1)". Every call here will 503 until an LLM provider is
+# configured (src/integrations/llm.py); the endpoints themselves are real.
+
+
+@router.post(
+    "/{agent_id}/builder/sessions",
+    response_model=BuilderSessionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def start_builder_session(
+    agent_id: UUID, db: DBSessionDep, claims: RequireManager
+) -> BuilderSessionOut:
+    builder_session = await AgentBuilderService(db).start_session(
+        _tid(claims), agent_id, actor_id=_uid(claims)
+    )
+    return BuilderSessionOut.model_validate(builder_session)
+
+
+@router.post(
+    "/{agent_id}/builder/sessions/{session_id}/messages", response_model=BuilderReplyOut
+)
+async def send_builder_message(
+    agent_id: UUID,
+    session_id: UUID,
+    payload: BuilderMessageIn,
+    db: DBSessionDep,
+    claims: RequireManager,
+) -> BuilderReplyOut:
+    reply = await AgentBuilderService(db).send_message(
+        _tid(claims), agent_id, session_id, payload.text, actor_id=_uid(claims)
+    )
+    return BuilderReplyOut(
+        reply=reply.reply, draft_patch=reply.draft_patch, ready_to_promote=reply.ready_to_promote
+    )
