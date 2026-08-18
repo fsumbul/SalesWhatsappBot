@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -38,6 +38,16 @@ class UserRole(StrEnum):
 
 class Tenant(Base, UUIDPrimaryKey, Timestamped):
     __tablename__ = "tenants"
+    __table_args__ = (
+        Index(
+            "uq_tenants_active_waba",
+            "wa_business_account_id",
+            unique=True,
+            postgresql_where=text(
+                "status = 'active'::tenant_status AND wa_business_account_id IS NOT NULL"
+            ),
+        ),
+    )
 
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     slug: Mapped[str] = mapped_column(String(80), unique=True, nullable=False, index=True)
@@ -53,7 +63,9 @@ class Tenant(Base, UUIDPrimaryKey, Timestamped):
     )
     wa_business_account_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     default_locale: Mapped[str] = mapped_column(String(8), default="tr", nullable=False)
-    default_timezone: Mapped[str] = mapped_column(String(64), default="Europe/Istanbul", nullable=False)
+    default_timezone: Mapped[str] = mapped_column(
+        String(64), default="Europe/Istanbul", nullable=False
+    )
 
     users: Mapped[list[User]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
 
@@ -63,13 +75,18 @@ class User(Base, UUIDPrimaryKey, Timestamped):
     __table_args__ = (UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),)
 
     tenant_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+        PgUUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     role: Mapped[UserRole] = mapped_column(
-        SAEnum(UserRole, name="user_role", values_callable=lambda e: [x.value for x in e]), default=UserRole.SALES_AGENT, nullable=False
+        SAEnum(UserRole, name="user_role", values_callable=lambda e: [x.value for x in e]),
+        default=UserRole.SALES_AGENT,
+        nullable=False,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     locale: Mapped[str] = mapped_column(String(8), default="tr", nullable=False)
@@ -83,10 +100,16 @@ class Invitation(Base, UUIDPrimaryKey, Timestamped):
     __tablename__ = "invitations"
 
     tenant_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+        PgUUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole, name="user_role", values_callable=lambda e: [x.value for x in e]), nullable=False)
+    role: Mapped[UserRole] = mapped_column(
+        SAEnum(UserRole, name="user_role", values_callable=lambda e: [x.value for x in e]),
+        nullable=False,
+    )
     token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -102,7 +125,10 @@ class RefreshToken(Base, UUIDPrimaryKey, Timestamped):
         PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     tenant_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+        PgUUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     token_hash: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

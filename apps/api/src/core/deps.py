@@ -9,7 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .db import get_sessionmaker, set_tenant_context
+from .db import get_sessionmaker, reset_tenant_context, set_tenant_context
 from .errors import UnauthorizedError
 from .security import decode_token
 from .tenancy import set_current_tenant
@@ -27,7 +27,16 @@ async def get_db(
         try:
             yield session
         finally:
-            await set_tenant_context(session, None)
+            # A route that hit an unhandled exception mid-transaction (e.g.
+            # an IntegrityError during flush) leaves the session in SQLAlchemy's
+            # "rolled back due to a previous exception" state — any further
+            # `session.execute()` on it (like the set_tenant_context call
+            # below) raises PendingRollbackError instead of running, which
+            # masks the original error and crashes the ASGI middleware stack
+            # (browser sees a bare connection failure, not a clean 4xx/5xx).
+            # rollback() is safe to call even when there's nothing pending;
+            # it's what clears that state so cleanup can proceed normally.
+            await reset_tenant_context(session)
 
 
 DBSessionDep = Annotated[AsyncSession, Depends(get_db)]

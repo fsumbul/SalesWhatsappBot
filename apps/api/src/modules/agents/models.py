@@ -23,6 +23,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.core.db import Base
 from src.core.mixins import TenantScoped, Timestamped, UUIDPrimaryKey
 
+from .company_config import empty_company_agent_config
+
 
 class AgentVersionStatus(StrEnum):
     DRAFT = "draft"
@@ -83,6 +85,12 @@ class AgentVersion(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     guardrails: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     # Freeform: e.g. {"max_response_length": 500, "tone_examples": [...]}
     reply_policies: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    # The universal, versioned company blueprint.  The legacy columns above
+    # remain for backward compatibility while the runtime is migrated to this
+    # canonical structure in a follow-up phase.
+    company_config: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=empty_company_agent_config, nullable=False
+    )
 
     created_by: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
     # Set when this version was created by rolling back to an earlier one's

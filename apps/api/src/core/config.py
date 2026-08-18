@@ -3,11 +3,73 @@
 All configuration goes through `Settings`. Do NOT read env vars directly elsewhere.
 """
 
+import math
+import re
+from collections import Counter
 from functools import lru_cache
 from typing import Literal
 
 from pydantic import Field, PostgresDsn, RedisDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_APP_SECRET_PLACEHOLDER_MARKERS = (
+    "changeme",
+    "defaultsecret",
+    "developmentsecret",
+    "devsecret",
+    "examplesecret",
+    "insecure",
+    "jwtsecret",
+    "placeholder",
+    "replaceme",
+    "secretkey",
+    "testsecret",
+    "yoursecret",
+)
+_KNOWN_WEAK_APP_SECRETS = {
+    "abcdefghijklmnopqrstuvwxyz0123456789",
+    "0123456789abcdefghijklmnopqrstuvwxyz",
+}
+
+
+def _is_repeated_pattern(value: str) -> bool:
+    """Return true when the entire value is a repeated shorter pattern."""
+
+    return any(
+        len(value) % width == 0 and value == value[:width] * (len(value) // width)
+        for width in range(1, len(value) // 2 + 1)
+    )
+
+
+def _app_secret_key_security(value: str) -> dict[str, bool | int]:
+    """Return a sanitized production-strength assessment, never the value."""
+
+    canonical = re.sub(r"[^a-z0-9]", "", value.casefold())
+    placeholder_detected = canonical in _KNOWN_WEAK_APP_SECRETS or any(
+        marker in canonical for marker in _APP_SECRET_PLACEHOLDER_MARKERS
+    )
+
+    counts = Counter(value)
+    entropy_per_character = 0.0
+    if value:
+        entropy_per_character = -sum(
+            (count / len(value)) * math.log2(count / len(value)) for count in counts.values()
+        )
+    estimated_entropy_bits = entropy_per_character * len(value)
+    low_entropy_detected = bool(
+        len(value) < 32
+        or value != value.strip()
+        or len(counts) < 10
+        or entropy_per_character < 3.0
+        or estimated_entropy_bits < 128
+        or _is_repeated_pattern(value)
+    )
+    return {
+        "length": len(value),
+        "placeholder_detected": placeholder_detected,
+        "low_entropy_detected": low_entropy_detected,
+        "production_acceptable": not placeholder_detected and not low_entropy_detected,
+    }
 
 
 class Settings(BaseSettings):
@@ -55,6 +117,10 @@ class Settings(BaseSettings):
     whatsapp_verify_token: str = ""
     whatsapp_phone_number_id: str = ""
     whatsapp_business_account_id: str = ""
+    whatsapp_graph_api_version: str = "v20.0"
+    # Explicit sender/webhook -> live agent binding for the WhatsApp runtime.
+    # Leaving this empty is allowed only when a tenant has exactly one live agent.
+    whatsapp_agent_slug: str = ""
 
     google_places_api_key: str = ""
     serpapi_key: str = ""
@@ -88,6 +154,9 @@ class Settings(BaseSettings):
     llm_provider: str = ""
     llm_api_key: str = ""
     llm_model: str = ""
+    # Used by the "ollama" provider — a local, OpenAI-compatible endpoint,
+    # so no API key is needed.
+    llm_base_url: str = "http://localhost:11434/v1"
 
     # --- Observability ---
     sentry_dsn: str = ""
@@ -126,6 +195,44 @@ class Settings(BaseSettings):
     def whatsapp_webhook_verify_token(self) -> str:
         """Alias for the token Meta echoes on webhook subscription."""
         return self.whatsapp_verify_token
+
+    @property
+    def app_secret_key_security(self) -> dict[str, bool | int]:
+        """Sanitized JWT-signing-key checks suitable for preflight output."""
+
+        return _app_secret_key_security(self.app_secret_key)
+
+    def production_runtime_errors(self) -> list[str]:
+        """Return only missing/invalid key names, never secret values."""
+
+        if not self.is_production:
+            return []
+        errors: list[str] = []
+        required = {
+            "WHATSAPP_APP_SECRET": self.whatsapp_app_secret,
+            "WHATSAPP_ACCESS_TOKEN": self.whatsapp_access_token,
+            "WHATSAPP_VERIFY_TOKEN": self.whatsapp_verify_token,
+            "WHATSAPP_PHONE_NUMBER_ID": self.whatsapp_phone_number_id,
+            "WHATSAPP_BUSINESS_ACCOUNT_ID": self.whatsapp_business_account_id,
+            "WHATSAPP_AGENT_SLUG": self.whatsapp_agent_slug,
+            "LLM_MODEL": self.llm_model,
+            "LLM_BASE_URL": self.llm_base_url,
+        }
+        errors.extend(f"{key} is required" for key, value in required.items() if not value.strip())
+        if not self.app_secret_key_security["production_acceptable"]:
+            errors.append("APP_SECRET_KEY must be a strong randomly generated value")
+        if self.app_debug:
+            errors.append("APP_DEBUG must be false")
+        if self.llm_provider != "ollama":
+            errors.append("LLM_PROVIDER must be ollama")
+        version = self.whatsapp_graph_api_version
+        if not (
+            version.startswith("v")
+            and version[1:].replace(".", "", 1).isdigit()
+            and version.count(".") == 1
+        ):
+            errors.append("WHATSAPP_GRAPH_API_VERSION must look like v20.0")
+        return errors
 
 
 @lru_cache

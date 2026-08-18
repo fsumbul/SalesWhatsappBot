@@ -61,6 +61,57 @@ async def test_send_text_builds_correct_payload(client: WhatsAppClient) -> None:
     assert payload["text"]["body"] == "Hello there"
 
 
+@respx.mock
+async def test_send_typing_indicator_builds_native_meta_payload(
+    client: WhatsAppClient,
+) -> None:
+    route = respx.post("https://graph.facebook.com/v20.0/123456/messages").mock(
+        return_value=Response(200, json={"success": True})
+    )
+
+    response = await client.send_typing_indicator("wamid.inbound123")
+
+    assert response == {"success": True}
+    assert route.call_count == 1
+    payload = json.loads(route.calls.last.request.content)
+    assert payload == {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": "wamid.inbound123",
+        "typing_indicator": {"type": "text"},
+    }
+
+
+@respx.mock
+async def test_graph_api_version_is_configurable() -> None:
+    client = WhatsAppClient(
+        access_token="test-token",
+        phone_number_id="123456",
+        graph_api_version="v99.0",
+    )
+    route = respx.post("https://graph.facebook.com/v99.0/123456/messages").mock(
+        return_value=Response(200, json={"messages": [{"id": "wamid.versioned"}]})
+    )
+
+    await client.send_text_once("+905321234567", "Versioned")
+
+    assert route.call_count == 1
+
+
+@respx.mock
+async def test_send_text_once_never_retries_an_ambiguous_timeout(
+    client: WhatsAppClient,
+) -> None:
+    route = respx.post("https://graph.facebook.com/v20.0/123456/messages").mock(
+        side_effect=httpx.ReadTimeout("ambiguous outcome")
+    )
+
+    with pytest.raises(httpx.ReadTimeout):
+        await client.send_text_once("+905321234567", "Only once")
+
+    assert route.call_count == 1
+
+
 async def test_post_message_raises_when_credentials_missing() -> None:
     client = WhatsAppClient(access_token="", phone_number_id="", app_secret="")
     with pytest.raises(RuntimeError, match="not configured"):

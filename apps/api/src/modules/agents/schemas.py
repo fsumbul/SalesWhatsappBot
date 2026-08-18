@@ -8,6 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .company_config import CompanyAgentConfig
 from .models import AgentVersionStatus, BuilderSessionStatus
 
 
@@ -39,6 +40,10 @@ class AgentVersionPatchIn(BaseModel):
     qualification_questions: list[str] | None = None
     guardrails: dict[str, Any] | None = None
     reply_policies: dict[str, Any] | None = None
+    # Full replacement, deliberately not a loose partial JSON patch.  The
+    # builder/preview protocol will later produce validated proposed patches
+    # before assembling this complete configuration.
+    company_config: CompanyAgentConfig | None = None
 
 
 class AgentVersionOut(BaseModel):
@@ -54,6 +59,7 @@ class AgentVersionOut(BaseModel):
     qualification_questions: list[str]
     guardrails: dict[str, Any]
     reply_policies: dict[str, Any]
+    company_config: CompanyAgentConfig
     created_by: UUID | None
     rolled_back_from_version: int | None
     created_at: datetime

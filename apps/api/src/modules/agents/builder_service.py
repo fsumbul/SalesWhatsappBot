@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID
 
 import structlog
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -103,19 +104,59 @@ class AgentBuilderService:
         try:
             parsed = parse_llm_response(raw)
         except BuilderResponseParseError as e:
+            # The 7B-class local model this project defaults to (see
+            # llm.py) gets the envelope shape right most turns but not
+            # every turn — observed failures include a stringified
+            # `ready_to_promote` and a missing `reply` key, each on an
+            # otherwise-fine conversation. Rather than dead-ending the
+            # tenant's conversation on a single flaky turn, retry once
+            # with the parse error fed back so the model can correct
+            # itself — the same repair loop a person would do by hand.
             logger.warning("builder_llm_response_unparseable", session_id=str(session_id), error=str(e))
-            raise BadGatewayError(f"Agent builder got an unusable response, try again: {e}") from e
+            retry_messages = [
+                *llm_messages,
+                LLMMessage(role="assistant", content=raw),
+                LLMMessage(
+                    role="user",
+                    content=(
+                        f"That response could not be parsed: {e}. Reply again with ONLY "
+                        "the JSON object described in the system prompt — no other text."
+                    ),
+                ),
+            ]
+            try:
+                raw = await self.llm.complete(retry_messages, system=system_prompt)
+                parsed = parse_llm_response(raw)
+            except (LLMNotConfiguredError, BuilderResponseParseError) as retry_e:
+                logger.warning(
+                    "builder_llm_response_unparseable_after_retry",
+                    session_id=str(session_id),
+                    error=str(retry_e),
+                )
+                raise BadGatewayError(f"Agent builder got an unusable response, try again: {e}") from retry_e
 
         transcript.append({"role": "assistant", "content": parsed.reply})
         builder_session.messages = transcript
 
         if parsed.draft_patch:
-            await self.agents.update_draft(
-                tenant_id,
-                agent_id,
-                AgentVersionPatchIn(**parsed.draft_patch),
-                actor_id=actor_id,
-            )
+            # `parse_llm_response` only validates the outer envelope shape
+            # (reply/draft_patch/ready_to_promote) and that draft_patch's
+            # *keys* are known fields — it doesn't check each value's type.
+            # A real LLM (unlike the deterministic mock/tests) can emit a
+            # syntactically valid envelope with a wrong-shaped value inside
+            # (e.g. a list where a string is expected) which fails here.
+            # Treat that the same as any other malformed LLM response
+            # instead of letting a raw pydantic ValidationError 500 out.
+            try:
+                patch = AgentVersionPatchIn(**parsed.draft_patch)
+            except ValidationError as e:
+                logger.warning(
+                    "builder_llm_draft_patch_invalid", session_id=str(session_id), error=str(e)
+                )
+                raise BadGatewayError(
+                    f"Agent builder got an unusable response, try again: {e}"
+                ) from e
+            await self.agents.update_draft(tenant_id, agent_id, patch, actor_id=actor_id)
 
         await self.session.commit()
         return parsed

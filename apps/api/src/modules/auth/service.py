@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import get_settings
+from src.core.db import set_tenant_context
 from src.core.errors import ConflictError, NotFoundError, UnauthorizedError, ValidationError
 from src.core.security import create_token, hash_password, verify_password
 
@@ -51,6 +52,7 @@ class AuthService:
             status=TenantStatus.ACTIVE,
         )
         await self.tenants.create(tenant)
+        await set_tenant_context(self.session, tenant.id)
 
         user = User(
             tenant_id=tenant.id,
@@ -75,6 +77,7 @@ class AuthService:
         if tenant.status == TenantStatus.SUSPENDED:
             raise UnauthorizedError("Tenant suspended")
 
+        await set_tenant_context(self.session, tenant.id)
         user = await self.users.get_by_email(tenant.id, data.email)
         if user is None or not user.is_active:
             raise UnauthorizedError("Invalid credentials")
@@ -98,6 +101,7 @@ class AuthService:
         if rt.expires_at < datetime.now(UTC):
             raise UnauthorizedError("Refresh token expired")
 
+        await set_tenant_context(self.session, rt.tenant_id)
         user = await self.users.get_by_id(rt.user_id)
         if user is None or not user.is_active:
             raise UnauthorizedError("User inactive")
@@ -179,6 +183,7 @@ class AuthService:
         if inv.expires_at < datetime.now(UTC):
             raise ValidationError("Invitation expired")
 
+        await set_tenant_context(self.session, inv.tenant_id)
         existing = await self.users.get_by_email(inv.tenant_id, inv.email)
         if existing is not None:
             raise ConflictError("User already exists")

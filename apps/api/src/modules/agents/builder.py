@@ -66,8 +66,14 @@ def parse_llm_response(raw: str) -> BuilderLLMResponse:
         raise BuilderResponseParseError("LLM output must be a JSON object")
 
     reply = data.get("reply")
-    if not isinstance(reply, str):
-        raise BuilderResponseParseError("LLM output missing a string 'reply' field")
+    if not isinstance(reply, str) or not reply.strip():
+        # A blank/whitespace 'reply' is worse than an outright parse error:
+        # it's a syntactically valid envelope that silently produces an
+        # empty chat bubble for the tenant instead of surfacing anything
+        # they (or the retry-once path in builder_service.py) can react
+        # to. Treat it the same as a missing field so it gets one retry
+        # instead of shipping nothing to the WhatsApp-style chat UI.
+        raise BuilderResponseParseError("LLM output missing a non-empty string 'reply' field")
 
     raw_patch = data.get("draft_patch")
     if raw_patch is None:
@@ -81,6 +87,14 @@ def parse_llm_response(raw: str) -> BuilderLLMResponse:
         raise BuilderResponseParseError("draft_patch must be a JSON object or null")
 
     ready = data.get("ready_to_promote", False)
+    if isinstance(ready, str) and ready.strip().lower() in ("true", "false"):
+        # A 7B-class local model (this project's default — see llm.py)
+        # reliably gets the envelope shape right but not always JSON's
+        # bare-word boolean syntax; it'll quote it like any other value
+        # often enough that rejecting the whole turn over it would make
+        # the builder flow flaky for no benefit. Still reject anything
+        # that isn't recognizably a yes/no the model meant as a bool.
+        ready = ready.strip().lower() == "true"
     if not isinstance(ready, bool):
         raise BuilderResponseParseError("ready_to_promote must be a boolean")
 
@@ -107,12 +121,16 @@ sales agent for their company, through a conversation. Ask short, concrete \
 questions to fill in whatever is still missing from the fields below. Don't \
 re-ask about a field that already has a real value in the current draft.
 
-Fields to gather: persona (tone/personality description), tone (a short \
-label like "friendly" or "formal"), languages (list of language codes the \
-agent should speak), product_knowledge (what the agent should know about \
-their product/service), qualification_questions (questions the agent should \
-ask leads), guardrails (forbidden_topics and escalation_triggers), \
-reply_policies (freeform behavioral rules).
+Fields to gather, with their exact JSON types — match these types exactly, \
+never substitute a list for a string or vice versa:
+- persona: string (tone/personality description)
+- tone: string (a short label like "friendly" or "formal")
+- languages: array of strings (language codes the agent should speak)
+- product_knowledge: string (a paragraph about their product/service, NOT a list)
+- qualification_questions: array of strings (questions the agent should ask leads)
+- guardrails: object with "forbidden_topics" (array of strings) and \
+"escalation_triggers" (array of strings)
+- reply_policies: object (freeform behavioral rules, e.g. {{"notes": "..."}})
 
 Current draft state:
 {current_state}

@@ -116,9 +116,7 @@ class SenderService:
             raise NotFoundError("SenderProfile", str(sender_id))
         return obj
 
-    async def patch(
-        self, tenant_id: UUID, sender_id: UUID, data: SenderPatchIn
-    ) -> SenderProfile:
+    async def patch(self, tenant_id: UUID, sender_id: UUID, data: SenderPatchIn) -> SenderProfile:
         obj = await self.get(tenant_id, sender_id)
         for f, v in data.model_dump(exclude_none=True).items():
             setattr(obj, f, v)
@@ -187,9 +185,7 @@ class ConversationService:
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
-    async def get_or_create_by_contact(
-        self, tenant_id: UUID, contact: LeadContact
-    ) -> Conversation:
+    async def get_or_create_by_contact(self, tenant_id: UUID, contact: LeadContact) -> Conversation:
         stmt = select(Conversation).where(
             Conversation.tenant_id == tenant_id, Conversation.contact_id == contact.id
         )
@@ -216,9 +212,7 @@ class ConversationService:
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
-    async def send_free_form(
-        self, tenant_id: UUID, conv_id: UUID, body: str
-    ) -> Message:
+    async def send_free_form(self, tenant_id: UUID, conv_id: UUID, body: str) -> Message:
         """Send a session (24h window) message — used by agents in the inbox."""
         conv = await self.session.get(Conversation, conv_id)
         if conv is None or conv.tenant_id != tenant_id:
@@ -231,10 +225,12 @@ class ConversationService:
         from src.integrations.whatsapp import WhatsAppClient
 
         wa = WhatsAppClient()
-        resp = await wa.send_text(contact.normalized_value, body)
+        resp = await wa.send_text_once(contact.normalized_value, body)
         wa_id = None
         with contextlib.suppress(KeyError, IndexError):
             wa_id = resp.get("messages", [{}])[0].get("id")
+        if not wa_id:
+            raise RuntimeError("WhatsApp response did not include a message id")
 
         msg = Message(
             tenant_id=tenant_id,
@@ -246,6 +242,41 @@ class ConversationService:
             raw=resp,
         )
         self.session.add(msg)
+        await self.session.flush()
         conv.last_message_at = datetime.now(UTC)
+        # A verified manual reply is the explicit resume action for a bot
+        # conversation paused in the human-review queue.
+        from src.modules.agents.runtime_models import (
+            AgentRuntimeJob,
+            AgentRuntimeJobStatus,
+        )
+
+        handoffs = list(
+            (
+                await self.session.execute(
+                    select(AgentRuntimeJob).where(
+                        AgentRuntimeJob.tenant_id == tenant_id,
+                        AgentRuntimeJob.conversation_id == conv_id,
+                        AgentRuntimeJob.status.in_(
+                            [
+                                AgentRuntimeJobStatus.HANDOFF.value,
+                                AgentRuntimeJobStatus.FAILED.value,
+                            ]
+                        ),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        resolved_at = datetime.now(UTC).isoformat()
+        for handoff in handoffs:
+            handoff.status = AgentRuntimeJobStatus.RESOLVED.value
+            handoff.audit = {
+                **(handoff.audit or {}),
+                "manual_review_required": False,
+                "human_review_resolved_at": resolved_at,
+                "resolved_by_manual_message_id": str(msg.id),
+            }
         await self.session.commit()
         return msg

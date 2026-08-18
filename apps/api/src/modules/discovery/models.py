@@ -16,6 +16,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy import (
     Enum as SAEnum,
@@ -77,11 +78,18 @@ class Campaign(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     __tablename__ = "campaigns"
 
     sector_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("sectors.id", ondelete="CASCADE"), nullable=False, index=True
+        PgUUID(as_uuid=True),
+        ForeignKey("sectors.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     status: Mapped[CampaignStatus] = mapped_column(
-        SAEnum(CampaignStatus, name="campaign_status", values_callable=lambda e: [x.value for x in e]), default=CampaignStatus.DRAFT, nullable=False
+        SAEnum(
+            CampaignStatus, name="campaign_status", values_callable=lambda e: [x.value for x in e]
+        ),
+        default=CampaignStatus.DRAFT,
+        nullable=False,
     )
     filters: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     daily_quota: Mapped[int] = mapped_column(Integer, default=200, nullable=False)
@@ -97,10 +105,16 @@ class Lead(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     )
 
     sector_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("sectors.id", ondelete="SET NULL"), nullable=True, index=True
+        PgUUID(as_uuid=True),
+        ForeignKey("sectors.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     campaign_id: Mapped[UUID | None] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="SET NULL"), nullable=True, index=True
+        PgUUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     company_name: Mapped[str] = mapped_column(String(255), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
@@ -112,15 +126,18 @@ class Lead(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     source: Mapped[str] = mapped_column(String(80), nullable=False)
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     status: Mapped[LeadStatus] = mapped_column(
-        SAEnum(LeadStatus, name="lead_status", values_callable=lambda e: [x.value for x in e]), default=LeadStatus.DISCOVERED, nullable=False, index=True
+        SAEnum(LeadStatus, name="lead_status", values_callable=lambda e: [x.value for x in e]),
+        default=LeadStatus.DISCOVERED,
+        nullable=False,
+        index=True,
     )
     fit_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     priority: Mapped[LeadPriority] = mapped_column(
-        SAEnum(LeadPriority, name="lead_priority", values_callable=lambda e: [x.value for x in e]), default=LeadPriority.LOW, nullable=False
+        SAEnum(LeadPriority, name="lead_priority", values_callable=lambda e: [x.value for x in e]),
+        default=LeadPriority.LOW,
+        nullable=False,
     )
-    discovered_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     contacted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -140,12 +157,22 @@ class LeadContact(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     __table_args__ = (
         UniqueConstraint("lead_id", "type", "normalized_value", name="uq_lead_contact"),
         Index("ix_lead_contacts_e164", "normalized_value"),
+        Index(
+            "uq_lead_contacts_tenant_phone",
+            "tenant_id",
+            "normalized_value",
+            unique=True,
+            postgresql_where=text("type = 'phone'"),
+        ),
     )
 
     lead_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    type: Mapped[ContactType] = mapped_column(SAEnum(ContactType, name="contact_type", values_callable=lambda e: [x.value for x in e]), nullable=False)
+    type: Mapped[ContactType] = mapped_column(
+        SAEnum(ContactType, name="contact_type", values_callable=lambda e: [x.value for x in e]),
+        nullable=False,
+    )
     raw_value: Mapped[str] = mapped_column(String(255), nullable=False)
     normalized_value: Mapped[str] = mapped_column(String(255), nullable=False)
     country_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
@@ -153,7 +180,11 @@ class LeadContact(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     is_whatsapp: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     wa_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     consent_status: Mapped[ConsentStatus] = mapped_column(
-        SAEnum(ConsentStatus, name="consent_status", values_callable=lambda e: [x.value for x in e]), default=ConsentStatus.UNKNOWN, nullable=False
+        SAEnum(
+            ConsentStatus, name="consent_status", values_callable=lambda e: [x.value for x in e]
+        ),
+        default=ConsentStatus.UNKNOWN,
+        nullable=False,
     )
 
     lead: Mapped[Lead] = relationship(back_populates="contacts")

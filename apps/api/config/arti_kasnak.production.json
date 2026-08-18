@@ -1,0 +1,392 @@
+{
+  "schema_version": "company-agent-config/1.0",
+  "lifecycle": "approved",
+  "organization": {
+    "id": "company",
+    "display_names": {
+      "tr": "Artı Kasnak"
+    },
+    "legal_name": "Artı Kasnak Asansör Mak. İmalat San. Tic. Ltd. Şti",
+    "markets": [
+      "Türkiye",
+      "İhracat"
+    ]
+  },
+  "parties": [],
+  "offerings": [
+    {
+      "id": "elevator_pulley",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Asansör kasnağı"
+      },
+      "provider_id": "company",
+      "active": true
+    },
+    {
+      "id": "plastic_elevator_pulley",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Captormal plastik asansör kasnağı"
+      },
+      "provider_id": "company",
+      "active": true
+    },
+    {
+      "id": "cast_elevator_pulley",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Döküm asansör kasnağı"
+      },
+      "provider_id": "company",
+      "active": true
+    },
+    {
+      "id": "belt_pulley",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Kayış kasnağı"
+      },
+      "provider_id": "company",
+      "active": true
+    },
+    {
+      "id": "traction_sheave",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Çekiş kasnağı"
+      },
+      "provider_id": "company",
+      "active": true
+    },
+    {
+      "id": "pulley_components",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Kasnak mili, aksı ve bağlantı bileşenleri"
+      },
+      "provider_id": "company",
+      "active": true
+    }
+  ],
+  "relationships": [],
+  "facts": [
+    {
+      "id": "welcome",
+      "subject_id": "company",
+      "category": "support",
+      "value": "Artı Kasnak müşteri bilgi ve teklif ön hazırlık asistanı",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Merhaba, Artı Kasnak müşteri asistanıyım. Asansör kasnakları hakkında bilgi ve teklif ön hazırlığı için yardımcı olabilirim."
+      },
+      "source": "https://www.artikasnak.com/"
+    },
+    {
+      "id": "company_focus",
+      "subject_id": "company",
+      "category": "capability",
+      "value": "Asansör kasnağı üretimi",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Artı Kasnak, asansör kasnağı üretimine odaklanır."
+      },
+      "source": "https://www.artikasnak.com/"
+    },
+    {
+      "id": "drawing_based_production",
+      "subject_id": "company",
+      "category": "capability",
+      "value": "Teknik çizime ve müşteri talebine göre üretim",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Üretim, müşterinin talebi ve teknik çizimi doğrultusunda yapılabilir."
+      },
+      "source": "https://www.artikasnak.com/"
+    },
+    {
+      "id": "product_families",
+      "subject_id": "elevator_pulley",
+      "category": "specification",
+      "value": [
+        "palanga kasnağı",
+        "saptırma kasnağı",
+        "hidrolik kasnak",
+        "motor kasnağı"
+      ],
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Ürün grupları arasında palanga, saptırma, hidrolik ve motor kasnakları bulunur."
+      },
+      "source": "https://www.artikasnak.com/hakkimizda"
+    },
+    {
+      "id": "plastic_pulley_material",
+      "subject_id": "plastic_elevator_pulley",
+      "category": "specification",
+      "value": "Captormal (MC Nylon 6)",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Plastik asansör kasnağı ürün grubunda Captormal (MC Nylon 6) seçeneği bulunur."
+      },
+      "source": "https://www.artikasnak.com/asansor-kasnagi"
+    },
+    {
+      "id": "cast_pulley_materials",
+      "subject_id": "cast_elevator_pulley",
+      "category": "specification",
+      "value": [
+        "GG-25 pik döküm",
+        "GGG-50 sfero döküm"
+      ],
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Döküm asansör kasnağı ürün grubunda GG-25 pik döküm ve GGG-50 sfero döküm seçenekleri bulunur."
+      },
+      "source": "https://www.artikasnak.com/asansor-kasnagi"
+    },
+    {
+      "id": "belt_pulley_types",
+      "subject_id": "belt_pulley",
+      "category": "specification",
+      "value": [
+        "çelik kayış kasnağı",
+        "plastik kayış kasnağı"
+      ],
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Kayış kasnağı ürün grubunda çelik ve plastik seçenekler bulunur."
+      },
+      "source": "https://www.artikasnak.com/kayis-kasnagi"
+    },
+    {
+      "id": "catalog_product_groups",
+      "subject_id": "pulley_components",
+      "category": "specification",
+      "value": [
+        "çekiş kasnağı",
+        "mil",
+        "aks",
+        "yan destek",
+        "yataklı rulman",
+        "rulman"
+      ],
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Resmî ürün kataloğunda çekiş kasnakları; mil ve akslar; yan destekler, yataklı rulmanlar ve rulmanlar da yer alır."
+      },
+      "source": "https://www-artikasnak-com.filesusr.com/ugd/520a8d_87e5d2ef376a4e79a97ca521843e8cc3.pdf"
+    },
+    {
+      "id": "technical_support",
+      "subject_id": "company",
+      "category": "support",
+      "value": true,
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Artı Kasnak teknik destek ve satış sonrası destek sunar."
+      },
+      "source": "https://www.artikasnak.com/"
+    },
+    {
+      "id": "contact_information",
+      "subject_id": "company",
+      "category": "support",
+      "value": {
+        "address": "Ramazanoğlu Mah. Muhsin Yazıcıoğlu Cad. 144/1, 34906 Pendik, İstanbul, Türkiye",
+        "email": "info@artikasnak.com",
+        "export_email": "export@artikasnak.com",
+        "phone": "+90 216 378 35 38"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "İletişim: +90 216 378 35 38, info@artikasnak.com. İhracat talepleri: export@artikasnak.com. Adres: Ramazanoğlu Mah. Muhsin Yazıcıoğlu Cad. 144/1, 34906 Pendik/İstanbul."
+      },
+      "source": "https://www.artikasnak.com/contact-3"
+    },
+    {
+      "id": "quote_product_question",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": "Kasnak türü ve kullanım amacı sorulur",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Teklif ön hazırlığı için ihtiyaç duyduğunuz kasnak türünü ve kullanım amacını paylaşır mısınız?"
+      },
+      "source": "Artı Kasnak production policy: quote-intake/1.0"
+    },
+    {
+      "id": "quote_drawing_question",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": "Teknik çizim veya ölçü bilgisi sorulur",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Varsa teknik çiziminizi; yoksa elinizdeki ölçü ve sistem bilgilerini paylaşır mısınız?"
+      },
+      "source": "Artı Kasnak production policy: quote-intake/1.0"
+    },
+    {
+      "id": "quote_pulley_dimensions_question",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": [
+        "pulley diameter A",
+        "width B",
+        "rope quantity C",
+        "rope size D",
+        "groove distance E",
+        "bearing model"
+      ],
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Kasnak talebi için çap A, genişlik B, halat adedi C, halat ölçüsü D, kanal mesafesi E ve rulman modelini paylaşır mısınız?"
+      },
+      "source": "https://www-artikasnak-com.filesusr.com/ugd/520a8d_87e5d2ef376a4e79a97ca521843e8cc3.pdf"
+    },
+    {
+      "id": "quote_shaft_dimensions_question",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": [
+        "SD",
+        "SL",
+        "GDi",
+        "GW",
+        "GDe"
+      ],
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Mil veya aks içeren talep için teknik çizimdeki SD, SL, GDi, GW ve GDe ölçülerini paylaşır mısınız?"
+      },
+      "source": "https://www-artikasnak-com.filesusr.com/ugd/520a8d_87e5d2ef376a4e79a97ca521843e8cc3.pdf"
+    },
+    {
+      "id": "quote_operating_data_question",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": [
+        "lift capacity",
+        "lift speed"
+      ],
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Teknik inceleme için asansör kapasitesi ve hız bilgisini paylaşır mısınız?"
+      },
+      "source": "https://www-artikasnak-com.filesusr.com/ugd/520a8d_87e5d2ef376a4e79a97ca521843e8cc3.pdf"
+    },
+    {
+      "id": "quote_quantity_location_question",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": "Adet ve teslimat konumu sorulur",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "İhtiyaç adedi ile teslimat şehri ve ülkesini paylaşır mısınız?"
+      },
+      "source": "Artı Kasnak production policy: quote-intake/1.0"
+    },
+    {
+      "id": "technical_selection_handoff",
+      "subject_id": "company",
+      "category": "eligibility",
+      "value": "Nihai ürün uygunluğu teknik ekip tarafından doğrulanır",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Nihai ürün uygunluğu ve teknik seçim, paylaştığınız bilgiler üzerinden Artı Kasnak teknik ekibi tarafından doğrulanır; bot kesin ürün seçimi yapmaz."
+      },
+      "source": "Artı Kasnak production policy: technical-review/1.0"
+    }
+  ],
+  "customer_profiles": [
+    {
+      "id": "quote_request",
+      "applies_to": [
+        "organization",
+        "person"
+      ],
+      "fields": [
+        {
+          "id": "contact_name",
+          "type": "string",
+          "required": false,
+          "allowed_values": []
+        },
+        {
+          "id": "company_name",
+          "type": "string",
+          "required": false,
+          "allowed_values": []
+        },
+        {
+          "id": "requested_product",
+          "type": "string",
+          "required": true,
+          "allowed_values": []
+        },
+        {
+          "id": "technical_drawing_available",
+          "type": "boolean",
+          "required": false,
+          "allowed_values": []
+        },
+        {
+          "id": "technical_details",
+          "type": "string",
+          "required": true,
+          "allowed_values": []
+        },
+        {
+          "id": "bearing_model",
+          "type": "string",
+          "required": false,
+          "allowed_values": []
+        },
+        {
+          "id": "lift_capacity",
+          "type": "number",
+          "required": false,
+          "allowed_values": []
+        },
+        {
+          "id": "lift_speed",
+          "type": "number",
+          "required": false,
+          "allowed_values": []
+        },
+        {
+          "id": "quantity",
+          "type": "integer",
+          "required": true,
+          "allowed_values": []
+        },
+        {
+          "id": "delivery_location",
+          "type": "string",
+          "required": true,
+          "allowed_values": []
+        }
+      ]
+    }
+  ],
+  "processes": [],
+  "policies": [],
+  "agent": {
+    "response_mode": "strict",
+    "purposes": [
+      "information",
+      "lead_capture",
+      "sales",
+      "support"
+    ],
+    "supported_locales": [
+      "tr"
+    ],
+    "default_locale": "tr",
+    "max_characters": 1200,
+    "require_fact_ids_for_claims": true,
+    "unknown_fact_action": "handoff",
+    "handoff_fact_id": "contact_information"
+  },
+  "modules": []
+}

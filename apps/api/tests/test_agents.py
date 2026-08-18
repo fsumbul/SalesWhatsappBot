@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.db import set_tenant_context
 from src.core.errors import ConflictError, NotFoundError
 from src.modules.agents.models import AgentVersionStatus
-from src.modules.agents.schemas import AgentIn, AgentVersionPatchIn
+from src.modules.agents.schemas import AgentIn, AgentVersionOut, AgentVersionPatchIn
 from src.modules.agents.service import AgentService
 from src.modules.compliance.models import AuditLog
 
@@ -38,6 +38,27 @@ async def _audit_actions(session: AsyncSession, tenant_id: UUID) -> list[str]:
         .order_by(AuditLog.created_at.asc())
     )
     return [row[0] for row in (await session.execute(stmt)).all()]
+
+
+def _publishable_company_config() -> dict[str, object]:
+    return {
+        "schema_version": "company-agent-config/1.0",
+        "lifecycle": "approved",
+        "organization": {"id": "company", "display_names": {"tr-TR": "Örnek Şirket"}},
+        "agent": {
+            "purposes": ["sales"],
+            "supported_locales": ["tr-TR"],
+            "default_locale": "tr-TR",
+        },
+    }
+
+
+async def _configure_for_live(svc: AgentService, tenant_id: UUID, agent_id: UUID) -> None:
+    await svc.update_draft(
+        tenant_id,
+        agent_id,
+        AgentVersionPatchIn(company_config=_publishable_company_config()),
+    )
 
 
 async def test_create_agent_seeds_a_draft_version(db_session: AsyncSession) -> None:
@@ -90,6 +111,30 @@ async def test_update_draft_only_changes_supplied_fields(db_session: AsyncSessio
     assert draft2.languages == ["tr", "en"]
 
 
+async def test_company_config_is_versioned_with_the_draft(db_session: AsyncSession) -> None:
+    if not await _db_reachable(db_session):
+        pytest.skip("test database not reachable — see tests/conftest.py")
+
+    tenant_id = uuid4()
+    await set_tenant_context(db_session, tenant_id)
+    svc = AgentService(db_session)
+    agent = await svc.create_agent(tenant_id, AgentIn(name="Bot", slug="bot"))
+
+    config = _publishable_company_config()
+    await set_tenant_context(db_session, tenant_id)
+    updated = await svc.update_draft(
+        tenant_id, agent.id, AgentVersionPatchIn(company_config=config)
+    )
+    assert updated.company_config["organization"]["display_names"]["tr-TR"] == "Örnek Şirket"
+    assert AgentVersionOut.model_validate(updated).company_config.organization is not None
+
+    await set_tenant_context(db_session, tenant_id)
+    await svc.promote_to_live(tenant_id, agent.id, updated.id)
+    await set_tenant_context(db_session, tenant_id)
+    cloned = await svc.create_draft(tenant_id, agent.id)
+    assert cloned.company_config == updated.company_config
+
+
 async def test_cannot_update_draft_when_none_exists(db_session: AsyncSession) -> None:
     if not await _db_reachable(db_session):
         pytest.skip("test database not reachable — see tests/conftest.py")
@@ -102,6 +147,8 @@ async def test_cannot_update_draft_when_none_exists(db_session: AsyncSession) ->
     await set_tenant_context(db_session, tenant_id)
     draft = await svc.get_draft(tenant_id, agent.id)
     assert draft is not None
+    await set_tenant_context(db_session, tenant_id)
+    await _configure_for_live(svc, tenant_id, agent.id)
     await set_tenant_context(db_session, tenant_id)
     await svc.promote_to_testing(tenant_id, agent.id, draft.id)
     await set_tenant_context(db_session, tenant_id)
@@ -124,6 +171,8 @@ async def test_promote_to_live_archives_previous_live(db_session: AsyncSession) 
     await set_tenant_context(db_session, tenant_id)
     v1 = await svc.get_draft(tenant_id, agent.id)
     assert v1 is not None
+    await set_tenant_context(db_session, tenant_id)
+    await _configure_for_live(svc, tenant_id, agent.id)
     await set_tenant_context(db_session, tenant_id)
     await svc.promote_to_testing(tenant_id, agent.id, v1.id)
     await set_tenant_context(db_session, tenant_id)
@@ -175,6 +224,8 @@ async def test_rollback_clones_content_and_preserves_history(db_session: AsyncSe
     await set_tenant_context(db_session, tenant_id)
     v1 = await svc.get_draft(tenant_id, agent.id)
     assert v1 is not None
+    await set_tenant_context(db_session, tenant_id)
+    await _configure_for_live(svc, tenant_id, agent.id)
     await set_tenant_context(db_session, tenant_id)
     await svc.update_draft(tenant_id, agent.id, AgentVersionPatchIn(persona="Original persona"))
     await set_tenant_context(db_session, tenant_id)

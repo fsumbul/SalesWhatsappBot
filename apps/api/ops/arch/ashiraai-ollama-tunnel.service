@@ -1,0 +1,18 @@
+[Unit]
+Description=Ashiraai loopback reverse tunnel to local Ollama
+After=network.target ollama.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=binc
+ExecStart=/usr/bin/ssh -NT -i /home/binc/.ssh/ashiraai_ollama_tunnel_ed25519 -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/home/binc/.ssh/ashiraai_ollama_known_hosts -R 127.0.0.1:11434:127.0.0.1:11434 ollama_tunnel@94.73.180.208
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

@@ -16,14 +16,18 @@ Versioning rules (roadmap E1: "draft -> testing -> live with rollback"):
 
 from __future__ import annotations
 
+from copy import deepcopy
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import ValidationError
 
 from src.core.errors import ConflictError, NotFoundError
 from src.modules.compliance.models import AuditLog
 
+from .company_config import CompanyAgentConfig, empty_company_agent_config
 from .models import Agent, AgentVersion, AgentVersionStatus
 from .schemas import AgentIn, AgentVersionPatchIn
 
@@ -57,7 +61,11 @@ class AgentService:
             slug=data.slug,
         )
         self.session.add(agent)
-        await self.session.flush()
+        try:
+            await self.session.flush()
+        except IntegrityError as e:
+            await self.session.rollback()
+            raise ConflictError(f"An agent with slug '{data.slug}' already exists") from e
 
         # Every agent starts life with an empty draft — an agent with zero
         # versions is not a state the rest of the API needs to handle.
@@ -122,6 +130,19 @@ class AgentService:
     async def get_live(self, tenant_id: UUID, agent_id: UUID) -> AgentVersion | None:
         return await self._get_by_status(tenant_id, agent_id, AgentVersionStatus.LIVE)
 
+    @staticmethod
+    def _require_publishable_company_config(version: AgentVersion) -> None:
+        """Prevent a partial builder draft from becoming a customer-facing bot."""
+
+        try:
+            config = CompanyAgentConfig.model_validate(version.company_config)
+        except ValidationError as exc:
+            raise ConflictError("Company configuration is invalid and cannot be published") from exc
+
+        errors = config.publishability_errors()
+        if errors:
+            raise ConflictError("Company configuration cannot be published: " + "; ".join(errors))
+
     async def create_draft(
         self, tenant_id: UUID, agent_id: UUID, *, actor_id: UUID | None = None
     ) -> AgentVersion:
@@ -149,6 +170,7 @@ class AgentService:
             qualification_questions=list(base.qualification_questions) if base else [],
             guardrails=dict(base.guardrails) if base else {},
             reply_policies=dict(base.reply_policies) if base else {},
+            company_config=deepcopy(base.company_config) if base else empty_company_agent_config(),
             created_by=actor_id,
         )
         self.session.add(draft)
@@ -178,7 +200,9 @@ class AgentService:
         if draft is None:
             raise ConflictError("No draft to edit — create one first")
 
-        changes = data.model_dump(exclude_none=True)
+        # mode="json" turns nested Pydantic models (notably
+        # CompanyAgentConfig) into JSONB-safe dictionaries before assignment.
+        changes = data.model_dump(exclude_none=True, mode="json")
         for field, value in changes.items():
             setattr(draft, field, value)
 
@@ -193,6 +217,12 @@ class AgentService:
             )
         )
         await self.session.commit()
+        # `updated_at` has `onupdate=func.now()` — a server-computed value
+        # SQLAlchemy expires on this row after an UPDATE flush regardless of
+        # `expire_on_commit`. Reload it explicitly (async-safe) so returning
+        # `draft` straight into `AgentVersionOut.model_validate()` doesn't
+        # trigger a synchronous lazy-load (`MissingGreenlet`) on that column.
+        await self.session.refresh(draft)
         return draft
 
     async def promote_to_testing(
@@ -213,6 +243,7 @@ class AgentService:
             )
         )
         await self.session.commit()
+        await self.session.refresh(version)  # see update_draft's comment on why
         return version
 
     async def promote_to_live(
@@ -223,6 +254,8 @@ class AgentService:
             raise ConflictError(
                 f"Only a draft or testing version can be promoted to live (current: {version.status})"
             )
+
+        self._require_publishable_company_config(version)
 
         previous_live = await self.get_live(tenant_id, agent_id)
         if previous_live is not None:
@@ -244,6 +277,7 @@ class AgentService:
             )
         )
         await self.session.commit()
+        await self.session.refresh(version)  # see update_draft's comment on why
         return version
 
     async def rollback_to(
@@ -259,6 +293,7 @@ class AgentService:
         the full history (including the fact that a rollback happened) is
         still there afterward."""
         target = await self.get_version(tenant_id, agent_id, target_version_id)
+        self._require_publishable_company_config(target)
         versions = await self.list_versions(tenant_id, agent_id)
         next_version = versions[0].version + 1 if versions else 1
 
@@ -278,6 +313,7 @@ class AgentService:
             qualification_questions=list(target.qualification_questions),
             guardrails=dict(target.guardrails),
             reply_policies=dict(target.reply_policies),
+            company_config=deepcopy(target.company_config),
             created_by=actor_id,
             rolled_back_from_version=target.version,
         )

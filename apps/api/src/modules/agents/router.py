@@ -11,6 +11,7 @@ from src.core.deps import ClaimsDep, DBSessionDep
 from src.core.rbac import RequireManager
 
 from .builder_service import AgentBuilderService
+from .company_config import CompanyAgentConfig
 from .schemas import (
     AgentIn,
     AgentOut,
@@ -32,6 +33,13 @@ def _tid(claims: dict[str, Any]) -> UUID:
 def _uid(claims: dict[str, Any]) -> UUID | None:
     sub = claims.get("sub")
     return UUID(sub) if sub else None
+
+
+@router.get("/company-config/schema", response_model=dict[str, Any])
+async def get_company_config_schema(_: RequireManager) -> dict[str, Any]:
+    """Expose the exact JSON Schema used to validate universal company configs."""
+
+    return CompanyAgentConfig.model_json_schema()
 
 
 @router.get("", response_model=list[AgentOut])
