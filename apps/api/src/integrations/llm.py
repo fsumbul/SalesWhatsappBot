@@ -3,7 +3,8 @@
 This is scaffolding for Phase E2 (the WhatsApp "agent builder bot", which
 needs to turn a tenant's conversational description into a structured
 `AgentVersion`) and E3 (the auto-reply runtime). Both fundamentally need
-a real LLM. ``OllamaLLMClient`` is the local production adapter;
+a real LLM. ``OllamaLLMClient`` and ``OpenAICompatibleLLMClient`` are
+production adapters;
 ``NullLLMClient`` keeps an unconfigured deployment fail-closed.
 
 `LLMClient` is shaped after the common "messages + system prompt" chat-
@@ -148,6 +149,85 @@ class OllamaLLMClient:
             raise LLMCompletionError("The local model did not return a usable completion") from exc
 
 
+class OpenAICompatibleLLMClient:
+    """Talk to any Chat Completions-compatible model endpoint.
+
+    This adapter intentionally uses the small, widely implemented
+    ``/chat/completions`` contract rather than an SDK. It can therefore point
+    to a hosted API or a self-hosted server on Linux, macOS, Windows, or in a
+    container. ``base_url`` may be either the API base (``.../v1``) or the
+    complete chat-completions URL.
+    """
+
+    def __init__(self, *, base_url: str, model: str, api_key: str = "") -> None:
+        self.base_url = base_url.rstrip("/")
+        self.api_url = (
+            self.base_url
+            if self.base_url.endswith("/chat/completions")
+            else f"{self.base_url}/chat/completions"
+        )
+        self.model = model
+        self.api_key = api_key
+
+    async def complete(
+        self,
+        messages: list[LLMMessage],
+        *,
+        system: str = "",
+        max_tokens: int = 1024,
+        response_schema: dict[str, object] | None = None,
+    ) -> str:
+        payload_messages: list[dict[str, str]] = []
+        if system:
+            payload_messages.append({"role": "system", "content": system})
+        payload_messages.extend({"role": m.role, "content": m.content} for m in messages)
+        payload: dict[str, object] = {
+            "model": self.model,
+            "messages": payload_messages,
+            "temperature": 0,
+            "max_tokens": max_tokens,
+        }
+        if response_schema is not None:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "customer_reply",
+                    "strict": True,
+                    "schema": response_schema,
+                },
+            }
+
+        headers = {"Content-Type": "application/json"}
+        if self.api_key.strip():
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        timeout = httpx.Timeout(connect=5.0, read=120.0, write=10.0, pool=5.0)
+        try:
+            async with httpx.AsyncClient(
+                timeout=timeout, follow_redirects=False, headers=headers
+            ) as client:
+                response = await client.post(self.api_url, json=payload)
+                response.raise_for_status()
+                data = response.json()
+
+            if not isinstance(data, dict):
+                raise TypeError("completion response must be an object")
+            choices = data.get("choices")
+            if not isinstance(choices, list) or not choices:
+                raise TypeError("completion response has no choices")
+            first_choice = choices[0]
+            if not isinstance(first_choice, dict):
+                raise TypeError("completion choice must be an object")
+            message = first_choice.get("message")
+            if not isinstance(message, dict):
+                raise TypeError("completion choice has no message")
+            content = message.get("content")
+            if not isinstance(content, str) or not content.strip():
+                raise TypeError("completion message has no content")
+            return content
+        except (httpx.HTTPError, TypeError, ValueError) as exc:
+            raise LLMCompletionError("The configured model did not return a usable completion") from exc
+
+
 _FIELD_ORDER = [
     "persona",
     "tone",
@@ -272,13 +352,14 @@ def get_llm_client() -> LLMClient:
     if s.llm_provider == "mock":
         return MockOnboardingLLMClient()
     if s.llm_provider == "ollama":
-        # Qwen3 8B is the locally installed and simulator-evaluated runtime.
-        # An explicit LLM_MODEL still wins for deployments with another model.
-        return OllamaLLMClient(base_url=s.llm_base_url, model=s.llm_model or "qwen3:8b")
+        return OllamaLLMClient(base_url=s.llm_base_url, model=s.llm_model)
+    if s.llm_provider == "openai_compatible":
+        return OpenAICompatibleLLMClient(
+            base_url=s.llm_base_url,
+            model=s.llm_model,
+            api_key=s.llm_api_key,
+        )
     if not s.llm_provider:
         return NullLLMClient()
-    # No cloud provider implemented yet. When one is: branch on
-    # s.llm_provider here (e.g. "anthropic" -> AnthropicLLMClient(api_key=
-    # s.llm_api_key)), keeping NullLLMClient as the fallback for an
-    # unrecognized value.
+    # Keep unknown provider names fail-closed.
     return NullLLMClient()

@@ -408,23 +408,42 @@ async def inspect(tenant_slug: str) -> dict[str, Any]:
             "status_code": status_code,
         }
 
-    root = settings.llm_base_url.rstrip("/")
-    if root.endswith("/v1"):
-        root = root[:-3]
     try:
-        async with httpx.AsyncClient(timeout=5, follow_redirects=False) as client:
-            response = await client.get(f"{root}/api/tags")
+        base_url = settings.llm_base_url.rstrip("/")
+        headers = (
+            {"Authorization": f"Bearer {settings.llm_api_key}"}
+            if settings.llm_api_key.strip()
+            else {}
+        )
+        if settings.llm_provider == "ollama":
+            root = base_url[:-3] if base_url.endswith("/v1") else base_url
+            url = f"{root}/api/tags"
+        else:
+            root = base_url.removesuffix("/chat/completions")
+            url = f"{root}/models"
+        async with httpx.AsyncClient(
+            timeout=5, follow_redirects=False, headers=headers
+        ) as client:
+            response = await client.get(url)
             response.raise_for_status()
             payload = response.json()
-        models = [item.get("name") for item in payload.get("models", [])]
-        result["ollama"] = {
+        model_items = (
+            payload.get("models", [])
+            if settings.llm_provider == "ollama"
+            else payload.get("data", [])
+        )
+        model_key = "name" if settings.llm_provider == "ollama" else "id"
+        models = [item.get(model_key) for item in model_items if isinstance(item, dict)]
+        result["llm"] = {
             "reachable": True,
+            "provider": settings.llm_provider,
             "models": models,
             "configured_model_present": settings.llm_model in models,
         }
     except Exception as exc:
-        result["ollama"] = {
+        result["llm"] = {
             "reachable": False,
+            "provider": settings.llm_provider,
             "configured_model_present": False,
             "error_type": type(exc).__name__,
         }
@@ -453,9 +472,15 @@ async def inspect(tenant_slug: str) -> dict[str, Any]:
     return result
 
 
-def _failed(result: dict[str, Any], *, require_ollama: bool) -> bool:
+def _failed(
+    result: dict[str, Any],
+    *,
+    require_llm: bool | None = None,
+    require_ollama: bool | None = None,
+) -> bool:
     database = result.get("database", {})
-    ollama = result.get("ollama", {})
+    llm = result.get("llm", result.get("ollama", {}))
+    require_llm = require_llm if require_llm is not None else bool(require_ollama)
     meta = result.get("meta", {})
     redis = result.get("redis", {})
     host = result.get("host", {})
@@ -493,8 +518,7 @@ def _failed(result: dict[str, Any], *, require_ollama: bool) -> bool:
         or not result.get("worker_ping")
         or any(state.lower() != "running" for state in task_states.values())
         or (
-            require_ollama
-            and (not ollama.get("reachable") or not ollama.get("configured_model_present"))
+            require_llm and (not llm.get("reachable") or not llm.get("configured_model_present"))
         )
     )
 
@@ -502,11 +526,14 @@ def _failed(result: dict[str, Any], *, require_ollama: bool) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tenant-slug", default="kasnak")
-    parser.add_argument("--require-ollama", action="store_true")
+    parser.add_argument("--require-llm", action="store_true")
+    parser.add_argument("--require-ollama", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     result = asyncio.run(inspect(args.tenant_slug))
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    raise SystemExit(1 if _failed(result, require_ollama=args.require_ollama) else 0)
+    raise SystemExit(
+        1 if _failed(result, require_llm=args.require_llm or args.require_ollama) else 0
+    )
 
 
 if __name__ == "__main__":

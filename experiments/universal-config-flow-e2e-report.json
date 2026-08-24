@@ -1,0 +1,87 @@
+{
+  "design": {
+    "claim": "Flow totality is measured over CompanyAgentConfig core plus registered module roots.",
+    "theorem_shape": "every editable semantic path has exactly one FlowSpec owner and one typed reducer",
+    "module_rule": "unregistered or invalid module configs remain explicit blockers",
+    "construction_rule": "a proposal is inert until its state-bound, explicitly accepted action reduces the staged graph"
+  },
+  "metrics": {
+    "check_count": 14,
+    "pass_count": 14,
+    "pass_rate": 1.0,
+    "core_slot_count": 57,
+    "core_flow_spec_count": 18
+  },
+  "checks": [
+    {
+      "id": "core-slot-manifest-is-total",
+      "holds": true,
+      "detail": "covered=57 expected=57"
+    },
+    {
+      "id": "every-core-slot-has-one-owner",
+      "holds": true,
+      "detail": "owners=57 unique=57"
+    },
+    {
+      "id": "all-collections-require-explicit-closure",
+      "holds": true,
+      "detail": "parties,offerings,customer-profiles,customer-profile-fields,relationships,facts,processes,process-transitions,policies,policy-conditions,module-registry"
+    },
+    {
+      "id": "catalog-free-clinic-is-covered",
+      "holds": true,
+      "detail": "profiles/processes/policies are reachable without a catalogue"
+    },
+    {
+      "id": "all-reference-and-nested-dependencies-are-topological",
+      "holds": true,
+      "detail": "every dependency precedes its dependent question"
+    },
+    {
+      "id": "marketplace-graph-is-covered",
+      "holds": true,
+      "detail": "parties/offerings/edges/facts remain distinct structural flows"
+    },
+    {
+      "id": "unregistered-module-fails-closed",
+      "holds": true,
+      "detail": "no registered FlowSpec provider for this module version"
+    },
+    {
+      "id": "registered-module-restores-totality",
+      "holds": true,
+      "detail": "covered=58"
+    },
+    {
+      "id": "registered-module-validator-is-required",
+      "holds": true,
+      "detail": "module validation failed: ValueError: default_duration_minutes must be a positive integer"
+    },
+    {
+      "id": "broken-module-provider-fails-closed",
+      "holds": true,
+      "detail": "module flow compilation failed: RuntimeError: module package could not load"
+    },
+    {
+      "id": "every-core-flow-owner-has-a-typed-reducer",
+      "holds": true,
+      "detail": "all core FlowSpecs have a reducer"
+    },
+    {
+      "id": "constructive-marketplace-trace-round-trips",
+      "holds": true,
+      "detail": "accepted typed trace materializes exactly the target marketplace graph"
+    },
+    {
+      "id": "constructive-clinic-trace-covers-nested-and-module-slots",
+      "holds": true,
+      "detail": "clinic profile/FSM/policy/module graph materialized through typed events"
+    },
+    {
+      "id": "proposal-review-action-binding-and-open-collection-gates-are-enforced",
+      "holds": true,
+      "detail": "preview is inert; refs bind admin/revision; duplicate accepts are no-ops; open parties blocks offerings"
+    }
+  ]
+}

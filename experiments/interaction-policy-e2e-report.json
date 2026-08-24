@@ -1,0 +1,250 @@
+{
+  "design": {
+    "pipeline": "validated intent → state-derived goal → interaction plan → channel renderer",
+    "authority": "LLM and client labels cannot mutate a draft; only state-bound server action refs resolve transitions",
+    "channel_equivalence": "capability fallback preserves semantic goal and never widens actions"
+  },
+  "metrics": {
+    "check_count": 24,
+    "pass_count": 24,
+    "pass_rate": 1.0,
+    "surface_correctness": 1.0,
+    "unauthorized_action_acceptance_rate": 0.0
+  },
+  "specs": [
+    {
+      "case_id": "collection-continuation",
+      "goal": "collection_continue",
+      "surface": "reply_buttons",
+      "question_id": "offerings.continue",
+      "actions": [
+        {
+          "id": "add",
+          "label": "Bir tane daha ekle",
+          "transition": "offerings.add_item"
+        },
+        {
+          "id": "import",
+          "label": "Excel/PDF yükle",
+          "transition": "artifacts.await_upload"
+        },
+        {
+          "id": "close",
+          "label": "Liste tamam",
+          "transition": "offerings.close"
+        }
+      ],
+      "has_upload_ref": false
+    },
+    {
+      "case_id": "choose-offering-kind",
+      "goal": "select_one",
+      "surface": "list",
+      "question_id": "offerings.kind",
+      "actions": [
+        {
+          "id": "physical",
+          "label": "Fiziksel ürün",
+          "transition": "offerings.set_kind"
+        },
+        {
+          "id": "digital",
+          "label": "Dijital ürün",
+          "transition": "offerings.set_kind"
+        },
+        {
+          "id": "service",
+          "label": "Profesyonel hizmet",
+          "transition": "offerings.set_kind"
+        },
+        {
+          "id": "subscription",
+          "label": "Abonelik",
+          "transition": "offerings.set_kind"
+        },
+        {
+          "id": "project",
+          "label": "Proje",
+          "transition": "offerings.set_kind"
+        }
+      ],
+      "has_upload_ref": false
+    },
+    {
+      "case_id": "price-structured-entry",
+      "goal": "collect_structured_values",
+      "surface": "flow",
+      "question_id": "offering.price",
+      "actions": [
+        {
+          "id": "submit-flow",
+          "label": "Devam",
+          "transition": "flow.submit"
+        }
+      ],
+      "has_upload_ref": false
+    },
+    {
+      "case_id": "upload-catalog",
+      "goal": "upload_artifact",
+      "surface": "document_prompt",
+      "question_id": "offerings.import",
+      "actions": [],
+      "has_upload_ref": true
+    },
+    {
+      "case_id": "review-many-imported-rows",
+      "goal": "review_proposals",
+      "surface": "flow",
+      "question_id": "artifact.catalog.review",
+      "actions": [
+        {
+          "id": "accept-safe",
+          "label": "Net kayıtları uygula",
+          "transition": "proposal.accept_selected"
+        },
+        {
+          "id": "review-conflicts",
+          "label": "Çelişkileri göster",
+          "transition": "proposal.resolve_conflicts"
+        },
+        {
+          "id": "reject",
+          "label": "İptal",
+          "transition": "proposal.reject"
+        }
+      ],
+      "has_upload_ref": false
+    },
+    {
+      "case_id": "ambiguous-answer",
+      "goal": "clarify",
+      "surface": "text",
+      "question_id": "offering.price.currency",
+      "actions": [],
+      "has_upload_ref": false
+    }
+  ],
+  "checks": [
+    {
+      "id": "surface-collection-continuation",
+      "holds": true,
+      "detail": "expected=reply_buttons actual=reply_buttons"
+    },
+    {
+      "id": "no-authority-widening-collection-continuation",
+      "holds": true,
+      "detail": "offerings.add_item,artifacts.await_upload,offerings.close"
+    },
+    {
+      "id": "surface-choose-offering-kind",
+      "holds": true,
+      "detail": "expected=list actual=list"
+    },
+    {
+      "id": "no-authority-widening-choose-offering-kind",
+      "holds": true,
+      "detail": "offerings.set_kind,offerings.set_kind,offerings.set_kind,offerings.set_kind,offerings.set_kind"
+    },
+    {
+      "id": "surface-price-structured-entry",
+      "holds": true,
+      "detail": "expected=flow actual=flow"
+    },
+    {
+      "id": "no-authority-widening-price-structured-entry",
+      "holds": true,
+      "detail": "flow.submit"
+    },
+    {
+      "id": "surface-upload-catalog",
+      "holds": true,
+      "detail": "expected=document_prompt actual=document_prompt"
+    },
+    {
+      "id": "no-authority-widening-upload-catalog",
+      "holds": true,
+      "detail": "no visible action"
+    },
+    {
+      "id": "surface-review-many-imported-rows",
+      "holds": true,
+      "detail": "expected=flow actual=flow"
+    },
+    {
+      "id": "no-authority-widening-review-many-imported-rows",
+      "holds": true,
+      "detail": "proposal.accept_selected,proposal.resolve_conflicts,proposal.reject"
+    },
+    {
+      "id": "surface-ambiguous-answer",
+      "holds": true,
+      "detail": "expected=text actual=text"
+    },
+    {
+      "id": "no-authority-widening-ambiguous-answer",
+      "holds": true,
+      "detail": "no visible action"
+    },
+    {
+      "id": "valid-action-resolves-only-server-transition",
+      "holds": true,
+      "detail": "offerings.add_item"
+    },
+    {
+      "id": "duplicate-webhook-action-is-idempotent",
+      "holds": true,
+      "detail": "second consume returns no-op"
+    },
+    {
+      "id": "stale-action-is-rejected",
+      "holds": true,
+      "detail": "revision mismatch"
+    },
+    {
+      "id": "forged-action-is-rejected",
+      "holds": true,
+      "detail": "unknown opaque ref"
+    },
+    {
+      "id": "cross-admin-action-is-rejected",
+      "holds": true,
+      "detail": "admin binding"
+    },
+    {
+      "id": "cross-tenant-action-is-rejected",
+      "holds": true,
+      "detail": "tenant binding"
+    },
+    {
+      "id": "expired-action-is-rejected",
+      "holds": true,
+      "detail": "expiry binding"
+    },
+    {
+      "id": "capability-fallback-keeps-semantic-goal",
+      "holds": true,
+      "detail": "collect_structured_values/text"
+    },
+    {
+      "id": "many-proposals-fallback-is-paginated-not-buttons",
+      "holds": true,
+      "detail": "paginated_list"
+    },
+    {
+      "id": "channel-rendering-preserves-action-semantics",
+      "holds": true,
+      "detail": "buttons=reply_buttons; fallback=list"
+    },
+    {
+      "id": "document-request-issues-upload-binding-not-config-action",
+      "holds": true,
+      "detail": "artifact upload is a separate state-bound event"
+    },
+    {
+      "id": "unenabled-publish-action-is-rejected",
+      "holds": true,
+      "detail": "not in enabled transitions"
+    }
+  ]
+}

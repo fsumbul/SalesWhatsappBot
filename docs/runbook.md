@@ -32,6 +32,16 @@ pnpm dev
 
 Erişim: <http://localhost:3000> (Web), <http://localhost:8000/docs> (API Swagger).
 
+## Taşınabilir model sunucusu kurulumu
+
+Uygulama, modelin Arch Linux'ta veya aynı makinede olmasını gerektirmez.
+Docker ile çalışan Ollama, ayrı bir Ollama host'u veya OpenAI uyumlu bir model
+sunucusu/API (vLLM, LocalAI, llama.cpp, vb.) kullanılabilir. Ortak ayarlar ve
+güvenli ağ önerileri için [model sunucusu rehberine](./llm-deployment.md)
+bakın. Üretim öncesi kontrolde model erişimini zorunlu kılmak için
+`runtime_preflight.py --require-llm` kullanın; eski `--require-ollama` seçeneği
+geriye dönük uyumluluk için korunmuştur.
+
 ## İlk kurulum akışı
 
 1. Web → `/tr/register` — şirketinizi oluşturun (tenant + owner user).
@@ -42,7 +52,7 @@ Erişim: <http://localhost:3000> (Web), <http://localhost:8000/docs> (API Swagge
 6. Senders → WhatsApp `phone_number_id`'nizi ekleyin.
 7. Meta Developer Console → webhook URL: `https://<domain>/webhooks/whatsapp/<tenant_slug>`, verify token: `.env` içindeki `WHATSAPP_VERIFY_TOKEN`.
 
-## Mevcut prod sunucusu (ashiraai)
+## Mevcut prod sunucusu (ashiraai; ortama özel geçmiş kurulum)
 
 Bu proje `ashiraai` adıyla deploy edilmiş durumda. Erişim bilgileri:
 

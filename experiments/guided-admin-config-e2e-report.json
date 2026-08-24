@@ -1,0 +1,177 @@
+{
+  "design": {
+    "company_config": "durable draft only",
+    "conversation_state": "separate GuidedConfigSession",
+    "llm_authority": "intent/proposal only; controller chooses questions and applies accepted patches",
+    "file_authority": "evidence-backed proposal only; customer_visible defaults false"
+  },
+  "metrics": {
+    "check_count": 16,
+    "pass_count": 16,
+    "pass_rate": 1.0,
+    "closure_violation_rate": 0.0,
+    "unconfirmed_commit_rate": 0.0
+  },
+  "checks": [
+    {
+      "id": "starts-at-company-identity",
+      "holds": true,
+      "detail": "organization.name"
+    },
+    {
+      "id": "organization-opens-offerings-neighborhood",
+      "holds": true,
+      "detail": "offerings.start"
+    },
+    {
+      "id": "product-add-does-not-jump-to-distant-stage",
+      "holds": true,
+      "detail": "offerings.continue"
+    },
+    {
+      "id": "open-collection-has-no-silent-closure",
+      "holds": true,
+      "detail": "collecting"
+    },
+    {
+      "id": "explicit-more-product-choice-asks-for-neighbor-item",
+      "holds": true,
+      "detail": "offerings.add-item"
+    },
+    {
+      "id": "second-product-repeats-collection-checkpoint",
+      "holds": true,
+      "detail": "offerings.continue"
+    },
+    {
+      "id": "explicit-owner-closure-is-required-before-next-neighborhood",
+      "holds": true,
+      "detail": "closed_nonempty; offerings.details-or-import"
+    },
+    {
+      "id": "xlsx-upload-is-staged-not-auto-applied",
+      "holds": true,
+      "detail": "awaiting_admin_review"
+    },
+    {
+      "id": "file-upload-prompts-preview-before-config-change",
+      "holds": true,
+      "detail": "artifact.review"
+    },
+    {
+      "id": "file-instructions-are-data-not-workflow-authority",
+      "holds": true,
+      "detail": "draft has no imported instruction or agent mutation"
+    },
+    {
+      "id": "accepted-xlsx-adds-evidence-backed-offering-and-fact",
+      "holds": true,
+      "detail": "artifact:catalog-xlsx-2026-07:0b84598652e3#Fiyatlar!A4:D4"
+    },
+    {
+      "id": "imported-offering-reopens-collection",
+      "holds": true,
+      "detail": "collecting; offerings.continue"
+    },
+    {
+      "id": "pdf-upload-is-staged-not-auto-applied",
+      "holds": true,
+      "detail": "artifact.review"
+    },
+    {
+      "id": "accepted-pdf-fact-keeps-page-evidence-and-private-default",
+      "holds": true,
+      "detail": "artifact:delivery-pdf-2026-07:b0d7f0b550aa#page:3;table:1;row:4"
+    },
+    {
+      "id": "same-admin-event-is-idempotent",
+      "holds": true,
+      "detail": "duplicate event caused no draft mutation"
+    },
+    {
+      "id": "draft-never-publishes-itself",
+      "holds": true,
+      "detail": "draft"
+    }
+  ],
+  "final_draft": {
+    "schema_version": "company-agent-config/1.0",
+    "lifecycle": "draft",
+    "organization": {
+      "id": "argon-lift",
+      "display_names": {
+        "tr-TR": "Argon Lift Components"
+      }
+    },
+    "offerings": [
+      {
+        "id": "ax-300",
+        "kind": "physical_product",
+        "display_names": {
+          "tr-TR": "AX-300 Kasnak"
+        },
+        "provider_id": "argon-lift"
+      },
+      {
+        "id": "ax-400",
+        "kind": "physical_product",
+        "display_names": {
+          "tr-TR": "AX-400 Kasnak"
+        },
+        "provider_id": "argon-lift"
+      },
+      {
+        "id": "ax-500",
+        "kind": "physical_product",
+        "display_names": {
+          "tr-TR": "AX-500 Kasnak"
+        },
+        "provider_id": "argon-lift"
+      }
+    ],
+    "facts": [
+      {
+        "id": "ax-500-price",
+        "subject_id": "ax-500",
+        "category": "commercial_rule",
+        "value": {
+          "amount": 2100,
+          "currency": "TRY",
+          "tax": "plus_vat"
+        },
+        "customer_visible": false,
+        "customer_text": {
+          "tr-TR": "AX-500 kasnağının birim liste fiyatı 2.100 TL + KDV'dir."
+        },
+        "source": "artifact:catalog-xlsx-2026-07:0b84598652e3#Fiyatlar!A4:D4"
+      },
+      {
+        "id": "ax-300-lead-time",
+        "subject_id": "ax-300",
+        "category": "delivery",
+        "value": {
+          "business_days": 7
+        },
+        "customer_visible": false,
+        "customer_text": {
+          "tr-TR": "AX-300 için standart üretim süresi 7 iş günüdür."
+        },
+        "source": "artifact:delivery-pdf-2026-07:b0d7f0b550aa#page:3;table:1;row:4"
+      }
+    ]
+  },
+  "event_log": [
+    "organization-confirmed",
+    "offering-added:ax-300:manual",
+    "offerings-checkpoint:add",
+    "offering-added:ax-400:manual",
+    "offerings-checkpoint:close",
+    "artifact-staged:catalog-xlsx-2026-07",
+    "offering-added:ax-500:artifact:catalog-xlsx-2026-07",
+    "artifact-accepted:catalog-xlsx-2026-07:xlsx-add-ax-500,xlsx-price-ax-500",
+    "offerings-checkpoint:close",
+    "artifact-staged:delivery-pdf-2026-07",
+    "artifact-accepted:delivery-pdf-2026-07:pdf-delivery-ax-300",
+    "duplicate-event:admin-10"
+  ]
+}

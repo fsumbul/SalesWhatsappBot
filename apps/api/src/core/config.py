@@ -148,14 +148,15 @@ class Settings(BaseSettings):
     web_crawl_proxies: str = ""
 
     # --- LLM provider (Phase E2/E3) ---
-    # Empty by default: no provider is implemented yet (see
-    # src/integrations/llm.py). Not just "off" like web_crawl_enabled —
-    # there is currently nothing to turn on.
+    # Supported values are ``ollama`` and ``openai_compatible``. The latter
+    # works with any Chat Completions-compatible server or API (vLLM, LocalAI,
+    # llama.cpp, OpenAI, and similar); it is deliberately not tied to an OS or
+    # a particular model runtime. Empty keeps the application fail-closed.
     llm_provider: str = ""
     llm_api_key: str = ""
     llm_model: str = ""
-    # Used by the "ollama" provider — a local, OpenAI-compatible endpoint,
-    # so no API key is needed.
+    # Ollama accepts either its root URL or a URL ending in /v1. For
+    # openai_compatible use the API base URL, normally ending in /v1.
     llm_base_url: str = "http://localhost:11434/v1"
 
     # --- Observability ---
@@ -223,8 +224,8 @@ class Settings(BaseSettings):
             errors.append("APP_SECRET_KEY must be a strong randomly generated value")
         if self.app_debug:
             errors.append("APP_DEBUG must be false")
-        if self.llm_provider != "ollama":
-            errors.append("LLM_PROVIDER must be ollama")
+        if self.llm_provider not in {"ollama", "openai_compatible"}:
+            errors.append("LLM_PROVIDER must be ollama or openai_compatible")
         version = self.whatsapp_graph_api_version
         if not (
             version.startswith("v")

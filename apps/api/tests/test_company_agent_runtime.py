@@ -11,6 +11,7 @@ from src.integrations.llm import (
     LLMMessage,
     LLMNotConfiguredError,
     OllamaLLMClient,
+    OpenAICompatibleLLMClient,
 )
 from src.modules.agents.company_config import CompanyAgentConfig
 from src.modules.agents.company_runtime import (
@@ -364,3 +365,31 @@ async def test_ollama_client_keeps_existing_unstructured_calls_working() -> None
     assert raw == "plain reply"
     request_payload = json.loads(route.calls.last.request.content)
     assert "format" not in request_payload
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_openai_compatible_client_sends_schema_and_bearer_key() -> None:
+    route = respx.post("https://llm.example.test/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"action":"handoff","fact_ids":[]}'}}]},
+        )
+    )
+    schema = build_customer_decision_schema(_config())
+
+    raw = await OpenAICompatibleLLMClient(
+        base_url="https://llm.example.test/v1",
+        model="instruct-model",
+        api_key="private-key",
+    ).complete(
+        [LLMMessage(role="user", content="Bilinmeyen bir soru")],
+        system="system",
+        response_schema=schema,
+    )
+
+    assert raw == '{"action":"handoff","fact_ids":[]}'
+    assert route.calls.last.request.headers["Authorization"] == "Bearer private-key"
+    request_payload = json.loads(route.calls.last.request.content)
+    assert request_payload["model"] == "instruct-model"
+    assert request_payload["response_format"]["json_schema"]["schema"] == schema

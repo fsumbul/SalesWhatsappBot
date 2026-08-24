@@ -1,0 +1,76 @@
+{
+  "capabilities": {
+    "reply_buttons": true,
+    "max_reply_buttons": 3,
+    "list_messages": true,
+    "max_list_rows": 10,
+    "flows": true,
+    "document_messages": true
+  },
+  "cases": [
+    {
+      "id": "collection-continuation",
+      "goal": "collection_continue",
+      "question_id": "offerings.continue",
+      "body": "AX-300 eklendi. Başka ürün, hizmet veya varyant var mı?",
+      "actions": [
+        { "id": "add", "label": "Bir tane daha ekle", "transition": "offerings.add_item" },
+        { "id": "import", "label": "Excel/PDF yükle", "transition": "artifacts.await_upload" },
+        { "id": "close", "label": "Liste tamam", "transition": "offerings.close" }
+      ],
+      "expected_surface": "reply_buttons"
+    },
+    {
+      "id": "choose-offering-kind",
+      "goal": "select_one",
+      "question_id": "offerings.kind",
+      "body": "Eklemek istediğiniz teklif türünü seçin.",
+      "actions": [
+        { "id": "physical", "label": "Fiziksel ürün", "transition": "offerings.set_kind" },
+        { "id": "digital", "label": "Dijital ürün", "transition": "offerings.set_kind" },
+        { "id": "service", "label": "Profesyonel hizmet", "transition": "offerings.set_kind" },
+        { "id": "subscription", "label": "Abonelik", "transition": "offerings.set_kind" },
+        { "id": "project", "label": "Proje", "transition": "offerings.set_kind" }
+      ],
+      "expected_surface": "list"
+    },
+    {
+      "id": "price-structured-entry",
+      "goal": "collect_structured_values",
+      "question_id": "offering.price",
+      "body": "Fiyat, para birimi ve vergi bilgisini girin.",
+      "actions": [],
+      "fields": ["amount", "currency", "tax"],
+      "expected_surface": "flow"
+    },
+    {
+      "id": "upload-catalog",
+      "goal": "upload_artifact",
+      "question_id": "offerings.import",
+      "body": "Ürün veya fiyat listenizi belge olarak ekleyebilirsiniz.",
+      "actions": [],
+      "expected_surface": "document_prompt"
+    },
+    {
+      "id": "review-many-imported-rows",
+      "goal": "review_proposals",
+      "question_id": "artifact.catalog.review",
+      "body": "17 ürün/fiyat önerisi bulundu. İnceleyip seçin.",
+      "actions": [
+        { "id": "accept-safe", "label": "Net kayıtları uygula", "transition": "proposal.accept_selected" },
+        { "id": "review-conflicts", "label": "Çelişkileri göster", "transition": "proposal.resolve_conflicts" },
+        { "id": "reject", "label": "İptal", "transition": "proposal.reject" }
+      ],
+      "proposal_count": 17,
+      "expected_surface": "flow"
+    },
+    {
+      "id": "ambiguous-answer",
+      "goal": "clarify",
+      "question_id": "offering.price.currency",
+      "body": "Fiyatı hangi para birimiyle kaydedelim?",
+      "actions": [],
+      "expected_surface": "text"
+    }
+  ]
+}

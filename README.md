@@ -51,6 +51,14 @@ Visit:
 - API docs: http://localhost:8000/docs
 - Mailhog: http://localhost:8025
 
+## Model server configuration
+
+The model runtime is independent of the application host and operating system.
+It can be Ollama on another machine, the optional Docker service, or any
+OpenAI Chat Completions-compatible server/API. See
+[the model deployment guide](docs/llm-deployment.md) for the environment
+variables and Docker, vLLM, LocalAI, llama.cpp, and hosted-API examples.
+
 ## Common Commands
 
 | Command | What it does |
