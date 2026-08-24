@@ -72,7 +72,7 @@ def main() -> None:
         "--env-file", type=Path, default=Path(__file__).resolve().parents[1] / ".env"
     )
     parser.add_argument(
-        "--llm-provider", choices=["ollama", "openai_compatible"], default="ollama"
+        "--llm-provider", choices=["ollama", "chat_compatible"], default="ollama"
     )
     parser.add_argument("--llm-model", default="qwen3:8b")
     parser.add_argument("--llm-base-url", default="http://127.0.0.1:11434/v1")

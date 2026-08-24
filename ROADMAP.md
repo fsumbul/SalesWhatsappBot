@@ -84,9 +84,12 @@ This plan takes the project from its **current state** (feature-complete core, m
 - [x] Conversation flow, launched from the admin panel (`POST /agents/{id}/builder/sessions`, `POST .../messages`) where the tenant *describes* their agent conversationally; the LLM's structured JSON output (`{"reply": ..., "draft_patch": ..., "ready_to_promote": ...}`) is strictly parsed and validated, never passed through — see `src/modules/agents/builder.py` (`parse_llm_response`, `build_system_prompt`) and `builder_service.py` (`AgentBuilderService`).
 - [x] Builder supports iteration: every message is appended to `BuilderSession.messages` and the *full* transcript is replayed to the LLM each turn, so context carries across turns. Config updates go through `AgentService.update_draft` (the same E1 codepath the admin UI would use) — no parallel write path.
 - [ ] Admin UI mirror in the web panel — not built (frontend work, separate from this backend scaffold).
-- **Not live**, for two separable reasons:
-  1. **No real LLM provider.** `NullLLMClient` (the only implementation) raises `LLMNotConfiguredError` on every call — every builder endpoint 503s today. Needs an operator decision: which provider (Anthropic, OpenAI, ...), and an API key/budget. Same category of external blocker as the Meta Business verification gating Phase B — not something to default or silently work around.
-  2. **No WhatsApp inbound routing.** The endpoints above are the admin-panel-facing surface; nothing yet decides "this inbound WhatsApp message should go to the builder-bot session, not the normal outreach conversation or (once E3 exists) the live runtime agent." That's a routing/product decision, not built.
+- **Not live**, for a separable reason: **no WhatsApp inbound routing.** The
+  endpoints above are the admin-panel-facing surface; nothing yet decides
+  "this inbound WhatsApp message should go to the builder-bot session, not the
+  normal outreach conversation or (once E3 exists) the live runtime agent."
+  That is a routing/product decision, not built. Self-hosted Ollama and
+  chat-compatible model servers are configured through `LLM_*` variables.
 - Verified without a real LLM: 14 pure parser tests (valid/fenced/malformed JSON, unknown fields, wrong types) + 6 DB-backed service tests using a scripted stub `LLMClient` — session creation, patch application, multi-turn transcript replay, conflict on inactive session, and both failure paths (`LLMNotConfiguredError` → 503, malformed LLM output → 502) all return clean errors instead of crashing (`tests/test_agent_builder_parser.py`, `tests/test_agent_builder_service.py`).
 
 **E3 — Sandbox & runtime (Weeks 12–14)** ❌ not started — blocked on E2
@@ -95,7 +98,10 @@ This plan takes the project from its **current state** (feature-complete core, m
 - [ ] Per-tenant usage metering (LLM cost tracking) — prerequisite for billing later.
 - [ ] Safety review: prompt-injection hardening, PII handling, compliance-filter applies to agent replies too.
 
-**Exit criteria:** one pilot tenant builds an agent end-to-end over WhatsApp without developer help; agent handles ≥50% of inbound messages without human takeover, with clean handoffs on the rest. **Not reachable without E2/E3**, which are blocked on the LLM provider decision above.
+**Exit criteria:** one pilot tenant builds an agent end-to-end over WhatsApp
+without developer help; agent handles ≥50% of inbound messages without human
+takeover, with clean handoffs on the rest. **Not reachable without E2/E3**,
+which remain blocked on the inbound-routing product decision above.
 
 ## Phase F — Hardening & V2 Commercial (Weeks 14+)
 

@@ -11,7 +11,7 @@ from src.integrations.llm import (
     LLMMessage,
     LLMNotConfiguredError,
     OllamaLLMClient,
-    OpenAICompatibleLLMClient,
+    ChatCompletionsLLMClient,
 )
 from src.modules.agents.company_config import CompanyAgentConfig
 from src.modules.agents.company_runtime import (
@@ -369,7 +369,7 @@ async def test_ollama_client_keeps_existing_unstructured_calls_working() -> None
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_openai_compatible_client_sends_schema_and_bearer_key() -> None:
+async def test_chat_completions_client_sends_schema_and_bearer_key() -> None:
     route = respx.post("https://llm.example.test/v1/chat/completions").mock(
         return_value=httpx.Response(
             200,
@@ -378,7 +378,7 @@ async def test_openai_compatible_client_sends_schema_and_bearer_key() -> None:
     )
     schema = build_customer_decision_schema(_config())
 
-    raw = await OpenAICompatibleLLMClient(
+    raw = await ChatCompletionsLLMClient(
         base_url="https://llm.example.test/v1",
         model="instruct-model",
         api_key="private-key",

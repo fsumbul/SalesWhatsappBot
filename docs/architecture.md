@@ -118,15 +118,21 @@ Her dakika `dispatch_outreach` çalışır:
 
 `BuilderSession` (`agent_builder_sessions` tablosu) bir tenant'ın builder bot ile devam eden konuşmasını tutar: hangi draft'a bağlı, tam transcript (`messages` JSONB), `active/completed/abandoned` status.
 
-- `src/integrations/llm.py` — `LLMClient` Protocol (yaygın "messages + system prompt" chat-completion şeklinde, gerçek bir sağlayıcı sonradan ince bir adapter olsun diye) + `NullLLMClient`, bugün var olan tek implementasyon: her çağrıda sessizce boş/uydurma cevap DÖNMEZ, `LLMNotConfiguredError` fırlatır.
+- `src/integrations/llm.py` — `LLMClient` Protocol, `OllamaLLMClient` ve
+  `ChatCompletionsLLMClient` ile kendi yönettiğimiz model sunucularına bağlanır.
+  `NullLLMClient`, yapılandırma yokken sessizce boş/uydurma cevap DÖNMEZ,
+  `LLMNotConfiguredError` fırlatır.
 - `src/modules/agents/builder.py` — LLM'e ne sorulacağını (`build_system_prompt`, mevcut draft state'i de içerir ki aynı soruyu tekrar sormasın) ve LLM'in JSON cevabının nasıl doğrulanacağını (`parse_llm_response`) tanımlar. LLM'den beklenen format: `{"reply": str, "draft_patch": {...}|null, "ready_to_promote": bool}` — format dışı/bozuk çıktı sessizce geçirilmez, `BuilderResponseParseError` fırlatır (LLM'ler talimatı görmezden gelebilir, bu gerçek bir ihtimal).
 - `src/modules/agents/builder_service.py` — `AgentBuilderService`: session açar (mevcut draft'ı kullanır ya da `AgentService.create_draft` ile yenisini açar), her mesajda **tüm transcript'i** LLM'e tekrar gönderir, `draft_patch`'i `AgentService.update_draft` üzerinden uygular (E1'deki aynı yazma yolu — ayrı bir yazma mekanizması yok). `LLMNotConfiguredError` → 503, `BuilderResponseParseError` → 502 — ikisi de temiz bir hata döner, çökme değil.
 - Router: `POST /agents/{id}/builder/sessions`, `POST /agents/{id}/builder/sessions/{session_id}/messages` — roadmap'in "admin panelden başlatılan" kısmına karşılık gelen yüzey.
 - **Gerçek bir LLM olmadan doğrulandı:** 14 saf parser testi (geçerli/fenced/bozuk JSON, bilinmeyen alanlar, yanlış tipler) + kurgulanmış (scripted) bir stub `LLMClient` ile 6 DB-backed servis testi — session açma, patch uygulama, çok turlu transcript replay, inaktif session'a mesaj (conflict), ve iki hata yolu da (`tests/test_agent_builder_parser.py`, `tests/test_agent_builder_service.py`).
 
-**Canlı değil, iki ayrı sebepten:**
-1. **Gerçek LLM sağlayıcı yok.** Hangi sağlayıcı (Anthropic, OpenAI, ...), hangi API key/bütçe — operatör kararı. Phase B'yi bekleten Meta Business doğrulaması ile aynı kategoride dış bağımlılık.
-2. **WhatsApp inbound routing yok.** Yukarıdaki endpoint'ler admin panel yüzeyi; gelen bir WhatsApp mesajının builder-bot session'ına mı, normal outreach conversation'ına mı, yoksa (E3 gelince) canlı runtime agent'a mı gideceğine karar veren bir yönlendirme henüz yok — bu ayrı bir ürün kararı.
+**Canlı değil, bir ayrı sebepten:** **WhatsApp inbound routing yok.** Yukarıdaki
+endpoint'ler admin panel yüzeyi; gelen bir WhatsApp mesajının builder-bot
+session'ına mı, normal outreach conversation'ına mı, yoksa (E3 gelince) canlı
+runtime agent'a mı gideceğine karar veren bir yönlendirme henüz yok — bu ayrı
+bir ürün kararı. Model sunucusu ayarları için
+[model sunucusu rehberine](./model-sunucusu-rehberi.md) bakın.
 
 **Henüz yapılmadı (E3):**
 - Canlı runtime: LIVE versiyonun inbound mesajlara otomatik cevap vermesi, düşük güvenilirlikte insana devretme (Inbox assignment) — yok.

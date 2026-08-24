@@ -12,7 +12,7 @@ from src.integrations.llm import (
     LLMMessage,
     LLMNotConfiguredError,
     NullLLMClient,
-    OpenAICompatibleLLMClient,
+    ChatCompletionsLLMClient,
     get_llm_client,
 )
 
@@ -47,14 +47,14 @@ def test_factory_returns_null_client_for_unrecognized_provider() -> None:
         assert isinstance(get_llm_client(), NullLLMClient)
 
 
-def test_factory_returns_openai_compatible_client() -> None:
+def test_factory_returns_chat_completions_client() -> None:
     with patch("src.integrations.llm.get_settings") as mock_settings:
-        mock_settings.return_value.llm_provider = "openai_compatible"
+        mock_settings.return_value.llm_provider = "chat_compatible"
         mock_settings.return_value.llm_base_url = "https://llm.example.test/v1"
         mock_settings.return_value.llm_model = "instruct-model"
         mock_settings.return_value.llm_api_key = "test-key"
 
         client = get_llm_client()
 
-    assert isinstance(client, OpenAICompatibleLLMClient)
+    assert isinstance(client, ChatCompletionsLLMClient)
     assert client.api_url == "https://llm.example.test/v1/chat/completions"

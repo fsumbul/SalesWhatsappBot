@@ -84,8 +84,8 @@ services:
 
   # Optional, platform-neutral local model server. Start it with
   # `docker compose --profile llm up -d ollama`, then pull the model you set
-  # in LLM_MODEL. A remote or another OpenAI-compatible server works too;
-  # see docs/llm-deployment.md.
+  # in LLM_MODEL. A remote or another chat-compatible server works too;
+  # see docs/model-sunucusu-rehberi.md.
   ollama:
     image: ollama/ollama:latest
     profiles: ["llm"]

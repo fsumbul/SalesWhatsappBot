@@ -3,14 +3,13 @@
 This is scaffolding for Phase E2 (the WhatsApp "agent builder bot", which
 needs to turn a tenant's conversational description into a structured
 `AgentVersion`) and E3 (the auto-reply runtime). Both fundamentally need
-a real LLM. ``OllamaLLMClient`` and ``OpenAICompatibleLLMClient`` are
+a real LLM. ``OllamaLLMClient`` and ``ChatCompletionsLLMClient`` are
 production adapters;
 ``NullLLMClient`` keeps an unconfigured deployment fail-closed.
 
 `LLMClient` is shaped after the common "messages + system prompt" chat-
-completion pattern (Anthropic's Messages API, OpenAI's Chat Completions,
-etc. all look like this), so wiring in a real provider later is a thin
-adapter, not a redesign. ``NullLLMClient`` raises rather than silently
+completion pattern, so wiring in a self-hosted server is a thin adapter, not
+a redesign. ``NullLLMClient`` raises rather than silently
 fabricating a reply: an agent-builder flow that "succeeds" by returning
 empty or made-up content would be worse than one that visibly fails.
 """
@@ -80,7 +79,7 @@ class NullLLMClient:
 class OllamaLLMClient:
     """Talk to a local Ollama server through its native ``/api/chat`` API.
 
-    Settings historically store an OpenAI-style base ending in ``/v1``;
+    Settings may store a base ending in ``/v1``;
     ``api_url`` safely removes only that terminal path segment. The native API
     is used because Qwen3's ``think`` control and schema-valued ``format`` are
     explicit there and are already exercised by the local simulator.
@@ -149,7 +148,7 @@ class OllamaLLMClient:
             raise LLMCompletionError("The local model did not return a usable completion") from exc
 
 
-class OpenAICompatibleLLMClient:
+class ChatCompletionsLLMClient:
     """Talk to any Chat Completions-compatible model endpoint.
 
     This adapter intentionally uses the small, widely implemented
@@ -353,8 +352,8 @@ def get_llm_client() -> LLMClient:
         return MockOnboardingLLMClient()
     if s.llm_provider == "ollama":
         return OllamaLLMClient(base_url=s.llm_base_url, model=s.llm_model)
-    if s.llm_provider == "openai_compatible":
-        return OpenAICompatibleLLMClient(
+    if s.llm_provider == "chat_compatible":
+        return ChatCompletionsLLMClient(
             base_url=s.llm_base_url,
             model=s.llm_model,
             api_key=s.llm_api_key,

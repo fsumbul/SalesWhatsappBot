@@ -35,9 +35,9 @@ Erişim: <http://localhost:3000> (Web), <http://localhost:8000/docs> (API Swagge
 ## Taşınabilir model sunucusu kurulumu
 
 Uygulama, modelin Arch Linux'ta veya aynı makinede olmasını gerektirmez.
-Docker ile çalışan Ollama, ayrı bir Ollama host'u veya OpenAI uyumlu bir model
+Docker ile çalışan Ollama, ayrı bir Ollama host'u veya standart chat uyumlu bir model
 sunucusu/API (vLLM, LocalAI, llama.cpp, vb.) kullanılabilir. Ortak ayarlar ve
-güvenli ağ önerileri için [model sunucusu rehberine](./llm-deployment.md)
+güvenli ağ önerileri için [model sunucusu rehberine](./model-sunucusu-rehberi.md)
 bakın. Üretim öncesi kontrolde model erişimini zorunlu kılmak için
 `runtime_preflight.py --require-llm` kullanın; eski `--require-ollama` seçeneği
 geriye dönük uyumluluk için korunmuştur.

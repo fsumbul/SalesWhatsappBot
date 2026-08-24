@@ -41,13 +41,13 @@ def test_missing_webhook_secret_and_debug_mode_fail_closed() -> None:
 
 def test_unsupported_production_provider_is_rejected() -> None:
     assert (
-        "LLM_PROVIDER must be ollama or openai_compatible"
+        "LLM_PROVIDER must be ollama or chat_compatible"
         in _settings(llm_provider="").production_runtime_errors()
     )
 
 
-def test_openai_compatible_production_provider_is_accepted() -> None:
-    assert _settings(llm_provider="openai_compatible").production_runtime_errors() == []
+def test_chat_compatible_production_provider_is_accepted() -> None:
+    assert _settings(llm_provider="chat_compatible").production_runtime_errors() == []
 
 
 def test_known_placeholder_app_secrets_are_rejected_without_echoing_them() -> None:
