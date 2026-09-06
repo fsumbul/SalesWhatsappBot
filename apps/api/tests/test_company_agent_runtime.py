@@ -1,23 +1,27 @@
+# ruff: noqa: RUF001
 """Pure tests for the JSON-config-to-local-LLM runtime boundary."""
 
 import json
+from pathlib import Path
 
 import httpx
 import pytest
 import respx
 
 from src.integrations.llm import (
+    ChatCompletionsLLMClient,
     LLMCompletionError,
     LLMMessage,
     LLMNotConfiguredError,
     OllamaLLMClient,
-    ChatCompletionsLLMClient,
 )
 from src.modules.agents.company_config import CompanyAgentConfig
 from src.modules.agents.company_runtime import (
     CompanyAgentRuntime,
     CustomerReplyAction,
     CustomerReplyParseError,
+    RuntimeInteractionKind,
+    _suggest_interaction,
     build_customer_decision_schema,
     build_customer_system_prompt,
     parse_customer_reply,
@@ -44,7 +48,8 @@ def _config() -> CompanyAgentConfig:
                     "value": {"internal_price_cents": 99900},
                     "source": "internal-price-sheet-2026",
                     "customer_visible": True,
-                    "customer_text": {"tr-TR": "Premium Plan aylık 999 TL'dir."},  # noqa: RUF001
+                    "customer_text": {"tr-TR": "Premium Plan aylık 999 TL'dir."},
+                    "search_terms": ["fiyat"],
                 },
                 {
                     "id": "internal-margin",
@@ -109,15 +114,130 @@ def _config_with_handoff_contact() -> CompanyAgentConfig:
     return CompanyAgentConfig.model_validate(config_data)
 
 
+def _arti_kasnak_production_config() -> CompanyAgentConfig:
+    path = Path(__file__).resolve().parents[1] / "config" / "arti_kasnak.production.json"
+    return CompanyAgentConfig.model_validate_json(path.read_text(encoding="utf-8"))
+
+
 def test_prompt_projects_only_customer_visible_facts() -> None:
     prompt = build_customer_system_prompt(_config())
 
-    assert "Premium Plan aylık 999 TL'dir." in prompt  # noqa: RUF001
+    assert "Premium Plan aylık 999 TL'dir." in prompt
     assert "premium-price" in prompt
     assert "internal_price_cents" not in prompt
     assert "internal-margin" not in prompt
     assert "do not disclose" not in prompt
     assert "internal-price-sheet-2026" not in prompt
+
+
+def test_prompt_rejects_product_list_repetition_and_cross_product_claims() -> None:
+    prompt = build_customer_system_prompt(_arti_kasnak_production_config())
+
+    assert "A product list does not answer a technical-detail query" in prompt
+    assert "Never transfer a claim" in prompt
+    assert "from another product" in prompt
+
+
+def test_arti_kasnak_detail_facts_render_approved_product_specific_answers() -> None:
+    config = _arti_kasnak_production_config()
+
+    palanga = parse_customer_reply(
+        json.dumps(
+            {
+                "action": "reply",
+                "fact_ids": ["cast_pulley_role_and_types", "cast_pulley_performance"],
+            }
+        ),
+        config,
+    )
+    motor = parse_customer_reply(
+        json.dumps(
+            {
+                "action": "reply",
+                "fact_ids": [
+                    "motor_pulley_custom_production",
+                    "pulley_technical_information_required",
+                ],
+            }
+        ),
+        config,
+    )
+
+    assert "Palanga, saptırma ve hidrolik kasnaklar" in palanga.reply
+    assert "2,5 m/sn" in palanga.reply
+    assert "Artı Kasnak motor kasnağı üretir" in motor.reply
+    assert "kasnak çapı, genişliği, halat adedi" in motor.reply
+    assert "GG-25" not in motor.reply
+
+
+def test_product_name_limits_prompt_and_schema_to_matching_subject() -> None:
+    config = _arti_kasnak_production_config()
+    question = "Motor kasnakları hakkında detaylı bilgi verir misin?"
+
+    prompt = build_customer_system_prompt(config, customer_message=question)
+    schema = build_customer_decision_schema(config, customer_message=question)
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert "motor_pulley_custom_production" in fact_ids
+    assert "cast_pulley_materials" not in fact_ids
+    assert "cast_pulley_role_and_types" not in fact_ids
+    assert "palanga_pulley_details" not in fact_ids
+    assert "Artı Kasnak motor kasnağı üretir" in prompt
+    assert "Palanga kasnağı" not in prompt
+
+
+def test_named_product_inherits_facts_from_company_space_parent_groups() -> None:
+    config = _arti_kasnak_production_config()
+
+    deflection_schema = build_customer_decision_schema(
+        config,
+        customer_message="Saptırma kasnağı hakkında detay verir misin?",
+    )
+    deflection_fact_ids = deflection_schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert "cast_pulley_role_and_types" in deflection_fact_ids
+    assert "cast_pulley_performance" in deflection_fact_ids
+    assert "palanga_pulley_details" not in deflection_fact_ids
+    assert "motor_pulley_custom_production" not in deflection_fact_ids
+
+
+def test_general_product_question_exposes_catalog_fact_not_random_dimensions() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Hangi ürünleri üretiyorsunuz?",
+    )
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert fact_ids == ["all_product_groups"]
+
+
+def test_specific_product_detail_prefers_exact_fact_over_redundant_parent() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Palanga hakkında detay verir misin?",
+    )
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert "palanga_pulley_details" in fact_ids
+    assert not any(fact_id.startswith("conversation_") for fact_id in fact_ids)
+    assert "cast_pulley_role_and_types" not in fact_ids
+
+
+def test_specific_belt_variant_excludes_sibling_product_facts() -> None:
+    config = _arti_kasnak_production_config()
+    question = "Plastik kayış kasnağı hakkında bilgi verir misin?"
+
+    schema = build_customer_decision_schema(config, customer_message=question)
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert "plastic_belt_pulley_details" in fact_ids
+    assert "belt_pulley_types" not in fact_ids
+    assert "steel_belt_pulley_details" not in fact_ids
+    assert "plastic_pulley_performance" not in fact_ids
 
 
 def test_reply_rejects_unknown_or_internal_fact_citation() -> None:
@@ -142,7 +262,7 @@ def test_model_cannot_supply_customer_visible_text() -> None:
             json.dumps(
                 {
                     "action": "reply",
-                    "reply": "Model tarafından uydurulan metin",  # noqa: RUF001
+                    "reply": "Model tarafından uydurulan metin",
                     "fact_ids": ["premium-price"],
                 }
             ),
@@ -155,7 +275,7 @@ def test_reply_is_rendered_from_literal_approved_customer_text() -> None:
         json.dumps({"action": "reply", "fact_ids": ["premium-price"]}), _config()
     )
 
-    assert turn.reply == "Premium Plan aylık 999 TL'dir."  # noqa: RUF001
+    assert turn.reply == "Premium Plan aylık 999 TL'dir."
 
 
 def test_decision_schema_allows_only_reply_or_configured_unknown_action() -> None:
@@ -197,9 +317,24 @@ class _ReplyingLocalLLM:
         response_schema: dict[str, object] | None = None,
     ) -> str:
         assert messages[-1].content == "Fiyat nedir?"
-        assert "customer_visible_facts" in system
+        assert '"facts":' in system
         self.response_schema = response_schema
         return '{"action":"reply","fact_ids":["premium-price"]}'
+
+
+class _FactSelectingLLM:
+    def __init__(self, *fact_ids: str) -> None:
+        self.fact_ids = fact_ids
+
+    async def complete(
+        self,
+        messages: list[LLMMessage],
+        *,
+        system: str = "",
+        max_tokens: int = 1024,
+        response_schema: dict[str, object] | None = None,
+    ) -> str:
+        return json.dumps({"action": "reply", "fact_ids": self.fact_ids})
 
 
 class _UnavailableLocalLLM:
@@ -256,10 +391,565 @@ async def test_runtime_returns_only_validated_local_llm_output() -> None:
     turn = await CompanyAgentRuntime(_config(), llm).reply("Fiyat nedir?")
 
     assert turn.action == CustomerReplyAction.REPLY
-    assert turn.reply == "Premium Plan aylık 999 TL'dir."  # noqa: RUF001
+    assert turn.reply == "Premium Plan aylık 999 TL'dir."
     assert turn.fact_ids == ("premium-price",)
     assert turn.used_fallback is False
-    assert llm.response_schema == build_customer_decision_schema(_config())
+    assert llm.response_schema == build_customer_decision_schema(
+        _config(),
+        customer_message="Fiyat nedir?",
+    )
+
+
+@pytest.mark.asyncio
+async def test_product_catalog_reply_offers_progressive_product_buttons() -> None:
+    config = _arti_kasnak_production_config()
+    turn = await CompanyAgentRuntime(config, _FactSelectingLLM("all_product_groups")).reply(
+        "Hangi ürünleri üretiyorsunuz?"
+    )
+
+    assert turn.interaction is not None
+    assert turn.interaction.kind == RuntimeInteractionKind.REPLY_BUTTONS
+    assert [option.id for option in turn.interaction.options] == [
+        "product_detail:elevator_pulley",
+        "product_detail:belt_pulley",
+        "product_detail:pulley_components",
+    ]
+    assert [option.title for option in turn.interaction.options] == [
+        "Asansör türleri",
+        "Kayış türleri",
+        "Mil ve bileşenler",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_welcome_reply_offers_three_guided_start_buttons() -> None:
+    config = _arti_kasnak_production_config()
+    turn = await CompanyAgentRuntime(config, _FactSelectingLLM("welcome")).reply("Merhaba")
+
+    assert turn.interaction is not None
+    assert turn.interaction.kind == RuntimeInteractionKind.REPLY_BUTTONS
+    assert [(option.id, option.title) for option in turn.interaction.options] == [
+        ("fact_request:all_product_groups", "Ürünleri göster"),
+        ("fact_request:company_overview", "Şirketi tanı"),
+        ("fact_request:quote_product_question", "Teklif al"),
+    ]
+
+
+def test_broad_conversation_gets_semantic_candidates_without_random_technical_facts() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Bugün içimde tarif edemediğim bir sıkıntı var.",
+    )
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert "conversation_empathy" in fact_ids
+    assert "conversation_confusion" in fact_ids
+    assert "conversation_disinterest" in fact_ids
+    assert "conversation_indecision" in fact_ids
+    assert "conversation_waiting" in fact_ids
+    assert not any(fact_id.startswith("quote_") for fact_id in fact_ids)
+    assert "contact_information" not in fact_ids
+    assert "cast_pulley_materials" not in fact_ids
+
+
+@pytest.mark.parametrize(
+    ("message", "fact_id"),
+    [
+        ("Ne demeye çalıştığınızı çözemedim.", "conversation_confusion"),
+        ("Hayır, kastım o değildi.", "conversation_correction"),
+        ("Şimdilik pas geçeceğim.", "conversation_disinterest"),
+        ("İki arada kaldım, nereden başlayacağımı bilmiyorum.", "conversation_indecision"),
+        ("Sesiniz çıkmadı, hâlâ buradayım.", "conversation_waiting"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_semantic_conversation_behaviors_render_only_approved_text(
+    message: str,
+    fact_id: str,
+) -> None:
+    config = _arti_kasnak_production_config()
+    turn = await CompanyAgentRuntime(config, _FactSelectingLLM(fact_id)).reply(message)
+    fact = next(item for item in config.facts if item.id == fact_id)
+
+    assert turn.action == CustomerReplyAction.REPLY
+    assert turn.fact_ids == (fact_id,)
+    assert turn.reply == fact.customer_text["tr"]
+    assert turn.used_fallback is False
+
+
+@pytest.mark.asyncio
+async def test_sensitive_social_replies_do_not_show_pushy_sales_buttons() -> None:
+    config = _arti_kasnak_production_config()
+
+    empathy = await CompanyAgentRuntime(
+        config,
+        _FactSelectingLLM("conversation_empathy"),
+    ).reply("Bugün moralim çok bozuk.")
+    farewell = await CompanyAgentRuntime(
+        config,
+        _FactSelectingLLM("conversation_farewell"),
+    ).reply("Ben kaçayım artık.")
+
+    assert empathy.interaction is None
+    assert farewell.interaction is None
+
+
+def test_supported_business_intent_wins_over_social_language() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Nasılsın, palanga kasnağı hakkında detay verir misin?",
+    )
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert "palanga_pulley_details" in fact_ids
+    assert not any(fact_id.startswith("conversation_") for fact_id in fact_ids)
+
+
+def test_product_praise_can_choose_a_social_behavior_without_mixing_claims() -> None:
+    config = _arti_kasnak_production_config()
+    message = "Palanga kasnağınız gerçekten çok iyi, tebrik ederim."
+
+    schema = build_customer_decision_schema(config, customer_message=message)
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+    turn = parse_customer_reply(
+        json.dumps(
+            {
+                "action": "reply",
+                "fact_ids": ["conversation_gratitude"],
+            }
+        ),
+        config,
+        customer_message=message,
+    )
+
+    assert "palanga_pulley_details" in fact_ids
+    assert "conversation_gratitude" in fact_ids
+    assert turn.fact_ids == ("conversation_gratitude",)
+
+
+def test_confident_social_feedback_cannot_fall_through_to_handoff() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Bu cevap hiç iyi değildi.",
+    )
+
+    assert schema["properties"]["action"]["enum"] == ["reply"]
+    assert schema["properties"]["fact_ids"]["minItems"] == 1
+
+
+@pytest.mark.parametrize(
+    "fact_ids",
+    [
+        ["conversation_gratitude", "conversation_casual_chat"],
+        ["conversation_gratitude", "palanga_pulley_details"],
+    ],
+)
+def test_parser_rejects_multiple_or_mixed_social_facts(fact_ids: list[str]) -> None:
+    config = _arti_kasnak_production_config()
+
+    with pytest.raises(CustomerReplyParseError, match="exactly one social"):
+        parse_customer_reply(
+            json.dumps({"action": "reply", "fact_ids": fact_ids}),
+            config,
+            customer_message="Palanga kasnağınız gerçekten çok iyi, tebrik ederim.",
+        )
+
+
+def test_vague_follow_up_recovers_the_last_grounded_product_subject() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Bunu biraz daha açar mısın?",
+        context_fact_ids=("palanga_pulley_details",),
+    )
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert "palanga_pulley_details" in fact_ids
+    assert "cast_pulley_role_and_types" in fact_ids
+    assert "motor_pulley_custom_production" not in fact_ids
+
+
+def test_contextual_material_question_cannot_leak_sibling_product_facts() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Bunun malzemesi nedir?",
+        context_fact_ids=("palanga_pulley_details",),
+    )
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert "palanga_pulley_details" in fact_ids
+    assert "cast_pulley_materials" in fact_ids
+    assert "plastic_pulley_material" not in fact_ids
+    assert "steel_belt_pulley_details" not in fact_ids
+
+
+def test_context_lineage_disambiguates_an_ambiguous_product_name() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Plastik olanı biraz anlatır mısın?",
+        context_fact_ids=("belt_pulley_types",),
+    )
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert "plastic_belt_pulley_details" in fact_ids
+    assert "plastic_pulley_material" not in fact_ids
+    assert "plastic_pulley_performance" not in fact_ids
+
+
+def test_company_question_and_product_context_are_both_available_for_disambiguation() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Şirket hangi malzemelerle üretim yapıyor?",
+        context_fact_ids=("palanga_pulley_details",),
+    )
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert "in_house_manufacturing" in fact_ids
+    assert "cast_pulley_materials" in fact_ids
+    assert fact_ids.index("in_house_manufacturing") < fact_ids.index("cast_pulley_materials")
+    assert "plastic_pulley_material" not in fact_ids
+
+
+def test_contextual_unknown_policy_does_not_borrow_a_sibling_warranty() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Bunun garantisi ne kadar?",
+        context_fact_ids=("palanga_pulley_details",),
+    )
+    fact_id_schema = schema["properties"]["fact_ids"]
+
+    assert fact_id_schema["maxItems"] == 0
+    assert "enum" not in fact_id_schema["items"]
+
+
+def test_current_company_question_overrides_old_product_context() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Adresiniz nerede?",
+        context_fact_ids=("palanga_pulley_details",),
+    )
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert "contact_information" in fact_ids
+    assert "palanga_pulley_details" not in fact_ids
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Motor kasnağı için fiyat teklifi almak istiyorum.",
+        "Palanga için fiyat teklifi hazırlar mısınız?",
+    ],
+)
+def test_explicit_quote_request_keeps_only_the_approved_quote_intake(
+    message: str,
+) -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(config, customer_message=message)
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert fact_ids == ["quote_product_question"]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Palanga kaç para?",
+        "Maliyeti nedir?",
+        "Bedeli ne?",
+    ],
+)
+def test_price_question_cannot_be_recast_as_quote_intake(message: str) -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(config, customer_message=message)
+    fact_id_schema = schema["properties"]["fact_ids"]
+
+    assert fact_id_schema["maxItems"] == 0
+    assert "enum" not in fact_id_schema["items"]
+
+
+def test_competitor_comparison_stays_fail_closed() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Rakibinizden daha kaliteli misiniz?",
+    )
+    fact_id_schema = schema["properties"]["fact_ids"]
+
+    assert fact_id_schema["maxItems"] == 0
+    assert "enum" not in fact_id_schema["items"]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Stokta var mı?",
+        "Elde var mı?",
+        "Mevcut mu?",
+        "Kaç günde gelir?",
+        "Ne zaman teslim edilir?",
+        "Termin süresi?",
+        "Teslimat süresi nedir?",
+    ],
+)
+def test_unknown_stock_and_delivery_time_stay_fail_closed(message: str) -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(config, customer_message=message)
+    fact_id_schema = schema["properties"]["fact_ids"]
+
+    assert fact_id_schema["maxItems"] == 0
+    assert "enum" not in fact_id_schema["items"]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Bu sistemime uyar mı?",
+        "Buna olur mu?",
+        "Uyumlu mu?",
+    ],
+)
+def test_suitability_question_can_only_use_the_technical_review_boundary(
+    message: str,
+) -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(config, customer_message=message)
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert fact_ids == ["technical_selection_handoff"]
+
+
+def test_drawing_submission_is_not_misclassified_as_a_certificate_request() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Teknik çizimi belge olarak gönderebilir miyim?",
+    )
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert fact_ids == ["quote_drawing_question"]
+    assert "company_quality_standards" not in fact_ids
+
+
+@pytest.mark.parametrize("message", ["Stockholm", "Bir belgesel önerir misiniz?"])
+def test_protected_stems_do_not_match_arbitrary_word_prefixes(message: str) -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(config, customer_message=message)
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert "conversation_off_topic" in fact_ids
+
+
+def test_quote_cta_precedes_contact_and_product_links() -> None:
+    config = _arti_kasnak_production_config()
+    turn = parse_customer_reply(
+        json.dumps(
+            {
+                "action": "reply",
+                "fact_ids": ["contact_information", "quote_product_question"],
+            }
+        ),
+        config,
+    )
+
+    interaction = _suggest_interaction(config, turn, "Motor kasnağı")
+
+    assert interaction is not None
+    assert interaction.kind == RuntimeInteractionKind.CTA_URL
+    assert interaction.url == "https://www.artikasnak.com/talep-formu"
+
+
+def test_explicit_new_product_overrides_old_product_context() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Motor kasnağını soruyorum, biraz anlatır mısın?",
+        context_fact_ids=("palanga_pulley_details",),
+    )
+    fact_ids = schema["properties"]["fact_ids"]["items"]["enum"]
+
+    assert "motor_pulley_custom_production" in fact_ids
+    assert "palanga_pulley_details" not in fact_ids
+
+
+@pytest.mark.asyncio
+async def test_runtime_rejects_a_globally_visible_fact_outside_query_candidates() -> None:
+    turn = await CompanyAgentRuntime(
+        _config_with_three_visible_facts(),
+        _FactSelectingLLM("premium-support"),
+    ).reply("Fiyat nedir?")
+
+    assert turn.action == CustomerReplyAction.HANDOFF
+    assert turn.fact_ids == ()
+    assert turn.used_fallback is True
+
+
+@pytest.mark.asyncio
+async def test_plain_product_menu_command_bypasses_unavailable_model() -> None:
+    config = _arti_kasnak_production_config()
+    turn = await CompanyAgentRuntime(config, _UnavailableLocalLLM()).reply(
+        "ürünleri göster",
+        history=[LLMMessage(role="assistant", content="eski ilgisiz konuşma")] * 12,
+    )
+
+    assert turn.action == CustomerReplyAction.REPLY
+    assert turn.fact_ids == ("all_product_groups",)
+    assert turn.used_fallback is False
+    assert turn.interaction is not None
+    assert turn.interaction.kind == RuntimeInteractionKind.REPLY_BUTTONS
+
+
+@pytest.mark.asyncio
+async def test_marketing_info_reply_bypasses_unavailable_model() -> None:
+    config = _arti_kasnak_production_config()
+    turn = await CompanyAgentRuntime(config, _UnavailableLocalLLM()).reply("Bilgi Al")
+
+    assert turn.action == CustomerReplyAction.REPLY
+    assert turn.fact_ids == ("all_product_groups",)
+    assert turn.used_fallback is False
+    assert turn.interaction is not None
+    assert turn.interaction.kind == RuntimeInteractionKind.REPLY_BUTTONS
+
+
+@pytest.mark.asyncio
+async def test_own_fact_button_bypasses_unavailable_model() -> None:
+    config = _arti_kasnak_production_config()
+    turn = await CompanyAgentRuntime(config, _UnavailableLocalLLM()).reply(
+        "Ürünleri göster [fact_request:all_product_groups]"
+    )
+
+    assert turn.fact_ids == ("all_product_groups",)
+    assert turn.interaction is not None
+
+
+def test_guided_fact_button_exposes_only_its_approved_fact() -> None:
+    config = _arti_kasnak_production_config()
+
+    schema = build_customer_decision_schema(
+        config,
+        customer_message="Ürünleri göster [fact_request:all_product_groups]",
+    )
+
+    assert schema["properties"]["fact_ids"]["items"]["enum"] == ["all_product_groups"]
+
+
+@pytest.mark.asyncio
+async def test_elevator_product_family_uses_a_four_item_list() -> None:
+    config = _arti_kasnak_production_config()
+    turn = await CompanyAgentRuntime(config, _UnavailableLocalLLM()).reply(
+        "Asansör türleri [product_detail:elevator_pulley]",
+        history=[LLMMessage(role="assistant", content="eski ilgisiz konuşma")] * 12,
+    )
+
+    assert turn.fact_ids == ("product_families",)
+    assert "Captormal (MC Nylon 6)" in turn.reply
+    assert "çekiş kasnaklarından" in turn.reply
+    assert turn.interaction is not None
+    assert turn.interaction.kind == RuntimeInteractionKind.LIST
+    assert [option.id for option in turn.interaction.options] == [
+        "product_detail:plastic_elevator_pulley",
+        "product_detail:cast_elevator_pulley",
+        "product_detail:motor_pulley",
+        "product_detail:traction_sheave",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_product_detail_button_returns_an_approved_product_link_cta() -> None:
+    config = _arti_kasnak_production_config()
+    turn = await CompanyAgentRuntime(config, _FactSelectingLLM("palanga_pulley_details")).reply(
+        "Palanga detayı [product_detail:hoisting_pulley]"
+    )
+
+    assert turn.interaction is not None
+    assert turn.interaction.kind == RuntimeInteractionKind.CTA_URL
+    assert turn.interaction.button_text == "Ürünü incele"
+    assert turn.interaction.url == "https://www.artikasnak.com/urunler/dokum-kasnaklar"
+
+
+@pytest.mark.asyncio
+async def test_product_detail_attaches_its_approved_session_image() -> None:
+    config = _arti_kasnak_production_config()
+    turn = await CompanyAgentRuntime(config, _UnavailableLocalLLM()).reply(
+        "Captormal detayı [product_detail:plastic_elevator_pulley]"
+    )
+
+    assert turn.interaction is not None
+    assert turn.interaction.kind == RuntimeInteractionKind.CTA_URL
+    assert turn.interaction.url == (
+        "https://www.artikasnak.com/urunler/captormal-asansor-kasnagi"
+    )
+    assert turn.interaction.header_media is not None
+    assert turn.interaction.header_media.id == "captormal-elevator-image"
+    assert turn.interaction.header_media.url == (
+        "https://api.ashiraai.com/media/arti-kasnak/captormal-elevator.jpg"
+    )
+
+
+@pytest.mark.asyncio
+async def test_product_family_menu_attaches_its_approved_session_image() -> None:
+    config = _arti_kasnak_production_config()
+    turn = await CompanyAgentRuntime(config, _UnavailableLocalLLM()).reply(
+        "Döküm detayı [product_detail:cast_elevator_pulley]"
+    )
+
+    assert turn.interaction is not None
+    assert turn.interaction.kind == RuntimeInteractionKind.REPLY_BUTTONS
+    assert turn.interaction.header_media is not None
+    assert turn.interaction.header_media.id == "cast-elevator-image"
+
+
+@pytest.mark.asyncio
+async def test_small_product_family_uses_inline_reply_buttons() -> None:
+    config = _arti_kasnak_production_config()
+    turn = await CompanyAgentRuntime(config, _FactSelectingLLM("belt_pulley_types")).reply(
+        "Kayış kasnağı türleri nelerdir?"
+    )
+
+    assert turn.interaction is not None
+    assert turn.interaction.kind == RuntimeInteractionKind.REPLY_BUTTONS
+    assert [option.id for option in turn.interaction.options] == [
+        "product_detail:steel_belt_pulley",
+        "product_detail:plastic_belt_pulley",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_company_profile_reply_offers_the_approved_website_cta() -> None:
+    config = _arti_kasnak_production_config()
+    turn = await CompanyAgentRuntime(
+        config,
+        _FactSelectingLLM("company_history_and_reach"),
+    ).reply("Şirket hakkında bilgi verir misin?")
+
+    assert turn.interaction is not None
+    assert turn.interaction.kind == RuntimeInteractionKind.CTA_URL
+    assert turn.interaction.url == "https://www.artikasnak.com/"
 
 
 @pytest.mark.asyncio
@@ -278,12 +968,8 @@ async def test_handoff_uses_only_the_configured_customer_visible_contact() -> No
     )
 
     assert turn.action == CustomerReplyAction.HANDOFF
-    assert (
-        turn.reply
-        == (
-            "Bu bilgiyi otomatik olarak yanıtlayamıyorum. "  # noqa: RUF001
-            "İletişim: support@example.test."
-        )
+    assert turn.reply == (
+        "Bu bilgiyi otomatik olarak yanıtlayamıyorum. İletişim: support@example.test."
     )
     assert turn.fact_ids == ("support-contact",)
     assert turn.used_fallback is True
@@ -300,7 +986,7 @@ async def test_runtime_fails_closed_for_any_model_boundary_error(llm: object) ->
     assert turn.action == CustomerReplyAction.HANDOFF
     assert (
         turn.reply
-        == "Bu bilgiyi otomatik olarak yanıtlayamıyorum. Yetkili ekip incelemesi gerekiyor."  # noqa: RUF001
+        == "Bu bilgiyi otomatik olarak yanıtlayamıyorum. Yetkili ekip incelemesi gerekiyor."
     )
     assert turn.fact_ids == ()
     assert turn.used_fallback is True

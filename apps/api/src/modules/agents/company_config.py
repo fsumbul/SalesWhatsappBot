@@ -19,7 +19,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-COMPANY_CONFIG_SCHEMA_VERSION = "company-agent-config/1.0"
+LEGACY_COMPANY_CONFIG_SCHEMA_VERSION = "company-agent-config/1.0"
+COMPANY_CONFIG_SCHEMA_VERSION = "company-agent-config/1.2"
 
 _IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")
 _LOCALE_RE = re.compile(r"^[a-z]{2,3}(?:-[A-Z][a-z]{3}|-[A-Z]{2})?$")
@@ -27,6 +28,18 @@ _LOCALE_RE = re.compile(r"^[a-z]{2,3}(?:-[A-Z][a-z]{3}|-[A-Z]{2})?$")
 Identifier = Annotated[str, Field(pattern=_IDENTIFIER_RE.pattern, min_length=1, max_length=80)]
 Locale = Annotated[str, Field(pattern=_LOCALE_RE.pattern, min_length=2, max_length=16)]
 LocalizedText = dict[Locale, Annotated[str, Field(min_length=1, max_length=4000)]]
+LocalizedInteractionLabel = dict[
+    Locale,
+    Annotated[str, Field(min_length=1, max_length=24)],
+]
+StarterInteractionLabel = dict[
+    Locale,
+    Annotated[str, Field(min_length=1, max_length=20)],
+]
+HttpsUrl = Annotated[
+    str,
+    Field(pattern=r"^https://[^\s]+$", min_length=9, max_length=1000),
+]
 
 
 class StrictModel(BaseModel):
@@ -60,6 +73,19 @@ class OfferingKind(StrEnum):
     OTHER = "other"
 
 
+class CustomerLinkKind(StrEnum):
+    WEBSITE = "website"
+    PRODUCT_PAGE = "product_page"
+    CATALOG = "catalog"
+    QUOTE_FORM = "quote_form"
+    CONTACT = "contact"
+    SOCIAL = "social"
+
+
+class MediaKind(StrEnum):
+    IMAGE = "image"
+
+
 class FactCategory(StrEnum):
     CAPABILITY = "capability"
     SPECIFICATION = "specification"
@@ -68,6 +94,7 @@ class FactCategory(StrEnum):
     ELIGIBILITY = "eligibility"
     DELIVERY = "delivery"
     SUPPORT = "support"
+    SOCIAL = "social"
     OTHER = "other"
 
 
@@ -111,6 +138,51 @@ class CustomerFieldType(StrEnum):
     ENUM = "enum"
 
 
+class CustomerLink(StrictModel):
+    """An explicitly approved customer-facing HTTPS destination."""
+
+    id: Identifier
+    kind: CustomerLinkKind
+    display_names: LocalizedText
+    url: HttpsUrl
+
+
+class MediaAsset(StrictModel):
+    """An approved, publicly retrievable customer-facing media asset."""
+
+    id: Identifier
+    kind: MediaKind
+    url: HttpsUrl
+    mime_type: str = Field(min_length=3, max_length=127)
+    size_bytes: int = Field(gt=0, le=5 * 1024 * 1024)
+    captions: LocalizedText | None = None
+    provenance: str = Field(min_length=1, max_length=240)
+
+    @model_validator(mode="after")
+    def _is_supported_whatsapp_image(self) -> MediaAsset:
+        if self.mime_type not in {"image/jpeg", "image/png"}:
+            raise ValueError("unsupported WhatsApp image MIME type")
+        return self
+
+
+class WhatsAppPresentation(StrictModel):
+    """Approved session-message assets, separate from tenant credentials."""
+
+    assets: list[MediaAsset] = Field(default_factory=list, max_length=500)
+    offering_media: dict[Identifier, Identifier] = Field(
+        default_factory=dict,
+        max_length=10_000,
+    )
+
+    @model_validator(mode="after")
+    def _media_references_are_valid(self) -> WhatsAppPresentation:
+        _assert_unique((asset.id for asset in self.assets), "media asset ids")
+        asset_ids = {asset.id for asset in self.assets}
+        if any(asset_id not in asset_ids for asset_id in self.offering_media.values()):
+            raise ValueError("offering media must refer to a known media asset")
+        return self
+
+
 class Organization(StrictModel):
     """The configured company itself; ``id`` is a graph node like every other entity."""
 
@@ -118,6 +190,12 @@ class Organization(StrictModel):
     display_names: LocalizedText
     legal_name: str | None = Field(default=None, min_length=1, max_length=240)
     markets: list[str] = Field(default_factory=list, max_length=100)
+    customer_links: list[CustomerLink] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def _link_ids_are_unique(self) -> Organization:
+        _assert_unique((link.id for link in self.customer_links), "organization link ids")
+        return self
 
 
 class Party(StrictModel):
@@ -134,8 +212,16 @@ class Offering(StrictModel):
     id: Identifier
     kind: OfferingKind
     display_names: LocalizedText
+    interaction_labels: LocalizedInteractionLabel | None = None
+    overview_fact_id: Identifier | None = None
     provider_id: Identifier = "company"
     active: bool = True
+    customer_links: list[CustomerLink] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def _link_ids_are_unique(self) -> Offering:
+        _assert_unique((link.id for link in self.customer_links), "offering link ids")
+        return self
 
 
 class Relationship(StrictModel):
@@ -155,6 +241,11 @@ class Fact(StrictModel):
     value: JsonValue
     customer_visible: bool = False
     customer_text: LocalizedText | None = None
+    selection_guidance: LocalizedText | None = None
+    search_terms: list[Annotated[str, Field(min_length=2, max_length=120)]] = Field(
+        default_factory=list,
+        max_length=100,
+    )
     source: str = Field(min_length=1, max_length=160)
 
     @model_validator(mode="after")
@@ -162,6 +253,13 @@ class Fact(StrictModel):
         if self.customer_visible and not self.customer_text:
             raise ValueError("customer_visible facts require customer_text")
         return self
+
+
+class GuidedFactAction(StrictModel):
+    """A customer-visible fact exposed as a deterministic quick action."""
+
+    fact_id: Identifier
+    display_names: StarterInteractionLabel
 
 
 class CustomerField(StrictModel):
@@ -254,13 +352,39 @@ class AgentReplyPolicy(StrictModel):
     require_fact_ids_for_claims: bool = True
     unknown_fact_action: UnknownFactAction = UnknownFactAction.HANDOFF
     handoff_fact_id: Identifier | None = None
+    semantic_fallback_fact_ids: list[Identifier] = Field(
+        default_factory=list,
+        max_length=24,
+    )
+    starter_trigger_fact_ids: list[Identifier] = Field(
+        default_factory=list,
+        max_length=100,
+    )
+    starter_actions: list[GuidedFactAction] = Field(
+        default_factory=list,
+        max_length=3,
+    )
 
     @model_validator(mode="after")
     def _default_locale_is_supported(self) -> AgentReplyPolicy:
         _assert_unique(self.purposes, "agent purposes")
         _assert_unique(self.supported_locales, "supported_locales")
+        _assert_unique(
+            self.semantic_fallback_fact_ids,
+            "semantic_fallback_fact_ids",
+        )
+        _assert_unique(
+            self.starter_trigger_fact_ids,
+            "starter_trigger_fact_ids",
+        )
+        _assert_unique(
+            (action.fact_id for action in self.starter_actions),
+            "starter action fact ids",
+        )
         if self.default_locale not in self.supported_locales:
             raise ValueError("default_locale must be one of supported_locales")
+        if bool(self.starter_trigger_fact_ids) != bool(self.starter_actions):
+            raise ValueError("starter triggers and actions must be configured together")
         return self
 
 
@@ -281,7 +405,11 @@ class DomainModule(StrictModel):
 class CompanyAgentConfig(StrictModel):
     """The universal company blueprint persisted with one AgentVersion."""
 
-    schema_version: Literal["company-agent-config/1.0"] = "company-agent-config/1.0"
+    schema_version: Literal[
+        "company-agent-config/1.0",
+        "company-agent-config/1.1",
+        "company-agent-config/1.2",
+    ] = COMPANY_CONFIG_SCHEMA_VERSION
     lifecycle: ConfigurationLifecycle = ConfigurationLifecycle.DRAFT
     organization: Organization | None = None
     parties: list[Party] = Field(default_factory=list, max_length=10_000)
@@ -292,10 +420,34 @@ class CompanyAgentConfig(StrictModel):
     processes: list[BusinessProcess] = Field(default_factory=list, max_length=100)
     policies: list[PolicyRule] = Field(default_factory=list, max_length=1_000)
     agent: AgentReplyPolicy | None = None
+    whatsapp_presentation: WhatsAppPresentation | None = None
     modules: list[DomainModule] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")
     def _validate_company_graph(self) -> CompanyAgentConfig:
+        if (
+            self.whatsapp_presentation is not None
+            and self.schema_version != COMPANY_CONFIG_SCHEMA_VERSION
+        ):
+            raise ValueError(
+                "WhatsApp presentation requires company-agent-config/1.2"
+            )
+        if self.schema_version == LEGACY_COMPANY_CONFIG_SCHEMA_VERSION:
+            uses_conversation_facts = any(
+                fact.category == FactCategory.SOCIAL or fact.selection_guidance is not None
+                for fact in self.facts
+            )
+            uses_conversation_policy = self.agent is not None and bool(
+                self.agent.semantic_fallback_fact_ids
+                or self.agent.starter_trigger_fact_ids
+                or self.agent.starter_actions
+            )
+            if uses_conversation_facts or uses_conversation_policy:
+                raise ValueError(
+                    "company-agent-config/1.0 does not support conversation fields; "
+                    "use company-agent-config/1.1"
+                )
+
         if self.lifecycle != ConfigurationLifecycle.DRAFT:
             if self.organization is None:
                 raise ValueError("organization is required outside draft lifecycle")
@@ -325,6 +477,30 @@ class CompanyAgentConfig(StrictModel):
             for offering in self.offerings:
                 if offering.provider_id not in entity_id_set:
                     raise ValueError(f"offering '{offering.id}' has unknown provider_id")
+                if offering.overview_fact_id is not None:
+                    overview_fact = next(
+                        (fact for fact in self.facts if fact.id == offering.overview_fact_id),
+                        None,
+                    )
+                    if overview_fact is None:
+                        raise ValueError(
+                            f"offering '{offering.id}' refers to an unknown overview_fact_id"
+                        )
+                    if overview_fact.subject_id != offering.id:
+                        raise ValueError(
+                            f"offering '{offering.id}' overview fact must have the same subject"
+                        )
+                    if not overview_fact.customer_visible or not overview_fact.customer_text:
+                        raise ValueError(
+                            f"offering '{offering.id}' overview fact must be customer-visible"
+                        )
+            if self.whatsapp_presentation is not None:
+                offering_ids = {offering.id for offering in self.offerings}
+                if any(
+                    offering_id not in offering_ids
+                    for offering_id in self.whatsapp_presentation.offering_media
+                ):
+                    raise ValueError("offering media must refer to a known offering")
             for relationship in self.relationships:
                 if (
                     relationship.subject_id not in entity_id_set
@@ -334,6 +510,33 @@ class CompanyAgentConfig(StrictModel):
             for fact in self.facts:
                 if fact.subject_id not in entity_id_set:
                     raise ValueError(f"fact '{fact.id}' has unknown subject_id")
+            if self.agent is not None:
+                visible_fact_by_id = {
+                    fact.id: fact
+                    for fact in self.facts
+                    if fact.customer_visible and fact.customer_text
+                }
+                for fact_id in self.agent.semantic_fallback_fact_ids:
+                    fallback_fact = visible_fact_by_id.get(fact_id)
+                    if fallback_fact is None:
+                        raise ValueError(
+                            "semantic fallback fact ids must refer to customer-visible facts"
+                        )
+                    if (
+                        fallback_fact.category != FactCategory.SOCIAL
+                        or not fallback_fact.selection_guidance
+                    ):
+                        raise ValueError(
+                            "semantic fallback facts must be social and define selection_guidance"
+                        )
+                for fact_id in self.agent.starter_trigger_fact_ids:
+                    if fact_id not in visible_fact_by_id:
+                        raise ValueError(
+                            "starter trigger fact ids must refer to customer-visible facts"
+                        )
+                for action in self.agent.starter_actions:
+                    if action.fact_id not in visible_fact_by_id:
+                        raise ValueError("starter actions must refer to customer-visible facts")
             for policy in self.policies:
                 if policy.template_fact_id is not None and policy.template_fact_id not in fact_ids:
                     raise ValueError(f"policy '{policy.id}' refers to an unknown template_fact_id")

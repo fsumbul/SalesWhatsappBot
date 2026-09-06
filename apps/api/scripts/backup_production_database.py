@@ -44,6 +44,7 @@ def main() -> None:
         "--dbname",
         url.database or "postgres",
         "--format=custom",
+        "--enable-row-security",
         "--file",
         str(output),
     ]

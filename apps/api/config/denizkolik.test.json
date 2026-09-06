@@ -1,0 +1,2043 @@
+{
+  "schema_version": "company-agent-config/1.1",
+  "lifecycle": "approved",
+  "organization": {
+    "id": "company",
+    "display_names": {
+      "tr": "Denizkolik"
+    },
+    "legal_name": "İnci Teknoloji İç ve Dış Ticaret Limited Şirketi",
+    "markets": [
+      "Türkiye",
+      "Denizcilik ve outdoor e-ticareti"
+    ],
+    "customer_links": [
+      {
+        "id": "website",
+        "kind": "website",
+        "display_names": {
+          "tr": "Web sitesini aç"
+        },
+        "url": "https://www.denizkolik.com/"
+      },
+      {
+        "id": "catalog",
+        "kind": "catalog",
+        "display_names": {
+          "tr": "Ürünleri incele"
+        },
+        "url": "https://www.denizkolik.com/"
+      },
+      {
+        "id": "quote-form",
+        "kind": "quote_form",
+        "display_names": {
+          "tr": "Satışa ulaş"
+        },
+        "url": "https://www.denizkolik.com/iletisim.aspx"
+      },
+      {
+        "id": "contact",
+        "kind": "contact",
+        "display_names": {
+          "tr": "İletişimi aç"
+        },
+        "url": "https://www.denizkolik.com/iletisim.aspx"
+      },
+      {
+        "id": "instagram",
+        "kind": "social",
+        "display_names": {
+          "tr": "Instagram'ı aç"
+        },
+        "url": "https://www.instagram.com/denizkolik_inci/"
+      },
+      {
+        "id": "youtube",
+        "kind": "social",
+        "display_names": {
+          "tr": "YouTube'u aç"
+        },
+        "url": "https://www.youtube.com/@denizkolik"
+      }
+    ]
+  },
+  "parties": [
+    {
+      "id": "individual_shopper",
+      "kind": "person",
+      "roles": [
+        "customer"
+      ],
+      "display_names": {
+        "tr": "Bireysel müşteri"
+      },
+      "profile_ids": [
+        "sales_request"
+      ]
+    },
+    {
+      "id": "marine_business_customer",
+      "kind": "organization",
+      "roles": [
+        "customer"
+      ],
+      "display_names": {
+        "tr": "Kurumsal denizcilik müşterisi"
+      },
+      "profile_ids": [
+        "sales_request"
+      ]
+    }
+  ],
+  "offerings": [
+    {
+      "id": "product_catalog",
+      "kind": "other",
+      "display_names": {
+        "tr": "Denizkolik ürün kataloğu"
+      },
+      "interaction_labels": {
+        "tr": "Tüm kategoriler"
+      },
+      "overview_fact_id": "all_product_groups",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "catalog-home",
+          "kind": "catalog",
+          "display_names": {
+            "tr": "Ürünleri incele"
+          },
+          "url": "https://www.denizkolik.com/"
+        }
+      ]
+    },
+    {
+      "id": "fish_finders",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Balık bulucular"
+      },
+      "interaction_labels": {
+        "tr": "Balık bulucular"
+      },
+      "overview_fact_id": "fish_finders_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "fish-finders-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Modelleri incele"
+          },
+          "url": "https://www.denizkolik.com/balikbulucular"
+        }
+      ]
+    },
+    {
+      "id": "fish_finder_transducers",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Transducer ve sonar aynaları"
+      },
+      "interaction_labels": {
+        "tr": "Balık bulucu aynası"
+      },
+      "overview_fact_id": "transducers_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "transducers-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Aynaları incele"
+          },
+          "url": "https://www.denizkolik.com/balikbulucuaynalari"
+        }
+      ]
+    },
+    {
+      "id": "virtual_anchors",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Sanal çapalar ve trolling motorlar"
+      },
+      "interaction_labels": {
+        "tr": "Sanal çapalar"
+      },
+      "overview_fact_id": "virtual_anchors_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "virtual-anchors-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Sanal çapaları gör"
+          },
+          "url": "https://www.denizkolik.com/sanal-capalar"
+        }
+      ]
+    },
+    {
+      "id": "marine_electronics",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Deniz elektroniği"
+      },
+      "interaction_labels": {
+        "tr": "Deniz elektroniği"
+      },
+      "overview_fact_id": "marine_electronics_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "marine-electronics-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Elektroniği incele"
+          },
+          "url": "https://www.denizkolik.com/deniz-elektronigi"
+        }
+      ]
+    },
+    {
+      "id": "boats_and_accessories",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Tekne ve tekne aksesuarları"
+      },
+      "interaction_labels": {
+        "tr": "Tekne ve aksesuar"
+      },
+      "overview_fact_id": "boats_and_accessories_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "boats-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Tekneleri incele"
+          },
+          "url": "https://www.denizkolik.com/tekne-bot"
+        }
+      ]
+    },
+    {
+      "id": "boat_equipment",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Tekne ekipmanları"
+      },
+      "interaction_labels": {
+        "tr": "Tekne ekipmanı"
+      },
+      "overview_fact_id": "boat_equipment_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "boat-equipment-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Ekipmanları incele"
+          },
+          "url": "https://www.denizkolik.com/tekne-malzemeleri"
+        }
+      ]
+    },
+    {
+      "id": "energy_storage",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Enerji, akü ve şarj sistemleri"
+      },
+      "interaction_labels": {
+        "tr": "Enerji sistemleri"
+      },
+      "overview_fact_id": "energy_storage_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "energy-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Enerjiyi incele"
+          },
+          "url": "https://www.denizkolik.com/enerji-sistemleri"
+        }
+      ]
+    },
+    {
+      "id": "fishing_gear",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Olta ve av ekipmanları"
+      },
+      "interaction_labels": {
+        "tr": "Balık avı ekipmanı"
+      },
+      "overview_fact_id": "fishing_gear_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "fishing-gear-page",
+          "kind": "catalog",
+          "display_names": {
+            "tr": "Av ürünlerini gör"
+          },
+          "url": "https://www.denizkolik.com/lrf-kamislari"
+        }
+      ]
+    },
+    {
+      "id": "detectors",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Su altı ve kalıntı dedektörleri"
+      },
+      "interaction_labels": {
+        "tr": "Dedektörler"
+      },
+      "overview_fact_id": "detectors_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "detectors-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Dedektörleri gör"
+          },
+          "url": "https://www.denizkolik.com/dedektorler"
+        }
+      ]
+    },
+    {
+      "id": "second_hand",
+      "kind": "marketplace_listing",
+      "display_names": {
+        "tr": "İkinci el denizcilik ve balıkçılık"
+      },
+      "interaction_labels": {
+        "tr": "İkinci el"
+      },
+      "overview_fact_id": "second_hand_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "second-hand-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "İkinci eli incele"
+          },
+          "url": "https://www.denizkolik.com/ikinci-el"
+        }
+      ]
+    },
+    {
+      "id": "pivot_anchor_bracket",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Denizkolik PİVOT braket"
+      },
+      "interaction_labels": {
+        "tr": "PİVOT detayı"
+      },
+      "overview_fact_id": "pivot_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "pivot-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "PİVOT'u incele"
+          },
+          "url": "https://www.denizkolik.com/denizkolik-pivot-sanal-capa-braketi"
+        }
+      ]
+    },
+    {
+      "id": "shark_captain_trolling_motors",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Shark Captain GPS motorları"
+      },
+      "interaction_labels": {
+        "tr": "Shark Captain"
+      },
+      "overview_fact_id": "shark_captain_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "shark-captain-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Modelleri incele"
+          },
+          "url": "https://www.denizkolik.com/shark-captain"
+        }
+      ]
+    },
+    {
+      "id": "xplore_10_cho",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Humminbird XPLORE 10 CHO"
+      },
+      "interaction_labels": {
+        "tr": "XPLORE 10 detayı"
+      },
+      "overview_fact_id": "xplore_10_cho_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "xplore-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "XPLORE'u incele"
+          },
+          "url": "https://www.denizkolik.com/xplore-10-cho-balik-bulucu"
+        }
+      ]
+    },
+    {
+      "id": "itlp_lifepo4",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "ITLP ve ITPL LiFePO4 sistemleri"
+      },
+      "interaction_labels": {
+        "tr": "ITLP LiFePO4"
+      },
+      "overview_fact_id": "itlp_lifepo4_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "itlp-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Aküleri incele"
+          },
+          "url": "https://www.denizkolik.com/iltp-battery"
+        }
+      ]
+    },
+    {
+      "id": "showroom_support",
+      "kind": "professional_service",
+      "display_names": {
+        "tr": "Ümraniye ofis ve sergi salonu desteği"
+      },
+      "interaction_labels": {
+        "tr": "Mağaza desteği"
+      },
+      "overview_fact_id": "showroom_support_overview",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "showroom-map",
+          "kind": "contact",
+          "display_names": {
+            "tr": "Konumu aç"
+          },
+          "url": "https://maps.app.goo.gl/g9vA7zGZL5ZzRT5MA"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "subject_id": "product_catalog",
+      "predicate": "provided_by",
+      "object_id": "company"
+    },
+    {
+      "subject_id": "fish_finders",
+      "predicate": "part_of",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "fish_finder_transducers",
+      "predicate": "part_of",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "virtual_anchors",
+      "predicate": "part_of",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "marine_electronics",
+      "predicate": "part_of",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "boats_and_accessories",
+      "predicate": "part_of",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "boat_equipment",
+      "predicate": "part_of",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "energy_storage",
+      "predicate": "part_of",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "fishing_gear",
+      "predicate": "part_of",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "detectors",
+      "predicate": "part_of",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "second_hand",
+      "predicate": "part_of",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "pivot_anchor_bracket",
+      "predicate": "part_of",
+      "object_id": "virtual_anchors"
+    },
+    {
+      "subject_id": "shark_captain_trolling_motors",
+      "predicate": "part_of",
+      "object_id": "virtual_anchors"
+    },
+    {
+      "subject_id": "xplore_10_cho",
+      "predicate": "part_of",
+      "object_id": "fish_finders"
+    },
+    {
+      "subject_id": "itlp_lifepo4",
+      "predicate": "part_of",
+      "object_id": "energy_storage"
+    },
+    {
+      "subject_id": "showroom_support",
+      "predicate": "provided_by",
+      "object_id": "company"
+    }
+  ],
+  "facts": [
+    {
+      "id": "welcome",
+      "subject_id": "company",
+      "category": "support",
+      "value": "welcome and scope orientation",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Merhaba, Denizkolik müşteri asistanıyım. Denizcilik ürünleri, ürün kategorileri ve satış öncesi bilgi için yardımcı olabilirim."
+      },
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_greeting",
+      "subject_id": "company",
+      "category": "social",
+      "value": "friendly greeting and orientation",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Merhaba, hoş geldiniz. Size nasıl yardımcı olabilirim? Denizkolik ürünlerini inceleyebilir, şirket hakkında bilgi alabilir veya satış öncesi destek isteyebilirsiniz."
+      },
+      "selection_guidance": {
+        "tr": "Selamlama, karşı selam, günaydın, iyi akşamlar veya sıcak bir sohbet açılışı için seç. Mesaj selamla başlayıp yalnızca biraz bakındığını ya da göz attığını söylüyorsa bunu belirsiz yardım talebi değil sıcak açılış say ve bu fact'i seç."
+      },
+      "search_terms": [
+        "selam",
+        "merhaba",
+        "günaydın",
+        "iyi akşamlar",
+        "hoş bulduk",
+        "biraz bakınıyorum",
+        "göz atıyorum"
+      ],
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_wellbeing",
+      "subject_id": "company",
+      "category": "social",
+      "value": "assistant wellbeing and reciprocal rapport",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Teşekkür ederim, iyiyim. Siz nasılsınız? Denizkolik ürünlerini incelemek veya ihtiyacınızı birlikte netleştirmek ister misiniz?"
+      },
+      "selection_guidance": {
+        "tr": "Yalnızca müşteri doğrudan asistana nasılsın, keyfin nasıl veya ne yapıyorsun diye soruyorsa seç."
+      },
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_positive_mood",
+      "subject_id": "company",
+      "category": "social",
+      "value": "acknowledge the customer's positive mood",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Bunu duymak güzel. Dilerseniz Denizkolik ürünlerini birlikte inceleyebilir veya aradığınız denizcilik ekipmanını netleştirebiliriz."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri kendi durumunun iyi, keyifli veya yolunda olduğunu söylüyorsa seç. Ürün övgüsü ve teşekkür için conversation_gratitude kullan."
+      },
+      "search_terms": [
+        "iyiyim",
+        "keyfim yerinde",
+        "her şey yolunda"
+      ],
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_gratitude",
+      "subject_id": "company",
+      "category": "social",
+      "value": "acknowledge thanks or positive feedback",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Rica ederim, güzel geri bildiriminiz için teşekkürler. Başka bir sorunuz varsa veya Denizkolik ürünlerini incelemek isterseniz buradayım."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri teşekkür ediyor, bir ürünü beğendiğini söylüyor, şirketi ya da ürünü övüyor veya olumlu geri bildirim veriyorsa seç."
+      },
+      "search_terms": [
+        "hoşuma gitti",
+        "beğendim",
+        "tebrik ederim",
+        "harikasınız",
+        "süpersiniz"
+      ],
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_acknowledgement",
+      "subject_id": "company",
+      "category": "social",
+      "value": "acknowledge a short confirmation in context",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Tamamdır. Hazır olduğunuzda Denizkolik ürünleri, şirket bilgileri veya satış öncesi destek konusunda devam edebiliriz."
+      },
+      "selection_guidance": {
+        "tr": "Kısa onay, anladım, tamam, peki veya tek başına onay anlamı taşıyan emoji için seç."
+      },
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_vague_help",
+      "subject_id": "company",
+      "category": "social",
+      "value": "respond to a vague request for help",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Elbette, buradayım. Denizkolik ürünleri, şirket bilgileri veya satış öncesi destek konusunda ne öğrenmek istediğinizi yazabilirsiniz."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri orada mısın, yardımcı olur musun, bir şey soracağım gibi gerçek bir belirsiz yardım veya devam isteği iletiyorsa seç. Selamla birlikte yalnızca bakındığını veya göz attığını söylüyorsa seçme; conversation_greeting kullan."
+      },
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_empathy",
+      "subject_id": "company",
+      "category": "social",
+      "value": "acknowledge emotion frustration or criticism",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Bunun can sıkıcı olabildiğini anlıyorum. Eksik veya sorunlu kalan kısmı paylaşırsanız talebinizi yeniden ele alıp uygun Denizkolik bilgisine yönlendirebilirim."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri üzgün, sabırsız veya hayal kırıklığı içinde; bot yanıtını eleştiriyor ya da güncel fiyat sormadan fiyatı öznel olarak pahalı bulduğunu söylüyorsa seç."
+      },
+      "search_terms": [
+        "bu cevap iyi değildi",
+        "cevabı beğenmedim",
+        "memnun kalmadım",
+        "pahalı buldum",
+        "fiyat yüksek",
+        "hayal kırıklığı"
+      ],
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_assistant_identity",
+      "subject_id": "company",
+      "category": "social",
+      "value": "assistant identity and supported scope",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Ben Denizkolik'in WhatsApp müşteri asistanıyım. Ürün ve şirket bilgileriyle satış öncesi yönlendirme konularında yardımcı olabilirim."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri kimsin, insan mısın, bot musun, adın ne veya neler yapabilirsin diye asistanın kimliğini ya da yeteneklerini soruyorsa seç."
+      },
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_off_topic",
+      "subject_id": "company",
+      "category": "social",
+      "value": "friendly redirection from an unrelated topic",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Bu konu ana uzmanlık alanımın dışında kalıyor. Denizkolik ürünleri, şirket bilgileri veya satış öncesi destek hakkında yardımcı olmamı ister misiniz?"
+      },
+      "selection_guidance": {
+        "tr": "Müşteri şirketle ilgisi olmayan hava durumu, haber, eğlence veya başka bir genel alan hakkında soru soruyorsa seç. Şirket hakkındaki eksik bilgi için kullanma."
+      },
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_farewell",
+      "subject_id": "company",
+      "category": "social",
+      "value": "warm conversation closing",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Görüşmek üzere, iyi günler. Denizkolik ürünleri veya satış öncesi destekle ilgili ihtiyaç duyduğunuzda yardımcı olmaktan memnuniyet duyarım."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri vedalaşıyor, konuşmayı kapatıyor, iyi günler diliyor veya sonra yine yazacağını söylüyorsa seç."
+      },
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_respectful_boundary",
+      "subject_id": "company",
+      "category": "social",
+      "value": "calm boundary for hostile language",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Size yardımcı olmak isterim. Konuşmayı karşılıklı saygı çerçevesinde sürdürürsek Denizkolik ürünleri ve talepleriniz konusunda birlikte ilerleyebiliriz."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri hakaret ediyor, saldırgan veya aşağılayıcı konuşuyor ama güvenli biçimde diyaloğa devam edilebiliyorsa seç."
+      },
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_apology",
+      "subject_id": "company",
+      "category": "social",
+      "value": "accept an apology and continue",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Hiç sorun değil. Hazır olduğunuzda sorunuzu veya ihtiyacınızı paylaşabilirsiniz; yardımcı olmaya devam edebilirim."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri özür diliyor, yanlış yazdığını söylüyor veya önceki mesajını geri alıyorsa seç."
+      },
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_casual_chat",
+      "subject_id": "company",
+      "category": "social",
+      "value": "light casual observation or humor",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Güzel bir yorum 🙂 Sohbete devam edebiliriz. İsterseniz Denizkolik ürünlerini birlikte inceleyebilir veya ihtiyacınızı netleştirebiliriz."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri hafif bir şaka, gündelik bir emoji, gündelik yorum veya özel bilgi gerektirmeyen samimi bir sohbet ifadesi kullanıyorsa seç."
+      },
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_confusion",
+      "subject_id": "company",
+      "category": "social",
+      "value": "repair an unclear or misunderstood exchange",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Net anlatamadıysam kusura bakmayın. Anlaşılmayan ürünü veya konuyu yazarsanız ilgili onaylı bilgiyi bulup paylaşabilirim."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri anlamadığını, yanıtın karışık olduğunu, tekrar veya daha sade açıklama istediğini belirtiyorsa seç."
+      },
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_correction",
+      "subject_id": "company",
+      "category": "social",
+      "value": "accept a correction or changed request",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Teşekkürler, düzeltmenizi dikkate alıyorum. Doğru ürün adını veya güncel talebinizi yazarsanız o bilgi üzerinden devam edelim."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri önceki sözünü düzeltiyor, yanlış ürünü kastettiğini söylüyor, fikrini değiştiriyor veya hayır onu demedim diyorsa seç."
+      },
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_disinterest",
+      "subject_id": "company",
+      "category": "social",
+      "value": "respect a non-marketing conversational decline",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Anlıyorum, sorun değil. Bu konuda ısrar etmeyeceğim. Farklı bir Denizkolik ürünü veya talebiniz varsa yardımcı olabilirim."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri belirli bir ürün, teklif veya mevcut öneriyi şimdilik istemediğini ya da onunla ilgilenmediğini söylüyor fakat genel sohbeti kapatmıyorsa seç."
+      },
+      "search_terms": [
+        "şimdilik pas",
+        "pas geçeceğim",
+        "başka zaman",
+        "şimdilik istemiyorum"
+      ],
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_indecision",
+      "subject_id": "company",
+      "category": "social",
+      "value": "help scope an undecided request without recommending a product",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Birlikte netleştirebiliriz. Kullanım amacınızı, tekne tipinizi ve elinizdeki model veya elektrik sistemi bilgilerini paylaşırsanız uygun ürün bilgileriyle ilerleyebiliriz."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri nereden başlayacağını bilmiyor, seçenekler arasında kararsız veya ihtiyacını nasıl tarif edeceğinden emin değilse seç; kesin ürün uygunluğu iddia etme."
+      },
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_waiting",
+      "subject_id": "company",
+      "category": "social",
+      "value": "acknowledge waiting or a perceived delay",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Buradayım. Yanıt geciktiyse kusura bakmayın. Mesajınızı yeniden ele alabilmem için bekleyen sorunuzu veya ihtiyacınızı kısaca yazabilirsiniz."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri hâlâ beklediğini, yanıt gelmediğini, neden sustuğunu veya sohbetin takıldığını söylüyorsa seç."
+      },
+      "search_terms": [
+        "cevap vermiyorsunuz",
+        "yanıt gelmedi",
+        "hâlâ bekliyorum",
+        "neden sustunuz",
+        "mesajım kaldı"
+      ],
+      "source": "Denizkolik test conversation policy 2026-08-28"
+    },
+    {
+      "id": "company_overview",
+      "subject_id": "company",
+      "category": "capability",
+      "value": {
+        "brand_of": "İnci Teknoloji İç ve Dış Ticaret Limited Şirketi",
+        "source_url": "https://www.denizkolik.com/hakkimizda",
+        "verified_at": "2026-08-28",
+        "stability": "stable"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Denizkolik, İnci Teknoloji İç ve Dış Ticaret Limited Şirketi'nin denizcilik ürünleri ve çözümleri sunan markasıdır. Ümraniye'de ofis ve sergi salonu bulunur; çevrimiçi mağazasında denizcilik, balıkçılık ve tekne ekipmanları yer alır."
+      },
+      "search_terms": [
+        "Denizkolik kimdir",
+        "şirket adı",
+        "şirketinizin adı",
+        "firma adı",
+        "marka adı",
+        "şirket hakkında",
+        "firma hakkında",
+        "ne iş yapıyorsunuz"
+      ],
+      "source": "https://www.denizkolik.com/hakkimizda verified 2026-08-28"
+    },
+    {
+      "id": "company_mission",
+      "subject_id": "company",
+      "category": "capability",
+      "value": {
+        "source_url": "https://www.denizkolik.com/hakkimizda",
+        "verified_at": "2026-08-28",
+        "stability": "stable"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Denizkolik, denizcilik hayatını kolaylaştıran ürün ve çözümleri daha erişilebilir biçimde sunmayı ve kullanıcı memnuniyetini ön planda tutmayı amaçlar."
+      },
+      "search_terms": [
+        "misyon",
+        "amaç",
+        "neden kuruldu"
+      ],
+      "source": "https://www.denizkolik.com/hakkimizda verified 2026-08-28"
+    },
+    {
+      "id": "showroom_support_overview",
+      "subject_id": "showroom_support",
+      "category": "support",
+      "value": {
+        "source_url": "https://www.denizkolik.com/hakkimizda",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Denizkolik'in Elmalıkent Mahallesi, Atatürk Caddesi B Blok No:28/A, 34764 Ümraniye/İstanbul adresinde ofis ve sergi salonu bulunur. Ziyaret öncesinde güncel çalışma ve randevu durumunu müşteri hizmetlerinden teyit edin."
+      },
+      "search_terms": [
+        "mağaza",
+        "showroom",
+        "sergi salonu",
+        "ziyaret",
+        "konum"
+      ],
+      "source": "https://www.denizkolik.com/hakkimizda verified 2026-08-28"
+    },
+    {
+      "id": "all_product_groups",
+      "subject_id": "product_catalog",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/sitemap/categories/0.xml",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Denizkolik'in ana ürün grupları; balık bulucular, balık bulucu aynaları/transducer ürünleri, sanal çapalar ve trolling motorlar, deniz elektroniği, tekne ve aksesuarları, tekne ekipmanları, enerji ve depolama sistemleri, balık avı ekipmanları, dedektörler ve ikinci el ürünlerdir."
+      },
+      "search_terms": [
+        "hangi ürünleri satıyorsunuz",
+        "neler satıyorsunuz",
+        "ürünleriniz neler",
+        "ürün grupları",
+        "tüm ürünler",
+        "kategoriler"
+      ],
+      "source": "https://www.denizkolik.com/sitemap/categories/0.xml 2026-08-28"
+    },
+    {
+      "id": "fish_finders_overview",
+      "subject_id": "fish_finders",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/balikbulucular",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Balık bulucu kategorisinde Furuno, Lowrance, Raymarine, Garmin, Humminbird ve Simrad marka gruplarıyla harita kartları ve aksesuarlar bulunur. Güncel model, fiyat ve stok için kategori veya ürün sayfasını kontrol edin."
+      },
+      "search_terms": [
+        "balık bulucu",
+        "sonar",
+        "fish finder",
+        "Furuno",
+        "Lowrance",
+        "Raymarine",
+        "Garmin",
+        "Humminbird",
+        "Simrad"
+      ],
+      "source": "https://www.denizkolik.com/balikbulucular verified 2026-08-28"
+    },
+    {
+      "id": "transducers_overview",
+      "subject_id": "fish_finder_transducers",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/balikbulucuaynalari",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Balık bulucu aynaları/transducer kategorisinde 3D, del-tak, CHIRP ve geleneksel aynalarla ilgili aksesuar grupları bulunur. Cihaz, gövde ve kullanım uyumluluğu model bazında teyit edilmelidir."
+      },
+      "search_terms": [
+        "transducer",
+        "balık bulucu aynası",
+        "CHIRP ayna",
+        "3D ayna",
+        "del tak ayna",
+        "geleneksel ayna"
+      ],
+      "source": "https://www.denizkolik.com/balikbulucuaynalari 2026-08-28"
+    },
+    {
+      "id": "virtual_anchors_overview",
+      "subject_id": "virtual_anchors",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/sanal-capalar",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Sanal çapa ve trolling motor kategorisinde Minn Kota, Garmin, MotorGuide, Lowrance-Simrad, Watersnake, Recon, Shark Captain ve Haibo gruplarıyla akü, şarj ve montaj aksesuarları bulunur. Kesin tekne ve elektrik sistemi uygunluğu teknik olarak doğrulanmalıdır."
+      },
+      "search_terms": [
+        "sanal çapa",
+        "trolling motor",
+        "Minn Kota",
+        "MotorGuide",
+        "Watersnake",
+        "Recon",
+        "Shark Captain",
+        "Haibo"
+      ],
+      "source": "https://www.denizkolik.com/sanal-capalar verified 2026-08-28"
+    },
+    {
+      "id": "marine_electronics_overview",
+      "subject_id": "marine_electronics",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/deniz-elektronigi",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Deniz elektroniği kapsamında GPS, pusula ve gyro ürünleri; radar, kamera, su altı aydınlatma, otopilot, VHF/AIS, harita kartları ve çok fonksiyonlu ekran kategorileri yer alır."
+      },
+      "search_terms": [
+        "deniz elektroniği",
+        "GPS",
+        "pusula",
+        "gyro",
+        "radar",
+        "otopilot",
+        "VHF",
+        "AIS",
+        "kamera"
+      ],
+      "source": "https://www.denizkolik.com/deniz-elektronigi verified 2026-08-28"
+    },
+    {
+      "id": "boats_and_accessories_overview",
+      "subject_id": "boats_and_accessories",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/tekne-bot",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Tekne ve aksesuarları grubunda tekne modelleri, Zipwake, T-Top ve T-Top aksesuarları için kategoriler bulunur. Güncel model ve donanım seçenekleri ürün sayfalarından teyit edilmelidir."
+      },
+      "search_terms": [
+        "tekne",
+        "bot",
+        "Zipwake",
+        "T-Top",
+        "tekne aksesuarı"
+      ],
+      "source": "https://www.denizkolik.com/tekne-bot verified 2026-08-28"
+    },
+    {
+      "id": "boat_equipment_overview",
+      "subject_id": "boat_equipment",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/tekne-malzemeleri",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Tekne ekipmanları grubunda su üstü radarlar, su altı aydınlatma, otopilot, sintine ve su pompaları, VHF/AIS, buzluk-soğutucu, kamera ve ses sistemleri bulunur."
+      },
+      "search_terms": [
+        "tekne ekipmanı",
+        "sintine pompası",
+        "su pompası",
+        "buzluk",
+        "soğutucu",
+        "ses sistemi",
+        "Yandina"
+      ],
+      "source": "https://www.denizkolik.com/tekne-malzemeleri verified 2026-08-28"
+    },
+    {
+      "id": "energy_storage_overview",
+      "subject_id": "energy_storage",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/enerji-sistemleri",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Enerji ve depolama grubunda güneş panelleri, sigorta-switch-kablo ürünleri, aküler ve aksesuarları, şarj cihazları, MPPT, inverter ve Victron enerji sistemi kategorileri yer alır."
+      },
+      "search_terms": [
+        "enerji sistemi",
+        "akü",
+        "şarj cihazı",
+        "güneş paneli",
+        "MPPT",
+        "inverter",
+        "Victron"
+      ],
+      "source": "https://www.denizkolik.com/enerji-sistemleri verified 2026-08-28"
+    },
+    {
+      "id": "fishing_gear_overview",
+      "subject_id": "fishing_gear",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/sitemap/categories/0.xml",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Balık avı ekipmanlarında LRF, surf ve tekne kamışları; LRF ve surf makineleri; suni, jig ve kaşık yemler; iğne-jighead, klips-fırdöndü, ip-misina, çanta ve kutu kategorileri bulunur."
+      },
+      "search_terms": [
+        "balık avı",
+        "olta",
+        "kamış",
+        "makine",
+        "LRF",
+        "surf",
+        "suni yem",
+        "jig",
+        "misina",
+        "iğne"
+      ],
+      "source": "https://www.denizkolik.com/sitemap/categories/0.xml 2026-08-28"
+    },
+    {
+      "id": "detectors_overview",
+      "subject_id": "detectors",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/dedektorler",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Dedektör kategorisinde su altı dedektörleri ve kalıntı dedektörleri için ürün grupları bulunur. Kullanım derinliği ve hedef türü gibi teknik uygunluk ürün bazında doğrulanmalıdır."
+      },
+      "search_terms": [
+        "dedektör",
+        "su altı dedektörü",
+        "kalıntı dedektörü",
+        "metal dedektörü"
+      ],
+      "source": "https://www.denizkolik.com/dedektorler verified 2026-08-28"
+    },
+    {
+      "id": "second_hand_overview",
+      "subject_id": "second_hand",
+      "category": "availability",
+      "value": {
+        "source_url": "https://www.denizkolik.com/ikinci-el",
+        "verified_at": "2026-08-28",
+        "stability": "live_only"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Denizkolik sitesinde balık bulucu, balık bulucu aynası, tekne-yat malzemesi, balık avı ve sanal çapa için ikinci el kategorileri bulunur. İlan ve stok durumu sürekli değişebileceği için güncel listeyi sayfadan kontrol edin."
+      },
+      "search_terms": [
+        "ikinci el",
+        "kullanılmış",
+        "2 el",
+        "ilan"
+      ],
+      "source": "https://www.denizkolik.com/ikinci-el verified 2026-08-28"
+    },
+    {
+      "id": "brand_portfolio",
+      "subject_id": "company",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/sitemap/brands/0.xml",
+        "verified_at": "2026-08-28",
+        "stability": "medium",
+        "authorization_claim": false
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Resmî katalogda Furuno, Lowrance, Raymarine, Garmin, Humminbird, Simrad, Minn Kota, MotorGuide, Watersnake, Airmar ve Victron Energy dahil birçok marka için kategori veya ürün sayfaları bulunur. Bir markanın katalogda yer alması tek başına yetkili distribütörlük anlamına gelmez."
+      },
+      "search_terms": [
+        "hangi markalar",
+        "markalarınız",
+        "marka listesi",
+        "yetkili distribütör"
+      ],
+      "source": "https://www.denizkolik.com/sitemap/brands/0.xml 2026-08-28"
+    },
+    {
+      "id": "pivot_overview",
+      "subject_id": "pivot_anchor_bracket",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/denizkolik-pivot-sanal-capa-braketi",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Denizkolik PİVOT, sanal çapa için yerli mühendislik ürünü olarak tanıtılan; 360 derece dönebilen, kullanım sonrası tekne içine katlanabilen ve kolay montaj hedefleyen bir brakettir."
+      },
+      "search_terms": [
+        "PİVOT",
+        "Pivot braket",
+        "katlanır braket",
+        "360 derece braket"
+      ],
+      "source": "https://www.denizkolik.com/denizkolik-pivot-sanal-capa-braketi 2026-08-28"
+    },
+    {
+      "id": "pivot_compatibility",
+      "subject_id": "pivot_anchor_bracket",
+      "category": "eligibility",
+      "value": {
+        "source_url": "https://www.denizkolik.com/denizkolik-pivot-sanal-capa-braketi",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "PİVOT ürün sayfası tüm sanal çapa modelleriyle uyumlu olduğunu belirtir. Yine de teknenizdeki montaj alanı, bağlantı şekli ve model varyantı için sipariş öncesinde teknik teyit alınmalıdır."
+      },
+      "search_terms": [
+        "PİVOT uyumlu mu",
+        "tüm sanal çapalar",
+        "tekneye uyar mı",
+        "montaj uyumluluğu"
+      ],
+      "source": "https://www.denizkolik.com/denizkolik-pivot-sanal-capa-braketi 2026-08-28"
+    },
+    {
+      "id": "pivot_material_requires_confirmation",
+      "subject_id": "pivot_anchor_bracket",
+      "category": "specification",
+      "value": {
+        "product_page_value": "kompozit",
+        "manual_value": "marine-grade anodized aluminum",
+        "source_url": "https://www.denizkolik.com/denizkolik-pivot-sanal-capa-braketi",
+        "secondary_source_url": "https://www.denizkolik.com/kullanim-klavuzlari",
+        "verified_at": "2026-08-28",
+        "stability": "conflict_requires_confirmation"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "PİVOT için resmî ürün sayfası malzemeyi kompozit, resmî kullanım kılavuzu ise marin sınıfı anodize alüminyum olarak gösteriyor. Model veya sürüm farkı olabileceğinden malzeme bilgisini Denizkolik teknik ekibinden teyit etmek gerekir."
+      },
+      "search_terms": [
+        "PİVOT malzeme",
+        "kompozit",
+        "alüminyum",
+        "neden farklı"
+      ],
+      "source": "Denizkolik PİVOT product/manual conflict verified 2026-08-28"
+    },
+    {
+      "id": "shark_captain_overview",
+      "subject_id": "shark_captain_trolling_motors",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/shark-captain",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Denizkolik sitesinde Shark Captain için GPS özellikli sanal çapa motoru kategorisi bulunur. Güncel model, voltaj, itiş gücü, fiyat ve stok bilgileri ürün sayfasından teyit edilmelidir."
+      },
+      "search_terms": [
+        "Shark Captain",
+        "GPS motor",
+        "GPS sanal çapa"
+      ],
+      "source": "https://www.denizkolik.com/shark-captain verified 2026-08-28"
+    },
+    {
+      "id": "xplore_10_cho_overview",
+      "subject_id": "xplore_10_cho",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/xplore-10-cho-balik-bulucu",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Humminbird XPLORE 10 CHO; dahili GPS, ağ bağlantısı ve sonar entegrasyonları bulunan, 10,1 inç dokunmatik ekranlı bir balık bulucudur. CHO sürümünde dönüştürücü ürünle birlikte verilmez."
+      },
+      "search_terms": [
+        "XPLORE 10 CHO",
+        "Humminbird XPLORE",
+        "CHO balık bulucu"
+      ],
+      "source": "https://www.denizkolik.com/xplore-10-cho-balik-bulucu 2026-08-28"
+    },
+    {
+      "id": "xplore_10_cho_display",
+      "subject_id": "xplore_10_cho",
+      "category": "specification",
+      "value": {
+        "diagonal_inches": 10.1,
+        "touchscreen": true,
+        "resolution_conflict": true,
+        "source_url": "https://www.denizkolik.com/xplore-10-cho-balik-bulucu",
+        "verified_at": "2026-08-28",
+        "stability": "conflict_requires_confirmation"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "XPLORE 10 CHO'nun ekranı 10,1 inçtir; dokunmatik ekran ve tuş takımıyla kontrol edilir. Aynı resmî sayfada çözünürlük 1280×720 ve 1280×800 olarak iki farklı biçimde yazıldığı için kesin çözünürlük teknik ekipten teyit edilmelidir."
+      },
+      "search_terms": [
+        "XPLORE ekran",
+        "kaç inç",
+        "dokunmatik",
+        "çözünürlük",
+        "1280"
+      ],
+      "source": "https://www.denizkolik.com/xplore-10-cho-balik-bulucu 2026-08-28"
+    },
+    {
+      "id": "xplore_10_cho_connectivity",
+      "subject_id": "xplore_10_cho",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/xplore-10-cho-balik-bulucu",
+        "verified_at": "2026-08-28",
+        "stability": "stable_per_model"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "XPLORE 10 CHO ürün sayfasında Wi‑Fi, Bluetooth, Ethernet ağı ve dahili NMEA 2000 desteği; dahili GPS ve yükseltilebilir yazılım özellikleri listelenir."
+      },
+      "search_terms": [
+        "XPLORE Wi-Fi",
+        "Bluetooth",
+        "NMEA 2000",
+        "Ethernet",
+        "GPS"
+      ],
+      "source": "https://www.denizkolik.com/xplore-10-cho-balik-bulucu 2026-08-28"
+    },
+    {
+      "id": "xplore_10_cho_compatibility",
+      "subject_id": "xplore_10_cho",
+      "category": "eligibility",
+      "value": {
+        "source_url": "https://www.denizkolik.com/xplore-10-cho-balik-bulucu",
+        "verified_at": "2026-08-28",
+        "stability": "stable_per_model"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "XPLORE 10 CHO sayfası Navionics haritaları; Minn Kota i‑Pilot Link, Talon/Raptor ve One‑Boat Network; MEGA Live, MEGA 360, NMEA 2000 ve radar gibi sistemlerle uyumluluk listeler. Kesin kurulum için mevcut cihaz sürümleri ve bağlantılar teyit edilmelidir."
+      },
+      "search_terms": [
+        "XPLORE uyumluluk",
+        "Navionics",
+        "i-Pilot Link",
+        "Talon",
+        "Raptor",
+        "MEGA Live",
+        "MEGA 360",
+        "One-Boat Network"
+      ],
+      "source": "https://www.denizkolik.com/xplore-10-cho-balik-bulucu 2026-08-28"
+    },
+    {
+      "id": "itlp_lifepo4_overview",
+      "subject_id": "itlp_lifepo4",
+      "category": "specification",
+      "value": {
+        "aliases": [
+          "ITLP",
+          "ITPL"
+        ],
+        "source_url": "https://www.denizkolik.com/iltp-battery",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Denizkolik'in resmî sayfalarında adı ITLP ve ITPL biçimlerinde geçen LiFePO4 akü ailesi; tekne, karavan, güneş enerjisi ve sanal çapa/trolling motor uygulamaları için tanıtılır. Doğru voltaj ve kapasite ürün bazında seçilmelidir."
+      },
+      "search_terms": [
+        "ITLP",
+        "ITPL",
+        "LiFePO4",
+        "lityum akü",
+        "trolling motor aküsü"
+      ],
+      "source": "https://www.denizkolik.com/iltp-battery verified 2026-08-28"
+    },
+    {
+      "id": "itlp_lifepo4_benefits",
+      "subject_id": "itlp_lifepo4",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/iltp-battery",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "ITLP/ITPL LiFePO4 sayfasında AGM'ye göre daha düşük ağırlık, yüksek kullanılabilir kapasite, uzun döngü ömrü, BMS koruması, IP65 koruma ve bazı modellerde Bluetooth izleme öne çıkarılır. Özellikler model bazında doğrulanmalıdır."
+      },
+      "search_terms": [
+        "LiFePO4 avantaj",
+        "AGM farkı",
+        "hafif akü",
+        "BMS",
+        "IP65",
+        "Bluetooth akü"
+      ],
+      "source": "https://www.denizkolik.com/iltp-battery verified 2026-08-28"
+    },
+    {
+      "id": "itlp_warranty",
+      "subject_id": "itlp_lifepo4",
+      "category": "support",
+      "value": {
+        "warranty_years": 3,
+        "source_url": "https://www.denizkolik.com/iltp-battery",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "ITLP/ITPL LiFePO4 tanıtım sayfası bu aküler için 3 yıl üretici garantisi belirtir. Bu bilgi yalnızca ilgili akü ailesi içindir; kesin model, kapsam ve garanti koşulları satın alma öncesinde teyit edilmelidir."
+      },
+      "search_terms": [
+        "ITLP garanti",
+        "ITPL garanti",
+        "LiFePO4 garanti",
+        "kaç yıl garanti"
+      ],
+      "source": "https://www.denizkolik.com/iltp-battery verified 2026-08-28"
+    },
+    {
+      "id": "itlp_charging",
+      "subject_id": "itlp_lifepo4",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/iltp-battery",
+        "verified_at": "2026-08-28",
+        "stability": "model_specific"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "LiFePO4 aküler uygun lityum şarj cihazı, uygun MPPT güneş regülatörü veya DC‑DC şarj cihazıyla şarj edilmelidir. Doğru voltaj ve akım seçimi akü modelinin teknik belgesine göre yapılmalıdır."
+      },
+      "search_terms": [
+        "LiFePO4 nasıl şarj edilir",
+        "lityum şarj cihazı",
+        "MPPT",
+        "DC-DC şarj"
+      ],
+      "source": "https://www.denizkolik.com/iltp-battery verified 2026-08-28"
+    },
+    {
+      "id": "itlp_cold_weather",
+      "subject_id": "itlp_lifepo4",
+      "category": "specification",
+      "value": {
+        "source_url": "https://www.denizkolik.com/iltp-battery",
+        "verified_at": "2026-08-28",
+        "stability": "model_specific"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Resmî LiFePO4 sayfası pillerin -20 °C'ye kadar deşarj olabildiğini, 0 °C altında şarjın önerilmediğini ve bazı modellerde dahili ısıtma bulunduğunu belirtir. Kesin sıcaklık sınırı ilgili modelden doğrulanmalıdır."
+      },
+      "search_terms": [
+        "soğuk hava",
+        "kışın akü",
+        "0 derece",
+        "eksi 20",
+        "dahili ısıtma"
+      ],
+      "source": "https://www.denizkolik.com/iltp-battery verified 2026-08-28"
+    },
+    {
+      "id": "technical_service_locations",
+      "subject_id": "company",
+      "category": "support",
+      "value": {
+        "source_url": "https://www.denizkolik.com/iletisim.aspx",
+        "verified_at": "2026-08-28",
+        "stability": "live_only"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Resmî iletişim sayfasında Antalya/Aksu; Muğla/Bodrum, Dalaman ve Fethiye; Edirne/İbrice Limanı ve Keşan; Hatay/Dörtyol; Çanakkale; İzmir/Karabağlar ve Aydın/Kuşadası için teknik servis noktaları listelenir. Güncel kapsam, adres ve telefonu iletişim sayfasından teyit edin."
+      },
+      "search_terms": [
+        "teknik servis",
+        "servis noktası",
+        "Antalya servis",
+        "Muğla servis",
+        "İzmir servis",
+        "Minn Kota servis"
+      ],
+      "source": "https://www.denizkolik.com/iletisim.aspx verified 2026-08-28"
+    },
+    {
+      "id": "contact_information",
+      "subject_id": "company",
+      "category": "support",
+      "value": {
+        "phone": "+90 216 622 44 00",
+        "whatsapp": "+90 532 597 70 45",
+        "email": "bilgi@inciteknoloji.com.tr",
+        "source_url": "https://www.denizkolik.com/iletisim.aspx",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Denizkolik iletişim: +90 216 622 44 00; WhatsApp/mobil: +90 532 597 70 45; e‑posta: bilgi@inciteknoloji.com.tr. Adres: Elmalıkent Mah. Atatürk Cad. B Blok No:28/A, 34764 Ümraniye/İstanbul."
+      },
+      "search_terms": [
+        "iletişim",
+        "telefon",
+        "WhatsApp",
+        "e-posta",
+        "mail",
+        "adres",
+        "mağaza nerede"
+      ],
+      "source": "https://www.denizkolik.com/iletisim.aspx verified 2026-08-28"
+    },
+    {
+      "id": "return_policy",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": {
+        "withdrawal_days": 14,
+        "source_url": "https://www.denizkolik.com/iptal-iade",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Resmî İptal ve İade Şartları sayfası, uygun tüketici işlemlerinde teslimden itibaren 14 gün içinde cayma hakkı bulunduğunu; ürünün kutu, ambalaj, fatura, standart aksesuar ve belgeleriyle eksiksiz ve hasarsız iade edilmesi gerektiğini belirtir. İstisnalar ve güncel koşullar: https://www.denizkolik.com/iptal-iade"
+      },
+      "search_terms": [
+        "iade",
+        "iptal",
+        "cayma hakkı",
+        "kaç gün içinde iade",
+        "14 gün"
+      ],
+      "source": "https://www.denizkolik.com/iptal-iade verified 2026-08-28"
+    },
+    {
+      "id": "delivery_policy",
+      "subject_id": "company",
+      "category": "delivery",
+      "value": {
+        "legal_upper_bound_days": 30,
+        "freight_default": "buyer unless otherwise stated",
+        "source_url": "https://www.denizkolik.com/iptal-iade",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Resmî politika, teslimatın 30 günlük yasal üst sınırı aşmamasını ve aksi belirtilmedikçe sevkiyat masrafının alıcıya ait olduğunu belirtir. Bu 30 gün gerçek teslimat tahmini değildir; ürün bazlı stok, kargo ve teslim tarihi sipariş öncesinde teyit edilmelidir."
+      },
+      "search_terms": [
+        "teslimat",
+        "kargo",
+        "kaç günde gelir",
+        "ne zaman gelir",
+        "kargo kime ait",
+        "yarın gelir mi"
+      ],
+      "source": "https://www.denizkolik.com/iptal-iade verified 2026-08-28"
+    },
+    {
+      "id": "privacy_policy",
+      "subject_id": "company",
+      "category": "support",
+      "value": {
+        "source_url": "https://www.denizkolik.com/kvkk",
+        "privacy_url": "https://www.denizkolik.com/gizlilik-politikasi",
+        "verified_at": "2026-08-28",
+        "stability": "medium"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Denizkolik'in KVKK metni veri sorumlusu, işlenen veri türleri, amaçlar ve hakları; Gizlilik ve Güvenlik Politikası ise üyelik, çerez, kart güvenliği ve üçüncü taraf bağlantıları açıklar. KVKK: https://www.denizkolik.com/kvkk — Gizlilik: https://www.denizkolik.com/gizlilik-politikasi"
+      },
+      "search_terms": [
+        "KVKK",
+        "gizlilik politikası",
+        "kişisel veri",
+        "çerez",
+        "veri güvenliği"
+      ],
+      "source": "Denizkolik KVKK/privacy pages verified 2026-08-28"
+    },
+    {
+      "id": "payment_safety",
+      "subject_id": "company",
+      "category": "support",
+      "value": {
+        "source_url": "https://www.denizkolik.com/gizlilik-politikasi",
+        "verified_at": "2026-08-28",
+        "stability": "medium",
+        "bank_details_included": false
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Gizlilik ve Güvenlik Politikası, çevrimiçi kredi kartı bilgilerinin Denizkolik sisteminde saklanmadığını ve ödeme sırasında bankaya şifreli iletildiğini belirtir. Mail‑order işlemlerinin veri saklama koşulları farklıdır; güncel ödeme ve banka bilgileri yalnızca resmî iletişim/ödeme sayfasından teyit edilmelidir."
+      },
+      "search_terms": [
+        "ödeme güvenli mi",
+        "kredi kartı",
+        "kart bilgisi saklanıyor mu",
+        "mail order",
+        "havale",
+        "taksit"
+      ],
+      "source": "https://www.denizkolik.com/gizlilik-politikasi 2026-08-28"
+    },
+    {
+      "id": "current_price_policy",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": {
+        "source_url": "https://www.denizkolik.com/",
+        "verified_at": "2026-08-28",
+        "stability": "live_only",
+        "static_prices_allowed": false
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Fiyatlar, döviz karşılıkları, KDV, kampanyalar ve taksit seçenekleri değişebilir. Güncel tutar yalnızca ilgili ürün sayfasından veya Denizkolik satış ekibinden teyit edilmelidir; 0,00 görünen bir ürün ücretsiz kabul edilmez."
+      },
+      "search_terms": [
+        "fiyat",
+        "kaç TL",
+        "kaç para",
+        "ücret",
+        "maliyet",
+        "indirim",
+        "kampanya",
+        "taksit"
+      ],
+      "source": "Denizkolik live commerce policy verified 2026-08-28"
+    },
+    {
+      "id": "current_stock_policy",
+      "subject_id": "company",
+      "category": "availability",
+      "value": {
+        "source_url": "https://www.denizkolik.com/",
+        "verified_at": "2026-08-28",
+        "stability": "live_only",
+        "static_stock_allowed": false
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Stok durumu ürün ve varyanta göre değişir. Güncel stok, kritik stok, telefonla sipariş veya yeniden temin durumu ilgili ürün sayfasından ya da Denizkolik müşteri hizmetlerinden teyit edilmelidir."
+      },
+      "search_terms": [
+        "stok",
+        "stokta mı",
+        "elde var mı",
+        "mevcut mu",
+        "kritik stok",
+        "telefonla sipariş"
+      ],
+      "source": "Denizkolik live commerce policy verified 2026-08-28"
+    },
+    {
+      "id": "quote_product_question",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": {
+        "purpose": "sales_intake",
+        "verified_at": "2026-08-28",
+        "stability": "stable"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Satış öncesi yönlendirme için ilgilendiğiniz ürün veya kategori ile varsa marka ve model adını paylaşır mısınız?"
+      },
+      "search_terms": [
+        "teklif",
+        "fiyat teklifi",
+        "satın almak istiyorum",
+        "ürün arıyorum"
+      ],
+      "source": "Denizkolik test sales intake policy 2026-08-28"
+    },
+    {
+      "id": "quote_use_case_question",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": {
+        "purpose": "sales_intake",
+        "verified_at": "2026-08-28",
+        "stability": "stable"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Ürünü hangi amaçla, hangi tekne veya sistemde kullanacağınızı ve önceliğinizin ne olduğunu paylaşır mısınız?"
+      },
+      "search_terms": [
+        "kullanım amacı",
+        "tekne tipi",
+        "hangi sistem",
+        "ne için kullanacağım"
+      ],
+      "source": "Denizkolik test sales intake policy 2026-08-28"
+    },
+    {
+      "id": "quote_technical_requirements_question",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": {
+        "purpose": "sales_intake",
+        "verified_at": "2026-08-28",
+        "stability": "stable"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Varsa tekne boyu ve tipi, mevcut cihaz/motor modeli, elektrik sistemi voltajı, akü kapasitesi ve bağlantı bilgilerini paylaşır mısınız?"
+      },
+      "search_terms": [
+        "teknik bilgi",
+        "voltaj",
+        "akü kapasitesi",
+        "tekne boyu",
+        "cihaz modeli"
+      ],
+      "source": "Denizkolik test sales intake policy 2026-08-28"
+    },
+    {
+      "id": "quote_contact_question",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": {
+        "purpose": "sales_intake",
+        "verified_at": "2026-08-28",
+        "stability": "stable"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Satış ekibinin dönüş yapabilmesi için adınızı ve tercih ettiğiniz iletişim kanalını paylaşır mısınız?"
+      },
+      "search_terms": [
+        "beni arayın",
+        "geri dönüş",
+        "satış ekibi ulaşsın",
+        "iletişim bırakmak"
+      ],
+      "source": "Denizkolik test sales intake policy 2026-08-28"
+    },
+    {
+      "id": "final_suitability_handoff",
+      "subject_id": "company",
+      "category": "eligibility",
+      "value": {
+        "purpose": "technical_review",
+        "verified_at": "2026-08-28",
+        "stability": "stable"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Nihai ürün, montaj ve sistem uyumluluğu; tekne, mevcut ekipman ve elektrik sistemi bilgileri üzerinden Denizkolik teknik ekibi tarafından doğrulanmalıdır. Bot kesin ürün seçimi veya kurulum onayı vermez."
+      },
+      "search_terms": [
+        "buna uyar mı",
+        "tekneye uygun mu",
+        "kesin uyumlu",
+        "hangi ürünü almalıyım",
+        "montaj olur mu"
+      ],
+      "source": "Denizkolik test technical review policy 2026-08-28"
+    },
+    {
+      "id": "catalog_freshness_policy",
+      "subject_id": "company",
+      "category": "other",
+      "value": {
+        "sitemap_url": "https://www.denizkolik.com/sitemap.xml",
+        "verified_at": "2026-08-28",
+        "stability": "internal_sync_policy",
+        "promotion_rule": "normalized content hash must change; sitemap lastmod alone is insufficient"
+      },
+      "customer_visible": false,
+      "source": "Denizkolik sitemap behavior observed 2026-08-28"
+    },
+    {
+      "id": "banking_details_live_only",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": {
+        "source_url": "https://www.denizkolik.com/iletisim.aspx",
+        "verified_at": "2026-08-28",
+        "stability": "live_only",
+        "expose_static_iban": false
+      },
+      "customer_visible": false,
+      "source": "Denizkolik banking safety policy 2026-08-28"
+    }
+  ],
+  "customer_profiles": [
+    {
+      "id": "sales_request",
+      "applies_to": [
+        "person",
+        "organization"
+      ],
+      "fields": [
+        {
+          "id": "contact_name",
+          "type": "string",
+          "required": false,
+          "allowed_values": []
+        },
+        {
+          "id": "phone",
+          "type": "string",
+          "required": false,
+          "allowed_values": []
+        },
+        {
+          "id": "requested_product",
+          "type": "string",
+          "required": true,
+          "allowed_values": []
+        },
+        {
+          "id": "brand_model",
+          "type": "string",
+          "required": false,
+          "allowed_values": []
+        },
+        {
+          "id": "intended_use",
+          "type": "string",
+          "required": true,
+          "allowed_values": []
+        },
+        {
+          "id": "boat_type",
+          "type": "string",
+          "required": false,
+          "allowed_values": []
+        },
+        {
+          "id": "system_voltage",
+          "type": "number",
+          "required": false,
+          "allowed_values": []
+        },
+        {
+          "id": "quantity",
+          "type": "integer",
+          "required": false,
+          "allowed_values": []
+        },
+        {
+          "id": "delivery_location",
+          "type": "string",
+          "required": false,
+          "allowed_values": []
+        }
+      ]
+    }
+  ],
+  "processes": [
+    {
+      "id": "sales_inquiry",
+      "states": [
+        "new",
+        "category_identified",
+        "product_identified",
+        "requirements_collected",
+        "ready_for_handoff"
+      ],
+      "initial_state": "new",
+      "allowed_actions": [
+        "ask_category",
+        "ask_product",
+        "ask_requirements",
+        "ask_contact",
+        "handoff_sales"
+      ],
+      "transitions": [
+        {
+          "from_state": "new",
+          "event": "category_identified",
+          "to_state": "category_identified",
+          "action": "ask_product"
+        },
+        {
+          "from_state": "category_identified",
+          "event": "product_identified",
+          "to_state": "product_identified",
+          "action": "ask_requirements"
+        },
+        {
+          "from_state": "product_identified",
+          "event": "requirements_received",
+          "to_state": "requirements_collected",
+          "action": "ask_contact"
+        },
+        {
+          "from_state": "requirements_collected",
+          "event": "contact_received",
+          "to_state": "ready_for_handoff",
+          "action": "handoff_sales"
+        }
+      ]
+    }
+  ],
+  "policies": [
+    {
+      "id": "current_price_from_live_source",
+      "when": [
+        {
+          "field": "intent",
+          "operator": "equals",
+          "value": "price"
+        }
+      ],
+      "effect": "use_template",
+      "template_fact_id": "current_price_policy"
+    },
+    {
+      "id": "current_stock_from_live_source",
+      "when": [
+        {
+          "field": "intent",
+          "operator": "equals",
+          "value": "stock"
+        }
+      ],
+      "effect": "use_template",
+      "template_fact_id": "current_stock_policy"
+    },
+    {
+      "id": "final_selection_technical_review",
+      "when": [
+        {
+          "field": "intent",
+          "operator": "equals",
+          "value": "final_product_selection"
+        }
+      ],
+      "effect": "use_template",
+      "template_fact_id": "final_suitability_handoff"
+    }
+  ],
+  "agent": {
+    "response_mode": "strict",
+    "purposes": [
+      "information",
+      "lead_capture",
+      "sales",
+      "support"
+    ],
+    "supported_locales": [
+      "tr"
+    ],
+    "default_locale": "tr",
+    "max_characters": 1200,
+    "require_fact_ids_for_claims": true,
+    "unknown_fact_action": "handoff",
+    "handoff_fact_id": "contact_information",
+    "semantic_fallback_fact_ids": [
+      "conversation_greeting",
+      "conversation_wellbeing",
+      "conversation_positive_mood",
+      "conversation_gratitude",
+      "conversation_acknowledgement",
+      "conversation_vague_help",
+      "conversation_empathy",
+      "conversation_assistant_identity",
+      "conversation_off_topic",
+      "conversation_farewell",
+      "conversation_respectful_boundary",
+      "conversation_apology",
+      "conversation_casual_chat",
+      "conversation_confusion",
+      "conversation_correction",
+      "conversation_disinterest",
+      "conversation_indecision",
+      "conversation_waiting"
+    ],
+    "starter_trigger_fact_ids": [
+      "welcome",
+      "conversation_greeting",
+      "conversation_wellbeing",
+      "conversation_positive_mood",
+      "conversation_gratitude",
+      "conversation_acknowledgement",
+      "conversation_vague_help",
+      "conversation_assistant_identity",
+      "conversation_off_topic",
+      "conversation_casual_chat"
+    ],
+    "starter_actions": [
+      {
+        "fact_id": "all_product_groups",
+        "display_names": {
+          "tr": "Ürünleri göster"
+        }
+      },
+      {
+        "fact_id": "company_overview",
+        "display_names": {
+          "tr": "Şirketi tanı"
+        }
+      },
+      {
+        "fact_id": "quote_product_question",
+        "display_names": {
+          "tr": "Satış desteği"
+        }
+      }
+    ]
+  },
+  "modules": []
+}

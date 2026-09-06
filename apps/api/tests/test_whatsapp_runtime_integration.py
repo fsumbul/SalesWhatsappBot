@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 """Postgres-backed integration coverage for the production WhatsApp runtime.
 
 These tests intentionally exercise the real RLS policies, durable runtime-job
@@ -12,7 +13,8 @@ import hashlib
 import hmac
 import json
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -29,7 +31,13 @@ from scripts.bootstrap_arti_kasnak_agent import _reconcile
 from src.core.config import get_settings
 from src.core.db import dispose_engine, get_sessionmaker, session_scope
 from src.integrations.whatsapp import WhatsAppClient
-from src.modules.agents.company_config import CompanyAgentConfig
+from src.modules.agents.company_config import CompanyAgentConfig, MediaAsset
+from src.modules.agents.company_runtime import (
+    CustomerReplyAction,
+    RuntimeInteraction,
+    RuntimeInteractionKind,
+    RuntimeTurn,
+)
 from src.modules.agents.models import Agent, AgentVersion, AgentVersionStatus
 from src.modules.agents.runtime_models import AgentRuntimeJob, AgentRuntimeJobStatus
 from src.modules.auth.models import Tenant, TenantStatus, User, UserRole
@@ -54,6 +62,187 @@ from tests.conftest import TEST_DATABASE_URL
 _APP_SECRET = "runtime-integration-app-secret"
 _WABA_ID = "runtime-integration-waba"
 _PHONE_NUMBER_ID = "runtime-integration-phone"
+
+
+def test_runtime_context_accepts_only_matching_server_owned_reply_metadata() -> None:
+    version_id = uuid4()
+    message = SimpleNamespace(
+        direction=MessageDirection.OUTBOUND,
+        raw={
+            "runtime_job_id": str(uuid4()),
+            "agent_version_id": str(version_id),
+            "action": "reply",
+            "fact_ids": ["palanga_pulley_details", "cast_pulley_performance"],
+        },
+    )
+
+    assert runtime_worker._trusted_runtime_context_fact_ids(
+        message,
+        agent_version_id=version_id,
+    ) == ("palanga_pulley_details", "cast_pulley_performance")
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {},
+        {"runtime_job_id": "job", "action": "reply", "fact_ids": ["fact"]},
+        {
+            "runtime_job_id": "job",
+            "agent_version_id": "different-version",
+            "action": "reply",
+            "fact_ids": ["fact"],
+        },
+        {
+            "runtime_job_id": "job",
+            "agent_version_id": "VERSION",
+            "action": "handoff",
+            "fact_ids": ["fact"],
+        },
+        {
+            "runtime_job_id": "job",
+            "agent_version_id": "VERSION",
+            "action": "reply",
+            "fact_ids": ["fact", "fact"],
+        },
+    ],
+)
+def test_runtime_context_rejects_manual_stale_or_malformed_metadata(
+    raw: dict[str, object],
+) -> None:
+    version_id = uuid4()
+    normalized_raw = {
+        key: (str(version_id) if value == "VERSION" else value)
+        for key, value in raw.items()
+    }
+    message = SimpleNamespace(
+        direction=MessageDirection.OUTBOUND,
+        raw=normalized_raw,
+    )
+
+    assert runtime_worker._trusted_runtime_context_fact_ids(
+        message,
+        agent_version_id=version_id,
+    ) == ()
+
+
+async def test_runtime_worker_dispatches_planned_cta_as_one_meta_post(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, str, str, str]] = []
+
+    async def send_cta(
+        _client: WhatsAppClient,
+        to: str,
+        body: str,
+        *,
+        button_text: str,
+        url: str,
+    ) -> dict[str, list[dict[str, str]]]:
+        calls.append((to, body, button_text, url))
+        return {"messages": [{"id": "wamid.interactive"}]}
+
+    monkeypatch.setattr(WhatsAppClient, "send_cta_url_once", send_cta)
+    turn = RuntimeTurn(
+        action=CustomerReplyAction.REPLY,
+        reply="Palanga kasnağı bilgisi",
+        fact_ids=("palanga_pulley_details",),
+        interaction=RuntimeInteraction(
+            kind=RuntimeInteractionKind.CTA_URL,
+            button_text="Ürünü incele",
+            url="https://www.artikasnak.com/asansor-kasnagi",
+        ),
+    )
+
+    response, transport_type = await runtime_worker._send_runtime_turn_once(
+        "+905321112233",
+        turn,
+    )
+
+    assert response["messages"][0]["id"] == "wamid.interactive"
+    assert transport_type == "interactive:cta_url"
+    assert calls == [
+        (
+            "+905321112233",
+            "Palanga kasnağı bilgisi",
+            "Ürünü incele",
+            "https://www.artikasnak.com/asansor-kasnagi",
+        )
+    ]
+
+
+async def test_runtime_worker_dispatches_session_image_header_in_one_meta_post(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    async def send_cta(
+        _client: WhatsAppClient,
+        to: str,
+        body: str,
+        *,
+        button_text: str,
+        url: str,
+        header_media: dict[str, str],
+    ) -> dict[str, list[dict[str, str]]]:
+        calls.append(
+            {
+                "to": to,
+                "body": body,
+                "button_text": button_text,
+                "url": url,
+                "header_media": header_media,
+            }
+        )
+        return {"messages": [{"id": "wamid.image-header"}]}
+
+    monkeypatch.setattr(WhatsAppClient, "send_cta_url_once", send_cta)
+    turn = RuntimeTurn(
+        action=CustomerReplyAction.REPLY,
+        reply="Captormal plastik asansör kasnağı bilgisi",
+        fact_ids=("plastic_pulley_performance",),
+        interaction=RuntimeInteraction(
+            kind=RuntimeInteractionKind.CTA_URL,
+            button_text="Ürünü incele",
+            url="https://www.artikasnak.com/urunler/captormal-asansor-kasnagi",
+            header_media=MediaAsset(
+                id="captormal-elevator-image",
+                kind="image",
+                url=(
+                    "https://api.ashiraai.com/media/arti-kasnak/"
+                    "captormal-elevator.jpg"
+                ),
+                mime_type="image/jpeg",
+                size_bytes=90083,
+                provenance="official product page",
+            ),
+        ),
+    )
+
+    response, transport_type = await runtime_worker._send_runtime_turn_once(
+        "+905321112233",
+        turn,
+    )
+
+    assert response["messages"][0]["id"] == "wamid.image-header"
+    assert transport_type == "interactive:cta_url"
+    assert calls == [
+        {
+            "to": "+905321112233",
+            "body": "Captormal plastik asansör kasnağı bilgisi",
+            "button_text": "Ürünü incele",
+            "url": "https://www.artikasnak.com/urunler/captormal-asansor-kasnagi",
+            "header_media": {
+                "kind": "image",
+                "link": (
+                    "https://api.ashiraai.com/media/arti-kasnak/"
+                    "captormal-elevator.jpg"
+                ),
+                "mime_type": "image/jpeg",
+                "size_bytes": "90083",
+            },
+        }
+    ]
 
 
 async def _db_reachable(session: AsyncSession) -> bool:
@@ -111,7 +300,7 @@ def _runtime_company_config() -> dict[str, object]:
         "lifecycle": "approved",
         "organization": {
             "id": "company",
-            "display_names": {"tr-TR": "Artı Kasnak Test"},  # noqa: RUF001
+            "display_names": {"tr-TR": "Artı Kasnak Test"},
         },
         "agent": {
             "purposes": ["sales"],
@@ -150,7 +339,7 @@ async def _seed_runtime_tenant(*, with_agent: bool = False) -> tuple[UUID, UUID 
             )
             agent = Agent(
                 tenant_id=tenant_id,
-                name="Artı Kasnak",  # noqa: RUF001
+                name="Artı Kasnak",
                 slug="arti-kasnak",
                 is_active=True,
             )
@@ -255,6 +444,190 @@ async def _create_inbound_job(tenant_id: UUID, wa_message_id: str) -> tuple[UUID
         conversation_id = job.conversation_id
         await session.commit()
     return job_ids[0], conversation_id
+
+
+@pytest.mark.parametrize(
+    "barrier_type",
+    [
+        MessageType.TEXT,
+        MessageType.TEMPLATE,
+        MessageType.IMAGE,
+        MessageType.DOCUMENT,
+    ],
+)
+async def test_latest_outbound_of_any_type_blocks_stale_bot_context(
+    runtime_database: None,
+    barrier_type: MessageType,
+) -> None:
+    tenant_id, _ = await _seed_runtime_tenant(with_agent=True)
+    job_id, conversation_id = await _create_inbound_job(
+        tenant_id,
+        f"wamid.context-barrier-{barrier_type.value}",
+    )
+
+    async with session_scope(tenant_id) as session:
+        job = await session.get(AgentRuntimeJob, job_id)
+        version = await session.scalar(
+            select(AgentVersion).where(AgentVersion.tenant_id == tenant_id)
+        )
+        assert job is not None
+        assert version is not None
+        current = await session.get(Message, job.inbound_message_id)
+        assert current is not None
+
+        previous_bot = Message(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            direction=MessageDirection.OUTBOUND,
+            message_type=MessageType.TEXT,
+            body="Palanga kasnağı bilgisi",
+            wa_message_id=f"wamid.old-bot-{barrier_type.value}",
+            raw={
+                "runtime_job_id": str(job_id),
+                "agent_version_id": str(version.id),
+                "action": CustomerReplyAction.REPLY.value,
+                "fact_ids": ["palanga_pulley_details"],
+            },
+            created_at=current.created_at - timedelta(minutes=2),
+        )
+        latest_outbound = Message(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            direction=MessageDirection.OUTBOUND,
+            message_type=barrier_type,
+            body="Temsilci veya kampanya mesajı",
+            wa_message_id=f"wamid.latest-barrier-{barrier_type.value}",
+            raw={"manual_or_campaign": True},
+            created_at=current.created_at - timedelta(minutes=1),
+        )
+        session.add_all([previous_bot, latest_outbound])
+        await session.flush()
+
+        history, context_fact_ids = await runtime_worker._conversation_history_with_context(
+            session,
+            conversation_id,
+            current,
+            agent_version_id=version.id,
+        )
+
+    assert context_fact_ids == ()
+    assert any(message.content == "Palanga kasnağı bilgisi" for message in history)
+    barrier_body_in_history = any(
+        message.content == "Temsilci veya kampanya mesajı" for message in history
+    )
+    if barrier_type == MessageType.TEXT:
+        assert barrier_body_in_history
+    else:
+        assert not barrier_body_in_history
+
+
+async def test_quoted_bot_turn_overrides_a_newer_non_text_context_barrier(
+    runtime_database: None,
+) -> None:
+    tenant_id, _ = await _seed_runtime_tenant(with_agent=True)
+    job_id, conversation_id = await _create_inbound_job(
+        tenant_id,
+        "wamid.context-quoted-current",
+    )
+
+    async with session_scope(tenant_id) as session:
+        job = await session.get(AgentRuntimeJob, job_id)
+        version = await session.scalar(
+            select(AgentVersion).where(AgentVersion.tenant_id == tenant_id)
+        )
+        assert job is not None
+        assert version is not None
+        current = await session.get(Message, job.inbound_message_id)
+        assert current is not None
+
+        quoted_bot = Message(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            direction=MessageDirection.OUTBOUND,
+            message_type=MessageType.TEXT,
+            body="Palanga kasnağı bilgisi",
+            wa_message_id="wamid.context-quoted-bot",
+            raw={
+                "runtime_job_id": str(job_id),
+                "agent_version_id": str(version.id),
+                "action": CustomerReplyAction.REPLY.value,
+                "fact_ids": ["palanga_pulley_details"],
+            },
+            created_at=current.created_at - timedelta(minutes=2),
+        )
+        newer_template = Message(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            direction=MessageDirection.OUTBOUND,
+            message_type=MessageType.TEMPLATE,
+            body="Yeni kampanya mesajı",
+            wa_message_id="wamid.context-newer-template",
+            raw={"campaign": True},
+            created_at=current.created_at - timedelta(minutes=1),
+        )
+        session.add_all([quoted_bot, newer_template])
+        await session.flush()
+        current.raw = {
+            **(current.raw or {}),
+            "context": {"id": quoted_bot.wa_message_id},
+        }
+        await session.flush()
+
+        _, context_fact_ids = await runtime_worker._conversation_history_with_context(
+            session,
+            conversation_id,
+            current,
+            agent_version_id=version.id,
+        )
+
+    assert context_fact_ids == ("palanga_pulley_details",)
+
+
+async def test_conversation_history_is_bounded_to_recent_messages_and_characters(
+    runtime_database: None,
+) -> None:
+    tenant_id, _ = await _seed_runtime_tenant(with_agent=True)
+    job_id, conversation_id = await _create_inbound_job(
+        tenant_id,
+        "wamid.context-history-current",
+    )
+
+    async with session_scope(tenant_id) as session:
+        job = await session.get(AgentRuntimeJob, job_id)
+        version = await session.scalar(
+            select(AgentVersion).where(AgentVersion.tenant_id == tenant_id)
+        )
+        assert job is not None
+        assert version is not None
+        current = await session.get(Message, job.inbound_message_id)
+        assert current is not None
+
+        for index in range(10):
+            session.add(
+                Message(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    direction=MessageDirection.INBOUND,
+                    message_type=MessageType.TEXT,
+                    body=f"message-{index}:".ljust(500, str(index)),
+                    raw={},
+                    created_at=current.created_at - timedelta(seconds=10 - index),
+                )
+            )
+        await session.flush()
+
+        history, context_fact_ids = await runtime_worker._conversation_history_with_context(
+            session,
+            conversation_id,
+            current,
+            agent_version_id=version.id,
+        )
+
+    assert context_fact_ids == ()
+    assert len(history) == 6
+    assert sum(len(message.content) for message in history) == 3000
+    assert history[0].content.startswith("message-4:")
+    assert history[-1].content.startswith("message-9:")
 
 
 async def _create_outreach_job(
@@ -673,7 +1046,7 @@ async def test_handoff_pauses_new_jobs_until_manual_inbox_reply_resolves_it(
                     "from": "905321112233",
                     "id": "wamid.integration-handoff-two",
                     "type": "text",
-                    "text": {"body": "Orada mısınız?"},  # noqa: RUF001
+                    "text": {"body": "Orada mısınız?"},
                 }
             ],
         )
@@ -707,6 +1080,65 @@ async def test_handoff_pauses_new_jobs_until_manual_inbox_reply_resolves_it(
     assert len(resumed_job_ids) == 1
 
 
+async def test_new_inbound_auto_resolves_handoff_when_no_active_reviewer(
+    runtime_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tenant_id, owner_id = await _seed_runtime_tenant(with_agent=True)
+    assert owner_id is not None
+    job_id, _ = await _create_inbound_job(
+        tenant_id, "wamid.integration-handoff-no-reviewer-one"
+    )
+    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda: _HandoffLLM())
+
+    async def send_success(
+        _client: WhatsAppClient,
+        _to: str,
+        _body: str,
+        _preview_url: bool = False,
+    ) -> dict[str, list[dict[str, str]]]:
+        return {"messages": [{"id": "wamid.integration-handoff-no-reviewer-reply"}]}
+
+    monkeypatch.setattr(WhatsAppClient, "send_text_once", send_success)
+    result = await runtime_worker._process_runtime_job(tenant_id, job_id)
+    assert result["status"] == AgentRuntimeJobStatus.HANDOFF.value
+
+    async with session_scope(tenant_id) as session:
+        owner = await session.get(User, owner_id)
+        assert owner is not None
+        owner.is_active = False
+        await session.commit()
+
+    async with session_scope(tenant_id) as session:
+        resumed_job_ids = await _handle_messages(
+            session,
+            tenant_id,
+            [
+                {
+                    "from": "905321112233",
+                    "id": "wamid.integration-handoff-no-reviewer-two",
+                    "type": "text",
+                    "text": {"body": "Merhaba"},
+                }
+            ],
+        )
+        await session.commit()
+    assert len(resumed_job_ids) == 1
+
+    async with session_scope(tenant_id) as session:
+        resolved = await session.get(AgentRuntimeJob, job_id)
+        resumed = await session.get(AgentRuntimeJob, resumed_job_ids[0])
+        assert resolved is not None
+        assert resolved.status == AgentRuntimeJobStatus.RESOLVED.value
+        assert resolved.audit["manual_review_required"] is False
+        assert resolved.audit["auto_resolved_without_human_reviewer"] is True
+        assert resolved.audit["auto_resolution_reason"] == (
+            "new inbound received without active reviewer"
+        )
+        assert resumed is not None
+        assert resumed.status == AgentRuntimeJobStatus.PENDING.value
+
+
 async def test_typing_indicator_failure_is_best_effort(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -716,6 +1148,42 @@ async def test_typing_indicator_failure_is_best_effort(
     monkeypatch.setattr(WhatsAppClient, "send_typing_indicator", typing_failure)
 
     assert await runtime_worker._send_typing_indicator_best_effort("wamid.inbound-timeout") is False
+
+
+async def test_typing_indicator_is_refreshed_until_model_reply_is_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    second_indicator_sent = asyncio.Event()
+    indicator_calls = 0
+
+    async def typing_success(_client: WhatsAppClient, _message_id: str) -> dict[str, bool]:
+        nonlocal indicator_calls
+        indicator_calls += 1
+        if indicator_calls >= 2:
+            second_indicator_sent.set()
+        return {"success": True}
+
+    monkeypatch.setattr(runtime_worker, "_TYPING_INDICATOR_REFRESH_SECONDS", 0.01)
+    monkeypatch.setattr(WhatsAppClient, "send_typing_indicator", typing_success)
+
+    stats = {"attempts": 1, "successes": 1, "refreshes": 0}
+    refresh_task = asyncio.create_task(
+        runtime_worker._refresh_typing_indicator("wamid.inbound-refresh", stats)
+    )
+    await asyncio.wait_for(second_indicator_sent.wait(), timeout=5)
+    refresh_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await refresh_task
+    calls_at_completion = indicator_calls
+    await asyncio.sleep(0.03)
+
+    assert calls_at_completion >= 2
+    assert indicator_calls == calls_at_completion
+    assert stats == {
+        "attempts": calls_at_completion + 1,
+        "successes": calls_at_completion + 1,
+        "refreshes": calls_at_completion,
+    }
 
 
 async def test_ambiguous_meta_post_is_attempted_once_and_requires_manual_review(
@@ -870,6 +1338,46 @@ async def test_stop_during_model_call_terminalizes_all_jobs_before_meta_post(
         assert customer_visible_outbound == 0
 
 
+async def test_product_specific_disinterest_does_not_create_a_global_opt_out(
+    runtime_database: None,
+) -> None:
+    tenant_id, _ = await _seed_runtime_tenant()
+
+    async with session_scope(tenant_id) as session:
+        job_ids = await _handle_messages(
+            session,
+            tenant_id,
+            [
+                {
+                    "from": "905321112233",
+                    "id": "wamid.integration-product-disinterest",
+                    "type": "text",
+                    "text": {
+                        "body": (
+                            "Palanga kasnağıyla ilgilenmiyorum, "
+                            "diğer ürünleri göster"
+                        )
+                    },
+                }
+            ],
+        )
+        await session.commit()
+
+    assert len(job_ids) == 1
+    async with session_scope(tenant_id) as session:
+        opt_outs = await session.scalar(
+            select(func.count(OptOut.id)).where(
+                OptOut.tenant_id == tenant_id,
+                OptOut.phone_e164 == "+905321112233",
+            )
+        )
+        job = await session.get(AgentRuntimeJob, job_ids[0])
+
+    assert opt_outs == 0
+    assert job is not None
+    assert job.status == AgentRuntimeJobStatus.PENDING.value
+
+
 async def test_rapid_inbound_turns_are_ordered_and_coalesced_to_one_reply(
     runtime_database: None,
     monkeypatch: pytest.MonkeyPatch,
@@ -884,7 +1392,7 @@ async def test_rapid_inbound_turns_are_ordered_and_coalesced_to_one_reply(
                     "from": "905321112233",
                     "id": "wamid.integration-burst-one",
                     "type": "text",
-                    "text": {"body": "Bir ürün soracağım."},  # noqa: RUF001
+                    "text": {"body": "Bir ürün soracağım."},
                 },
                 {
                     "from": "905321112233",

@@ -1,0 +1,18 @@
+[Unit]
+Description=Ashiraai loopback reverse tunnel to local llama.cpp
+After=network.target ashiraai-llamacpp.service
+Wants=network.target ashiraai-llamacpp.service
+
+[Service]
+Type=simple
+User=binc
+ExecStart=/usr/bin/ssh -NT -i /home/binc/.ssh/ashiraai_ollama_tunnel_ed25519 -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=1 -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/home/binc/.ssh/ashiraai_ollama_known_hosts -R 127.0.0.1:11435:127.0.0.1:11435 ollama_tunnel@94.73.180.208
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

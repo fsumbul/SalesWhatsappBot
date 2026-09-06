@@ -1,6 +1,7 @@
 """FastAPI application entrypoint."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
 
@@ -8,6 +9,7 @@ import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src import models_registry  # noqa: F401 - populates Base.metadata
@@ -73,6 +75,12 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Meta retrieves session-message media from a public HTTPS URL. Keep the
+    # files deployment-owned and immutable so a customer reply never depends
+    # on scraping or hot-linking a mutable product page at send time.
+    media_directory = Path(__file__).resolve().parents[1] / "public" / "media"
+    app.mount("/media", StaticFiles(directory=media_directory), name="media")
 
     # DBSessionDep opens its session (and sets the RLS `app.current_tenant`
     # GUC) from `request.state.tenant_id`. FastAPI resolves sibling

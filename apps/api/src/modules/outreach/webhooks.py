@@ -17,7 +17,7 @@ from src.core.config import get_settings
 from src.core.db import session_scope, set_tenant_context
 from src.integrations.whatsapp import WhatsAppClient
 from src.modules.agents.runtime_models import AgentRuntimeJob, AgentRuntimeJobStatus
-from src.modules.auth.models import Tenant, TenantStatus
+from src.modules.auth.models import Tenant, TenantStatus, User
 from src.modules.compliance.models import OptOut, OptOutSource
 from src.modules.discovery.models import (
     ConsentStatus,
@@ -41,8 +41,29 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["webhooks"])
 
 _OPT_OUT_RE = re.compile(
-    r"^\s*(stop|dur|i̇stemi?yorum|istemiyorum|unsubscribe|stopp|الإلغاء|стоп)\s*$",
-    re.IGNORECASE,
+    r"""
+    ^\s*(?:
+        stop
+        | dur
+        | istemiyorum
+        | ilgilenmiyorum
+        | unsubscribe
+        | stopp
+        | الإلغاء
+        | стоп
+        | (?:(?:art\u0131k|artik)\s+)?(?:bana\s+)?mesaj(?:lar[\u0131i])?\s+
+          (?:almak\s+)?istemiyorum
+        | (?:(?:art\u0131k|artik)\s+)?(?:bana\s+)?(?:bir\s+daha\s+)?mesaj\s+
+          (?:atma(?:y[\u0131i]n)?|g[öo]nderme(?:y[\u0131i]n)?)
+        | (?:bana\s+)?bir\s+daha\s+yazma(?:y[\u0131i]n)?
+        | beni\s+(?:mesaj\s+)?liste(?:niz)?den\s+(?:ç\u0131kar|cikar)(?:[\u0131i]n)?
+        | abonelikten\s+(?:ç\u0131kar|cikar)(?:[\u0131i]n)?
+        | pazarlama\s+(?:mesaj[\u0131i]|iletişim(?:i)?|iletisim(?:i)?)\s+istemiyorum
+        | (?:art\u0131k|artik)\s+(?:iletişim|iletisim)\s+istemiyorum
+        | (?:beni\s+)?rahats[\u0131i]z\s+etme(?:y[\u0131i]n)?
+    )\s*$
+    """,
+    re.IGNORECASE | re.VERBOSE,
 )
 
 _DELIVERY_SUCCESS_RANK = {"sent": 1, "delivered": 2, "read": 3}
@@ -511,29 +532,58 @@ async def _handle_messages(
             continue
 
         if body and contact.consent_status != ConsentStatus.OPT_OUT:
-            blocking_handoff = (
-                await session.execute(
-                    select(AgentRuntimeJob.id)
-                    .where(
-                        AgentRuntimeJob.tenant_id == tenant_id,
-                        AgentRuntimeJob.conversation_id == conv.id,
-                        AgentRuntimeJob.status.in_(
-                            [
-                                AgentRuntimeJobStatus.HANDOFF.value,
-                                AgentRuntimeJobStatus.FAILED.value,
-                            ]
-                        ),
+            blocking_jobs = list(
+                (
+                    await session.execute(
+                        select(AgentRuntimeJob)
+                        .where(
+                            AgentRuntimeJob.tenant_id == tenant_id,
+                            AgentRuntimeJob.conversation_id == conv.id,
+                            AgentRuntimeJob.status.in_(
+                                [
+                                    AgentRuntimeJobStatus.HANDOFF.value,
+                                    AgentRuntimeJobStatus.FAILED.value,
+                                ]
+                            ),
+                        )
+                        .with_for_update()
                     )
-                    .limit(1)
                 )
-            ).scalar_one_or_none()
-            if blocking_handoff is not None:
+                .scalars()
+                .all()
+            )
+            if blocking_jobs:
+                active_reviewer_id = (
+                    await session.execute(
+                        select(User.id)
+                        .where(User.tenant_id == tenant_id, User.is_active.is_(True))
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                if active_reviewer_id is not None:
+                    logger.info(
+                        "agent_runtime_paused_for_human",
+                        conversation_id=str(conv.id),
+                        blocking_job_id=str(blocking_jobs[0].id),
+                    )
+                    continue
+
+                resolved_at = datetime.now(UTC)
+                for blocking_job in blocking_jobs:
+                    blocking_job.status = AgentRuntimeJobStatus.RESOLVED.value
+                    blocking_job.completed_at = blocking_job.completed_at or resolved_at
+                    blocking_job.audit = {
+                        **(blocking_job.audit or {}),
+                        "manual_review_required": False,
+                        "auto_resolved_without_human_reviewer": True,
+                        "auto_resolved_at": resolved_at.isoformat(),
+                        "auto_resolution_reason": "new inbound received without active reviewer",
+                    }
                 logger.info(
-                    "agent_runtime_paused_for_human",
+                    "agent_runtime_auto_resumed_without_human_reviewer",
                     conversation_id=str(conv.id),
-                    blocking_job_id=str(blocking_handoff),
+                    resolved_job_ids=[str(job.id) for job in blocking_jobs],
                 )
-                continue
             runtime_job = AgentRuntimeJob(
                 tenant_id=tenant_id,
                 inbound_message_id=inbound.id,

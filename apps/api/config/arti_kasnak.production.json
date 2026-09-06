@@ -1,5 +1,5 @@
 {
-  "schema_version": "company-agent-config/1.0",
+  "schema_version": "company-agent-config/1.2",
   "lifecycle": "approved",
   "organization": {
     "id": "company",
@@ -10,18 +10,129 @@
     "markets": [
       "Türkiye",
       "İhracat"
+    ],
+    "customer_links": [
+      {
+        "id": "website",
+        "kind": "website",
+        "display_names": {
+          "tr": "Web sitesini aç"
+        },
+        "url": "https://www.artikasnak.com/"
+      },
+      {
+        "id": "catalog",
+        "kind": "catalog",
+        "display_names": {
+          "tr": "Kataloğu incele"
+        },
+        "url": "https://www.artikasnak.com/katalog"
+      },
+      {
+        "id": "quote-form",
+        "kind": "quote_form",
+        "display_names": {
+          "tr": "Talep formunu aç"
+        },
+        "url": "https://www.artikasnak.com/talep-formu"
+      },
+      {
+        "id": "contact",
+        "kind": "contact",
+        "display_names": {
+          "tr": "İletişimi aç"
+        },
+        "url": "https://www.artikasnak.com/contact-3"
+      },
+      {
+        "id": "instagram",
+        "kind": "social",
+        "display_names": {
+          "tr": "Instagram'ı aç"
+        },
+        "url": "https://www.instagram.com/elevatorpulley"
+      },
+      {
+        "id": "facebook",
+        "kind": "social",
+        "display_names": {
+          "tr": "Facebook'u aç"
+        },
+        "url": "https://www.facebook.com/elevatorpulley"
+      }
     ]
   },
-  "parties": [],
+  "parties": [
+    {
+      "id": "business_customer",
+      "kind": "organization",
+      "roles": [
+        "customer"
+      ],
+      "display_names": {
+        "tr": "Kurumsal müşteri"
+      },
+      "profile_ids": [
+        "quote_request"
+      ]
+    },
+    {
+      "id": "individual_inquirer",
+      "kind": "person",
+      "roles": [
+        "customer"
+      ],
+      "display_names": {
+        "tr": "Bireysel bilgi veya teklif talebi sahibi"
+      },
+      "profile_ids": [
+        "quote_request"
+      ]
+    }
+  ],
   "offerings": [
+    {
+      "id": "product_catalog",
+      "kind": "other",
+      "display_names": {
+        "tr": "Ürün kataloğu"
+      },
+      "overview_fact_id": "all_product_groups",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "full-catalog",
+          "kind": "catalog",
+          "display_names": {
+            "tr": "Kataloğu incele"
+          },
+          "url": "https://www.artikasnak.com/katalog"
+        }
+      ]
+    },
     {
       "id": "elevator_pulley",
       "kind": "physical_product",
       "display_names": {
         "tr": "Asansör kasnağı"
       },
+      "interaction_labels": {
+        "tr": "Asansör türleri"
+      },
+      "overview_fact_id": "product_families",
       "provider_id": "company",
-      "active": true
+      "active": true,
+      "customer_links": [
+        {
+          "id": "elevator-pulley-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Ürünü incele"
+          },
+          "url": "https://www.artikasnak.com/asansor-kasnagi"
+        }
+      ]
     },
     {
       "id": "plastic_elevator_pulley",
@@ -29,8 +140,22 @@
       "display_names": {
         "tr": "Captormal plastik asansör kasnağı"
       },
+      "interaction_labels": {
+        "tr": "Captormal detayı"
+      },
+      "overview_fact_id": "plastic_pulley_performance",
       "provider_id": "company",
-      "active": true
+      "active": true,
+      "customer_links": [
+        {
+          "id": "plastic-elevator-pulley-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Ürünü incele"
+          },
+          "url": "https://www.artikasnak.com/urunler/captormal-asansor-kasnagi"
+        }
+      ]
     },
     {
       "id": "cast_elevator_pulley",
@@ -38,8 +163,22 @@
       "display_names": {
         "tr": "Döküm asansör kasnağı"
       },
+      "interaction_labels": {
+        "tr": "Döküm detayı"
+      },
+      "overview_fact_id": "cast_pulley_role_and_types",
       "provider_id": "company",
-      "active": true
+      "active": true,
+      "customer_links": [
+        {
+          "id": "cast-elevator-pulley-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Ürünü incele"
+          },
+          "url": "https://www.artikasnak.com/urunler/dokum-kasnaklar"
+        }
+      ]
     },
     {
       "id": "belt_pulley",
@@ -47,8 +186,22 @@
       "display_names": {
         "tr": "Kayış kasnağı"
       },
+      "interaction_labels": {
+        "tr": "Kayış türleri"
+      },
+      "overview_fact_id": "belt_pulley_types",
       "provider_id": "company",
-      "active": true
+      "active": true,
+      "customer_links": [
+        {
+          "id": "belt-pulley-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Ürünü incele"
+          },
+          "url": "https://www.artikasnak.com/kayis-kasnagi"
+        }
+      ]
     },
     {
       "id": "traction_sheave",
@@ -56,8 +209,22 @@
       "display_names": {
         "tr": "Çekiş kasnağı"
       },
+      "interaction_labels": {
+        "tr": "Çekiş detayı"
+      },
+      "overview_fact_id": "traction_sheave_available_dimensions",
       "provider_id": "company",
-      "active": true
+      "active": true,
+      "customer_links": [
+        {
+          "id": "traction-catalog",
+          "kind": "catalog",
+          "display_names": {
+            "tr": "Kataloğu incele"
+          },
+          "url": "https://www.artikasnak.com/katalog"
+        }
+      ]
     },
     {
       "id": "pulley_components",
@@ -65,11 +232,272 @@
       "display_names": {
         "tr": "Kasnak mili, aksı ve bağlantı bileşenleri"
       },
+      "interaction_labels": {
+        "tr": "Mil ve bileşenler"
+      },
+      "overview_fact_id": "catalog_product_groups",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "components-catalog",
+          "kind": "catalog",
+          "display_names": {
+            "tr": "Kataloğu incele"
+          },
+          "url": "https://www.artikasnak.com/katalog"
+        }
+      ]
+    },
+    {
+      "id": "hoisting_pulley",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Palanga kasnağı"
+      },
+      "overview_fact_id": "palanga_pulley_details",
+      "provider_id": "company",
+      "active": true
+    },
+    {
+      "id": "deflection_pulley",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Saptırma kasnağı"
+      },
+      "provider_id": "company",
+      "active": true
+    },
+    {
+      "id": "hydraulic_pulley",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Hidrolik kasnak"
+      },
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "hydraulic-pulley-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Ürünü incele"
+          },
+          "url": "https://www.artikasnak.com/urunler/hidrolik-kasnaklar"
+        }
+      ]
+    },
+    {
+      "id": "motor_pulley",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Motor kasnağı"
+      },
+      "overview_fact_id": "motor_pulley_custom_production",
+      "provider_id": "company",
+      "active": true
+    },
+    {
+      "id": "steel_belt_pulley",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Çelik kayış kasnağı"
+      },
+      "overview_fact_id": "steel_belt_pulley_details",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "steel-belt-pulley-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Ürünü incele"
+          },
+          "url": "https://www.artikasnak.com/urunler/celik-kayis-kasnaklari"
+        }
+      ]
+    },
+    {
+      "id": "plastic_belt_pulley",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Plastik kayış kasnağı"
+      },
+      "overview_fact_id": "plastic_belt_pulley_details",
+      "provider_id": "company",
+      "active": true,
+      "customer_links": [
+        {
+          "id": "plastic-belt-pulley-page",
+          "kind": "product_page",
+          "display_names": {
+            "tr": "Ürünü incele"
+          },
+          "url": "https://www.artikasnak.com/urunler/captormal-kayis-kasnagi"
+        }
+      ]
+    },
+    {
+      "id": "pulley_shaft",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Kasnak mili"
+      },
+      "overview_fact_id": "shaft_measurement_definitions",
+      "provider_id": "company",
+      "active": true
+    },
+    {
+      "id": "pulley_axle",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Kasnak aksı"
+      },
+      "provider_id": "company",
+      "active": true
+    },
+    {
+      "id": "side_support",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Yan destek"
+      },
+      "overview_fact_id": "side_support_standard_dimensions",
+      "provider_id": "company",
+      "active": true
+    },
+    {
+      "id": "bearing_unit",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Yataklı rulman"
+      },
+      "provider_id": "company",
+      "active": true
+    },
+    {
+      "id": "bearing",
+      "kind": "physical_product",
+      "display_names": {
+        "tr": "Rulman"
+      },
+      "overview_fact_id": "bearing_compatibility",
       "provider_id": "company",
       "active": true
     }
   ],
-  "relationships": [],
+  "relationships": [
+    {
+      "subject_id": "company",
+      "predicate": "offers",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "company",
+      "predicate": "offers",
+      "object_id": "elevator_pulley"
+    },
+    {
+      "subject_id": "company",
+      "predicate": "offers",
+      "object_id": "belt_pulley"
+    },
+    {
+      "subject_id": "company",
+      "predicate": "offers",
+      "object_id": "traction_sheave"
+    },
+    {
+      "subject_id": "company",
+      "predicate": "offers",
+      "object_id": "pulley_components"
+    },
+    {
+      "subject_id": "elevator_pulley",
+      "predicate": "part_of",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "belt_pulley",
+      "predicate": "part_of",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "pulley_components",
+      "predicate": "part_of",
+      "object_id": "product_catalog"
+    },
+    {
+      "subject_id": "plastic_elevator_pulley",
+      "predicate": "is_variant_of",
+      "object_id": "elevator_pulley"
+    },
+    {
+      "subject_id": "cast_elevator_pulley",
+      "predicate": "is_variant_of",
+      "object_id": "elevator_pulley"
+    },
+    {
+      "subject_id": "hoisting_pulley",
+      "predicate": "is_variant_of",
+      "object_id": "cast_elevator_pulley"
+    },
+    {
+      "subject_id": "deflection_pulley",
+      "predicate": "is_variant_of",
+      "object_id": "cast_elevator_pulley"
+    },
+    {
+      "subject_id": "hydraulic_pulley",
+      "predicate": "is_variant_of",
+      "object_id": "cast_elevator_pulley"
+    },
+    {
+      "subject_id": "motor_pulley",
+      "predicate": "is_variant_of",
+      "object_id": "elevator_pulley"
+    },
+    {
+      "subject_id": "traction_sheave",
+      "predicate": "is_variant_of",
+      "object_id": "elevator_pulley"
+    },
+    {
+      "subject_id": "steel_belt_pulley",
+      "predicate": "is_variant_of",
+      "object_id": "belt_pulley"
+    },
+    {
+      "subject_id": "plastic_belt_pulley",
+      "predicate": "is_variant_of",
+      "object_id": "belt_pulley"
+    },
+    {
+      "subject_id": "pulley_shaft",
+      "predicate": "part_of",
+      "object_id": "pulley_components"
+    },
+    {
+      "subject_id": "pulley_axle",
+      "predicate": "part_of",
+      "object_id": "pulley_components"
+    },
+    {
+      "subject_id": "side_support",
+      "predicate": "part_of",
+      "object_id": "pulley_components"
+    },
+    {
+      "subject_id": "bearing_unit",
+      "predicate": "part_of",
+      "object_id": "pulley_components"
+    },
+    {
+      "subject_id": "bearing",
+      "predicate": "part_of",
+      "object_id": "pulley_components"
+    }
+  ],
   "facts": [
     {
       "id": "welcome",
@@ -83,6 +511,284 @@
       "source": "https://www.artikasnak.com/"
     },
     {
+      "id": "conversation_greeting",
+      "subject_id": "company",
+      "category": "social",
+      "value": "friendly greeting and orientation",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Merhaba, hoş geldiniz. Size nasıl yardımcı olabilirim? Artı Kasnak ürünlerini inceleyebilir, şirket hakkında bilgi alabilir veya teklif ön hazırlığına başlayabilirsiniz."
+      },
+      "selection_guidance": {
+        "tr": "Selamlama, karşı selam, günaydın, iyi akşamlar veya sıcak bir sohbet açılışı için seç."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_wellbeing",
+      "subject_id": "company",
+      "category": "social",
+      "value": "assistant wellbeing and reciprocal rapport",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Teşekkür ederim, iyiyim. Siz nasılsınız? Artı Kasnak ürünlerini incelemek veya teklif ön hazırlığı yapmak ister misiniz?"
+      },
+      "selection_guidance": {
+        "tr": "Yalnızca müşteri doğrudan asistana nasılsın, keyfin nasıl veya ne yapıyorsun diye sorarak asistanın durumunu merak ediyorsa seç."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_positive_mood",
+      "subject_id": "company",
+      "category": "social",
+      "value": "acknowledge the customer's positive mood",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Bunu duymak güzel. Dilerseniz Artı Kasnak ürünlerini birlikte inceleyebilir veya teklif ön hazırlığına başlayabiliriz."
+      },
+      "selection_guidance": {
+        "tr": "Yalnızca müşteri kendi durumunun iyi, keyifli veya yolunda olduğunu söylüyorsa; özellikle asistanın nasılsın sorusuna olumlu karşılık veriyorsa seç. Tek başına emoji, ürün/şirket övgüsü, teşekkür veya olumlu değerlendirme için seçme; bunlarda conversation_acknowledgement, conversation_casual_chat ya da conversation_gratitude kullan."
+      },
+      "search_terms": [
+        "iyiyim",
+        "keyfim yerinde",
+        "her şey yolunda"
+      ],
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_gratitude",
+      "subject_id": "company",
+      "category": "social",
+      "value": "acknowledge thanks or positive feedback",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Rica ederim, güzel geri bildiriminiz için teşekkürler. Başka bir sorunuz varsa veya Artı Kasnak ürünlerini incelemek isterseniz buradayım."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri teşekkür ediyor, bir ürünün hoşuna gittiğini veya onu beğendiğini söylüyor, şirketi ya da ürünü övüyor veya olumlu geri bildirim veriyorsa seç."
+      },
+      "search_terms": [
+        "hoşuma gitti",
+        "beğendim",
+        "tebrik ederim",
+        "harikasınız",
+        "süpersiniz"
+      ],
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_acknowledgement",
+      "subject_id": "company",
+      "category": "social",
+      "value": "acknowledge a short confirmation in context",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Tamamdır. Hazır olduğunuzda Artı Kasnak ürünleri, şirket bilgileri veya teklif ön hazırlığı konusunda devam edebiliriz."
+      },
+      "selection_guidance": {
+        "tr": "Kısa onay, anladım, tamam, peki veya tek başına onay anlamı taşıyan başparmak emojisi için; geçmiş bağlam daha özel bir sonraki adım göstermiyorsa seç."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_vague_help",
+      "subject_id": "company",
+      "category": "social",
+      "value": "respond to a vague request for help",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Elbette, buradayım. Artı Kasnak ürünleri, şirket bilgileri veya teklif ön hazırlığı konusunda ne öğrenmek istediğinizi yazabilirsiniz."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri orada mısın, yardımcı olur musun, bir şey soracağım gibi belirsiz bir yardım veya devam isteği iletiyorsa seç."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_empathy",
+      "subject_id": "company",
+      "category": "social",
+      "value": "acknowledge emotion frustration or criticism",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Bunun can sıkıcı olabildiğini anlıyorum. Eksik veya sorunlu kalan kısmı kısaca paylaşırsanız talebinizi yeniden ele alıp uygun Artı Kasnak bilgisine yönlendirebilirim."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri kendi moralinin bozuk, keyifsiz, üzgün, sabırsız veya hayal kırıklığı içinde olduğunu anlatıyor; bot yanıtını ya da deneyimi eleştiriyor; memnun kalmadığını veya fiyatı öznel olarak pahalı bulduğunu söylüyorsa seç. Güncel fiyat sormuyorsa bu sosyal geri bildirimi insan devrine gönderme."
+      },
+      "search_terms": [
+        "bu cevap iyi değildi",
+        "cevabı beğenmedim",
+        "memnun kalmadım",
+        "pahalı buldum",
+        "fiyat yüksek",
+        "hayal kırıklığı"
+      ],
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_assistant_identity",
+      "subject_id": "company",
+      "category": "social",
+      "value": "assistant identity and supported scope",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Ben Artı Kasnak'ın WhatsApp müşteri asistanıyım. Ürün ve şirket bilgileriyle teklif ön hazırlığı konularında yardımcı olabilirim."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri kimsin, insan mısın, bot musun, adın ne veya neler yapabilirsin diye asistanın kimliğini ya da yeteneklerini soruyorsa seç."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_off_topic",
+      "subject_id": "company",
+      "category": "social",
+      "value": "friendly redirection from an unrelated topic",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Bu konu ana uzmanlık alanımın dışında kalıyor. Artı Kasnak ürünleri, şirket bilgileri veya teklif ön hazırlığı hakkında yardımcı olmamı ister misiniz?"
+      },
+      "selection_guidance": {
+        "tr": "Müşteri şirketle ilgisi olmayan genel bilgi, hava durumu, haber, eğlence veya başka bir alan hakkında soru soruyorsa seç; soruda nasıl sözcüğü geçse bile bunu asistana yönelik nasılsın sorusuyla karıştırma. Şirket hakkındaki eksik bilgi için kullanma."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_farewell",
+      "subject_id": "company",
+      "category": "social",
+      "value": "warm conversation closing",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Görüşmek üzere, iyi günler. Artı Kasnak ürünleri veya teklif hazırlığıyla ilgili ihtiyaç duyduğunuzda yardımcı olmaktan memnuniyet duyarım."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri vedalaşıyor, ben kaçayım diyor, konuşmayı kapatıyor, iyi günler diliyor veya sonra yine yazacağını söylüyorsa seç. Bir ürün önerisini reddedip konuşmayı kapatmıyorsa conversation_disinterest seç."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_respectful_boundary",
+      "subject_id": "company",
+      "category": "social",
+      "value": "calm boundary for hostile language",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Size yardımcı olmak isterim. Konuşmayı karşılıklı saygı çerçevesinde sürdürürsek Artı Kasnak ürünleri ve talepleriniz konusunda birlikte ilerleyebiliriz."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri hakaret ediyor, saldırgan veya aşağılayıcı konuşuyor ama güvenli biçimde diyaloğa devam edilebiliyorsa seç."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_apology",
+      "subject_id": "company",
+      "category": "social",
+      "value": "accept an apology and continue",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Hiç sorun değil. Hazır olduğunuzda sorunuzu veya ihtiyacınızı paylaşabilirsiniz; yardımcı olmaya devam edebilirim."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri özür diliyor, yanlış yazdığını söylüyor veya önceki mesajını geri alıyorsa seç."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_casual_chat",
+      "subject_id": "company",
+      "category": "social",
+      "value": "light casual observation or humor",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Güzel bir yorum 🙂 Sohbete devam edebiliriz. İsterseniz Artı Kasnak ürünlerini birlikte inceleyebilir veya teklif ön hazırlığına başlayabiliriz."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri hafif bir şaka, tek başına gündelik bir emoji, gündelik yorum veya özel bilgi gerektirmeyen samimi bir sohbet ifadesi kullanıyorsa seç."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_confusion",
+      "subject_id": "company",
+      "category": "social",
+      "value": "repair an unclear or misunderstood exchange",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Net anlatamadıysam kusura bakmayın. Anlaşılmayan ürünü veya konuyu yazarsanız ilgili onaylı bilgiyi bulup paylaşabilirim."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri anlamadığını, yanıtın karışık olduğunu, tekrar veya daha sade açıklama istediğini belirtiyorsa seç."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_correction",
+      "subject_id": "company",
+      "category": "social",
+      "value": "accept a correction or changed request",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Teşekkürler, düzeltmenizi dikkate alıyorum. Doğru ürün adını veya güncel talebinizi yazarsanız o bilgi üzerinden devam edelim."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri önceki sözünü düzeltiyor, yanlış ürünü kastettiğini söylüyor, fikrini değiştiriyor veya hayır onu demedim diyorsa seç."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_disinterest",
+      "subject_id": "company",
+      "category": "social",
+      "value": "respect a non-marketing conversational decline",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Anlıyorum, sorun değil. Bu konuda ısrar etmeyeceğim. Farklı bir Artı Kasnak ürünü veya talebiniz varsa yardımcı olabilirim."
+      },
+      "selection_guidance": {
+        "tr": "Yalnızca müşteri belirli bir ürün, teklif veya mevcut öneriyi şimdilik pas geçtiğini, ertelediğini, istemediğini ya da onunla ilgilenmediğini söylüyor fakat genel sohbeti kapatmıyorsa seç. Sistem bunu pazarlama iletişimi ret talebi olarak işaretlediyse uyumluluk akışı önceliklidir."
+      },
+      "search_terms": [
+        "şimdilik pas",
+        "pas geçeceğim",
+        "başka zaman",
+        "şimdilik istemiyorum"
+      ],
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_indecision",
+      "subject_id": "company",
+      "category": "social",
+      "value": "help scope an undecided request without recommending a product",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Birlikte netleştirebiliriz. Kullanım amacınızı, sistem türünü ve elinizdeki ölçü veya teknik çizimi paylaşırsanız talebinizi uygun ürün bilgileriyle eşleştirmek için ilerleyebiliriz."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri nereden başlayacağını bilmiyor, seçenekler arasında kararsız veya ihtiyacını nasıl tarif edeceğinden emin değilse seç; belirli bir ürünün kesin uygunluğunu iddia etmek için kullanma."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
+      "id": "conversation_waiting",
+      "subject_id": "company",
+      "category": "social",
+      "value": "acknowledge waiting or a perceived delay",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Buradayım. Yanıt geciktiyse kusura bakmayın. Mesajınızı yeniden ele alabilmem için bekleyen sorunuzu veya ihtiyacınızı kısaca yazabilirsiniz."
+      },
+      "selection_guidance": {
+        "tr": "Müşteri hâlâ beklediğini, yanıt gelmediğini, neden sustuğunu veya sohbetin takıldığını söylüyorsa seç."
+      },
+      "source": "Artı Kasnak approved conversation policy 2026-08-28"
+    },
+    {
       "id": "company_focus",
       "subject_id": "company",
       "category": "capability",
@@ -92,6 +798,122 @@
         "tr": "Artı Kasnak, asansör kasnağı üretimine odaklanır."
       },
       "source": "https://www.artikasnak.com/"
+    },
+    {
+      "id": "company_history_and_reach",
+      "subject_id": "company",
+      "category": "capability",
+      "value": {
+        "started": 2005,
+        "origin": "İstanbul",
+        "domestic_reach": "Türkiye'de 81 il",
+        "export_reach": "50'den fazla ülke"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Artı Kasnak'ın resmî web sitesi faaliyetin 2005 yılında başladığını, 2025 ürün kataloğu ise kuruluş yılını 2009 olarak belirtir. Kesin kurumsal tarih Artı Kasnak ekibinden teyit edilmelidir. Resmî siteye göre şirket Türkiye'de 81 ile ve 50'den fazla ülkeye ürün sunar."
+      },
+      "search_terms": [
+        "ne zaman kuruldu",
+        "faaliyete ne zaman başladı",
+        "kuruluş yılı",
+        "kaç ülkeye ihracat",
+        "kaç ilde"
+      ],
+      "source": "https://www.artikasnak.com/hakkimizda; Artı Kasnak Traction Sheaves Catalogue 2025, page 3"
+    },
+    {
+      "id": "company_overview",
+      "subject_id": "company",
+      "category": "capability",
+      "value": {
+        "headquarters": "İstanbul",
+        "focus": "asansör kasnağı üretimi",
+        "domestic_reach": "Türkiye'de 81 il",
+        "export_reach": "50'den fazla ülke"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Artı Kasnak, İstanbul merkezli bir asansör kasnağı üreticisidir. Kendi resmî sitesine göre Türkiye'nin 81 iline ve 50'den fazla ülkeye ürün sunar."
+      },
+      "search_terms": [
+        "şirketi tanı",
+        "şirket hakkında",
+        "firma hakkında",
+        "Artı Kasnak kimdir"
+      ],
+      "source": "https://www.artikasnak.com/hakkimizda"
+    },
+    {
+      "id": "in_house_manufacturing",
+      "subject_id": "company",
+      "category": "capability",
+      "value": [
+        "kendi dökümhanesi",
+        "plastik kasnak üretim tesisi"
+      ],
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Artı Kasnak, kendi bünyesindeki dökümhane ve plastik kasnak üretim tesisleriyle üretim yapar."
+      },
+      "search_terms": [
+        "üretim tesisi",
+        "fabrika",
+        "dökümhane",
+        "plastik kasnak tesisi",
+        "hangi malzemelerle üretim",
+        "üretim malzemeleri"
+      ],
+      "source": "https://www.artikasnak.com/hakkimizda"
+    },
+    {
+      "id": "company_quality_standards",
+      "subject_id": "company",
+      "category": "capability",
+      "value": {
+        "website_claims": [
+          "ISO-9001",
+          "Türk Standartları Enstitüsü kalite onay raporları",
+          "DIN standartları",
+          "EN standartları"
+        ],
+        "requires_current_document_confirmation": true
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Artı Kasnak'ın resmî sitesi, ISO-9001 ve Türk Standartları Enstitüsü kalite onay raporlarıyla DIN ve EN standartlarında üretim yapıldığını belirtir. Güncel belge, kapsam ve ürün bazlı uygunluk bilgisi teknik ekipten teyit edilmelidir."
+      },
+      "search_terms": [
+        "sertifika",
+        "belge",
+        "kalite standardı",
+        "ISO 9001",
+        "TSE",
+        "DIN",
+        "EN"
+      ],
+      "source": "https://www.artikasnak.com/hakkimizda"
+    },
+    {
+      "id": "production_technology_and_team",
+      "subject_id": "company",
+      "category": "capability",
+      "value": {
+        "production": "tam otomatik robotik üretim",
+        "team_size": 50,
+        "team_description": "nitelikli profesyonel"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "2025 ürün kataloğuna göre üretim tesisinde tam otomatik robotik üretim altyapısı ve 50 kişilik nitelikli ekip bulunur."
+      },
+      "search_terms": [
+        "üretim altyapısı",
+        "robotik üretim",
+        "kaç çalışan",
+        "ekip büyüklüğü"
+      ],
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, page 3"
     },
     {
       "id": "drawing_based_production",
@@ -105,20 +927,219 @@
       "source": "https://www.artikasnak.com/"
     },
     {
+      "id": "all_product_groups",
+      "subject_id": "product_catalog",
+      "category": "specification",
+      "value": [
+        "MC Nylon 6 asansör kasnağı",
+        "GG-25 ve GGG-50 döküm asansör kasnağı",
+        "palanga kasnağı",
+        "saptırma kasnağı",
+        "hidrolik kasnak",
+        "motor kasnağı",
+        "çekiş kasnağı",
+        "çelik ve plastik kayış kasnağı",
+        "mil ve aks",
+        "yan destek ve yataklı rulman",
+        "rulman"
+      ],
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Artı Kasnak'ın ürün grupları; MC Nylon 6 ve döküm asansör kasnakları, palanga, saptırma, hidrolik ve motor kasnakları, çekiş kasnakları, çelik/plastik kayış kasnakları, mil ve akslar, yan destekler, yataklı rulmanlar ve rulmanlardır."
+      },
+      "search_terms": [
+        "hangi ürünleri üretiyorsunuz",
+        "ürünleriniz neler",
+        "ürün grupları",
+        "tüm ürünler",
+        "ürün kataloğu"
+      ],
+      "source": "https://www.artikasnak.com/urunler; Artı Kasnak Traction Sheaves Catalogue 2025, page 2"
+    },
+    {
+      "id": "customization_and_order_flexibility",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": {
+        "customization_scope": [
+          "malzeme seçimi",
+          "boyutsal özellikler",
+          "kasnak bileşenleri"
+        ],
+        "catalog_states_no_minimum_order_quantity": true,
+        "current_terms_require_quote_confirmation": true
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Artı Kasnak, kasnak ve bileşenlerini malzeme seçiminden ölçülere kadar uygulamaya göre özelleştirebilir. 2025 kataloğunda minimum sipariş adedi zorunluluğu olmadığı belirtilir; güncel ticari koşullar teklif sırasında doğrulanır."
+      },
+      "search_terms": [
+        "özel üretim",
+        "özelleştirme",
+        "minimum sipariş",
+        "minimum adet",
+        "MOQ"
+      ],
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, page 4"
+    },
+    {
+      "id": "official_digital_channels",
+      "subject_id": "company",
+      "category": "support",
+      "value": {
+        "websites": [
+          "https://www.artikasnak.com",
+          "https://www.elevatorpulley.com",
+          "https://www.asansorkasnagi.com"
+        ],
+        "instagram": "https://www.instagram.com/elevatorpulley",
+        "facebook": "https://www.facebook.com/elevatorpulley",
+        "domestic_market_email": "pazarlama@artikasnak.com"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Resmî web sitesi artikasnak.com'dur. Katalogda elevatorpulley.com ve asansorkasnagi.com alan adları, @elevatorpulley Instagram/Facebook hesapları ve yurt içi talepler için pazarlama@artikasnak.com adresi de yer alır."
+      },
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, back cover"
+    },
+    {
+      "id": "source_discrepancy_start_year",
+      "subject_id": "company",
+      "category": "other",
+      "value": {
+        "website_start_year": 2005,
+        "catalog_2025_start_year": 2009,
+        "requires_company_confirmation": true
+      },
+      "customer_visible": false,
+      "source": "https://www.artikasnak.com/hakkimizda; Artı Kasnak Traction Sheaves Catalogue 2025, page 3"
+    },
+    {
       "id": "product_families",
       "subject_id": "elevator_pulley",
       "category": "specification",
       "value": [
-        "palanga kasnağı",
-        "saptırma kasnağı",
-        "hidrolik kasnak",
-        "motor kasnağı"
+        "Captormal (MC Nylon 6) plastik asansör kasnağı",
+        "GG-25 ve GGG-50 döküm asansör kasnağı",
+        "motor kasnağı",
+        "çekiş kasnağı"
       ],
       "customer_visible": true,
       "customer_text": {
-        "tr": "Ürün grupları arasında palanga, saptırma, hidrolik ve motor kasnakları bulunur."
+        "tr": "Artı Kasnak'ın asansör kasnağı grubu; Captormal (MC Nylon 6) plastik kasnaklar, GG-25/GGG-50 döküm kasnaklar, motor kasnakları ve çekiş kasnaklarından oluşur. Aşağıdaki listeden bir grubu seçerek malzeme, performans ve ölçü detaylarına ilerleyebilirsiniz."
       },
-      "source": "https://www.artikasnak.com/hakkimizda"
+      "source": "https://www.artikasnak.com/asansor-kasnagi; Artı Kasnak Traction Sheaves Catalogue 2025, pages 2, 5-19 and 27-28"
+    },
+    {
+      "id": "cast_pulley_role_and_types",
+      "subject_id": "cast_elevator_pulley",
+      "category": "specification",
+      "value": {
+        "role": "Asansör motorundan gelen hareketi iletmek ve halatın yönünü değiştirmek",
+        "types": [
+          "palanga kasnağı",
+          "saptırma kasnağı",
+          "hidrolik kasnak"
+        ],
+        "materials": [
+          "GG-25 pik döküm",
+          "GGG-50 sfero döküm"
+        ]
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Palanga, saptırma ve hidrolik kasnaklar; asansör motorundan gelen hareketin iletilmesi ve halat yönünün değiştirilmesi gibi belirli işlevlere göre tasarlanan döküm kasnak çeşitleridir. GG-25 pik döküm ve GGG-50 sfero döküm malzeme seçenekleri bulunur."
+      },
+      "source": "https://www.artikasnak.com/asansor-kasnagi"
+    },
+    {
+      "id": "cast_pulley_performance",
+      "subject_id": "cast_elevator_pulley",
+      "category": "specification",
+      "value": {
+        "maximum_speed_mps": 2.5,
+        "features": [
+          "balansı alınmış yapı",
+          "ses ve titreşimi azaltan çalışma",
+          "yüksek dayanıklılık",
+          "düşük bakım ihtiyacı"
+        ]
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Döküm kasnaklar özel savurma döküm yöntemiyle üretilir; 2,5 m/sn hıza kadar balansı alınmış, ses ve titreşimi azaltan bir yapıda sunulur. Yüksek dayanıklılık, uzun ömür ve düşük bakım ihtiyacının önemli olduğu sistemler için tasarlanır."
+      },
+      "source": "https://www.artikasnak.com/asansor-kasnagi"
+    },
+    {
+      "id": "palanga_pulley_details",
+      "subject_id": "hoisting_pulley",
+      "category": "specification",
+      "value": {
+        "product_group": "cast elevator pulley",
+        "materials": [
+          "GG-25 pik döküm",
+          "GGG-50 sfero döküm"
+        ],
+        "maximum_speed_mps": 2.5,
+        "features": [
+          "balansı alınmış yapı",
+          "ses ve titreşimi azaltan çalışma",
+          "yüksek dayanıklılık",
+          "düşük bakım ihtiyacı"
+        ]
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Palanga kasnağı, belirli bir işleve göre tasarlanan döküm asansör kasnağı çeşitlerinden biridir. GG-25 pik döküm ve GGG-50 sfero döküm seçenekleri bulunur; döküm kasnak grubu 2,5 m/sn hıza kadar balansı alınmış, ses ve titreşimi azaltan, yüksek dayanıklılık ve düşük bakım ihtiyacı sunan bir yapıda üretilir."
+      },
+      "search_terms": [
+        "palanga kasnağı malzemesi",
+        "GG-25",
+        "GGG-50"
+      ],
+      "source": "https://www.artikasnak.com/asansor-kasnagi"
+    },
+    {
+      "id": "motor_pulley_custom_production",
+      "subject_id": "motor_pulley",
+      "category": "capability",
+      "value": {
+        "product": "motor kasnağı",
+        "customizable": true,
+        "customization_scope": [
+          "malzeme seçimi",
+          "boyutsal özellikler",
+          "halat adedi",
+          "halat çapı",
+          "rulman"
+        ]
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Artı Kasnak motor kasnağı üretir. Motor kasnağı ve bileşenleri; malzeme seçimi, boyutsal özellikler, halat adedi, halat çapı ve rulman dahil olmak üzere uygulamanın gereksinimlerine göre özelleştirilebilir. Teknik değerlendirme için kasnak çapı, genişliği, halat adedi ve ölçüsü, kanal mesafesi, rulman modeli ile asansör kapasitesi ve hız bilgileri paylaşılmalıdır."
+      },
+      "source": "https://www.artikasnak.com/hakkimizda; Artı Kasnak Traction Sheaves Catalogue 2025, pages 4 and 32"
+    },
+    {
+      "id": "pulley_technical_information_required",
+      "subject_id": "elevator_pulley",
+      "category": "commercial_rule",
+      "value": [
+        "pulley diameter",
+        "pulley width",
+        "rope quantity",
+        "rope size",
+        "groove distance",
+        "bearing size or model",
+        "lift capacity",
+        "lift speed"
+      ],
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Uygun kasnak seçeneğinin teknik olarak değerlendirilebilmesi için kasnak çapı, genişliği, halat adedi ve ölçüsü, kanal mesafesi, rulman modeli ile asansör kapasitesi ve hız bilgileri gerekir."
+      },
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, page 33"
     },
     {
       "id": "plastic_pulley_material",
@@ -132,6 +1153,105 @@
       "source": "https://www.artikasnak.com/asansor-kasnagi"
     },
     {
+      "id": "plastic_pulley_performance",
+      "subject_id": "plastic_elevator_pulley",
+      "category": "specification",
+      "value": {
+        "maximum_speed_without_balancing_mps": 2.5,
+        "features": [
+          "hafif yapı",
+          "sessiz çalışma",
+          "enerji verimliliği",
+          "yüksek korozyon direnci",
+          "yüksek aşınma direnci",
+          "düşük bakım maliyeti"
+        ]
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Captormal plastik asansör kasnakları hafiflik, sessiz çalışma ve enerji verimliliği için tasarlanır. Özel mühendislik plastiği ve savurma döküm üretimi sayesinde 2,5 m/sn hıza kadar ayrıca balans alma işlemi gerektirmeden kullanılabilir; korozyon ve aşınma direnciyle bakım maliyetini azaltmaya yardımcı olur."
+      },
+      "source": "https://www.artikasnak.com/asansor-kasnagi"
+    },
+    {
+      "id": "mc_nylon_standard_dimensions",
+      "subject_id": "plastic_elevator_pulley",
+      "category": "specification",
+      "value": {
+        "diameters_mm": [
+          210,
+          240,
+          320,
+          360,
+          400
+        ],
+        "rope_sizes_mm": [
+          6.5,
+          8,
+          9,
+          10
+        ],
+        "reference_code_prefix": "CK",
+        "custom_machining_available": true
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Standart MC Nylon 6 kasnak kataloğunda CK kodlu 210, 240, 320, 360 ve 400 mm çap seçenekleri; 6,5, 8, 9 ve 10 mm halat ölçülerine göre farklı genişlik, kanal mesafesi ve rulman kombinasyonları bulunur. İstenen halat adedi, halat çapı, rulman ve diğer ölçülere göre özel işleme yapılabilir."
+      },
+      "search_terms": [
+        "standart MC Nylon ölçüleri",
+        "CK kodları",
+        "Captormal çap seçenekleri",
+        "plastik kasnak ölçüleri"
+      ],
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, page 9"
+    },
+    {
+      "id": "mc_nylon_eco_dimensions",
+      "subject_id": "plastic_elevator_pulley",
+      "category": "specification",
+      "value": {
+        "reference_codes": [
+          "EC240068",
+          "EC240078",
+          "EC240088",
+          "EC320068",
+          "EC320078",
+          "EC320088",
+          "EC400086"
+        ],
+        "diameters_mm": [
+          240,
+          320,
+          400
+        ]
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Eco tip MC Nylon 6 kasnaklarda EC240068, EC240078, EC240088, EC320068, EC320078, EC320088 ve EC400086 referansları; 240, 320 ve 400 mm çap seçenekleriyle katalogda yer alır."
+      },
+      "search_terms": [
+        "eco MC Nylon",
+        "EC kodları",
+        "eco plastik kasnak ölçüleri"
+      ],
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, page 10"
+    },
+    {
+      "id": "mc_nylon_warranty_catalog_claim",
+      "subject_id": "plastic_elevator_pulley",
+      "category": "support",
+      "value": {
+        "catalog_claim": "lifetime guaranteed",
+        "terms_require_confirmation": true
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "2025 kataloğunda MC Nylon 6 kasnaklar için ömür boyu garanti ifadesi yer alır. Garanti kapsamı, koşulları ve ilgili ürün uygunluğu sipariş öncesinde Artı Kasnak ekibinden teyit edilmelidir."
+      },
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, page 5"
+    },
+    {
       "id": "cast_pulley_materials",
       "subject_id": "cast_elevator_pulley",
       "category": "specification",
@@ -143,7 +1263,74 @@
       "customer_text": {
         "tr": "Döküm asansör kasnağı ürün grubunda GG-25 pik döküm ve GGG-50 sfero döküm seçenekleri bulunur."
       },
+      "search_terms": [
+        "döküm kasnak malzemesi",
+        "hangi malzemelerle üretim",
+        "GG-25",
+        "GGG-50"
+      ],
       "source": "https://www.artikasnak.com/asansor-kasnagi"
+    },
+    {
+      "id": "cast_standard_dimensions",
+      "subject_id": "cast_elevator_pulley",
+      "category": "specification",
+      "value": {
+        "diameters_mm": [
+          210,
+          240,
+          320,
+          360,
+          400
+        ],
+        "rope_sizes_mm": [
+          6.5,
+          8,
+          9,
+          10
+        ],
+        "reference_code_prefix": "DK",
+        "custom_machining_available": true
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Standart döküm kasnak kataloğunda DK kodlu 210, 240, 320, 360 ve 400 mm çap seçenekleri; 6,5, 8, 9 ve 10 mm halat ölçülerine göre farklı genişlik, kanal mesafesi ve rulman kombinasyonları bulunur. İstenen halat adedi, halat çapı, rulman ve diğer ölçülere göre özel işleme yapılabilir."
+      },
+      "search_terms": [
+        "standart döküm ölçüleri",
+        "DK kodları",
+        "döküm kasnak çap seçenekleri"
+      ],
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, page 15"
+    },
+    {
+      "id": "cast_eco_dimensions",
+      "subject_id": "cast_elevator_pulley",
+      "category": "specification",
+      "value": {
+        "reference_codes": [
+          "ED240064",
+          "ED240078",
+          "ED240088",
+          "ED320064",
+          "ED320078",
+          "ED320088"
+        ],
+        "diameters_mm": [
+          240,
+          320
+        ]
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Eco tip döküm kasnaklarda ED240064, ED240078, ED240088, ED320064, ED320078 ve ED320088 referansları; 240 ve 320 mm çap seçenekleriyle katalogda yer alır."
+      },
+      "search_terms": [
+        "eco döküm",
+        "ED kodları",
+        "eco döküm kasnak ölçüleri"
+      ],
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, page 16"
     },
     {
       "id": "belt_pulley_types",
@@ -156,6 +1343,45 @@
       "customer_visible": true,
       "customer_text": {
         "tr": "Kayış kasnağı ürün grubunda çelik ve plastik seçenekler bulunur."
+      },
+      "source": "https://www.artikasnak.com/kayis-kasnagi"
+    },
+    {
+      "id": "steel_belt_pulley_details",
+      "subject_id": "steel_belt_pulley",
+      "category": "specification",
+      "value": {
+        "used_with": "poliüretan kaplı çelik kayış",
+        "features": [
+          "sessiz çalışma",
+          "enerji verimliliği",
+          "yüksek taşıma kapasitesi",
+          "düşük bakım ihtiyacı"
+        ]
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Çelik kayış kasnakları, poliüretan kaplı çelik kayışlarla birlikte kullanılır. Daha sessiz ve verimli çalışma, yüksek taşıma kapasitesi ve geleneksel çelik halat sistemlerine göre daha düşük bakım ihtiyacı hedeflenir."
+      },
+      "source": "https://www.artikasnak.com/kayis-kasnagi"
+    },
+    {
+      "id": "plastic_belt_pulley_details",
+      "subject_id": "plastic_belt_pulley",
+      "category": "specification",
+      "value": {
+        "maximum_speed_without_balancing_mps": 2.5,
+        "features": [
+          "hafif yapı",
+          "düşük enerji tüketimi",
+          "sessiz çalışma",
+          "yüksek korozyon direnci",
+          "yüksek aşınma direnci"
+        ]
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Plastik kayış kasnakları hafiflik, düşük enerji tüketimi ve sessiz çalışma avantajları için tasarlanır. Savurma döküm yöntemiyle çok düşük balanslı üretilir ve 2,5 m/sn hıza kadar ayrıca balans alma işlemi gerektirmeden kullanılabilir; korozyon ve aşınma direnci sunar."
       },
       "source": "https://www.artikasnak.com/kayis-kasnagi"
     },
@@ -176,6 +1402,168 @@
         "tr": "Resmî ürün kataloğunda çekiş kasnakları; mil ve akslar; yan destekler, yataklı rulmanlar ve rulmanlar da yer alır."
       },
       "source": "https://www-artikasnak-com.filesusr.com/ugd/520a8d_87e5d2ef376a4e79a97ca521843e8cc3.pdf"
+    },
+    {
+      "id": "bearing_compatibility",
+      "subject_id": "bearing",
+      "category": "specification",
+      "value": {
+        "6208": "40 mm shaft",
+        "6209": "45 mm shaft",
+        "6210": "50 mm shaft",
+        "6211": "55 mm shaft",
+        "6212": "60 mm shaft",
+        "6310": "50 mm shaft",
+        "6311": "55 mm shaft",
+        "6312": "60 mm shaft"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Katalogdaki yaygın rulman eşleşmeleri şöyledir: 6208/40 mm, 6209/45 mm, 6210 ve 6310/50 mm, 6211 ve 6311/55 mm, 6212 ve 6312/60 mm mil. Kasnak uygunluğuna göre farklı rulman modelleri de talep üzerine kullanılabilir."
+      },
+      "search_terms": [
+        "rulman mil çapı",
+        "rulman eşleşmesi",
+        "6208",
+        "6209",
+        "6210",
+        "6211",
+        "6212",
+        "6310",
+        "6311",
+        "6312"
+      ],
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, page 19"
+    },
+    {
+      "id": "shaft_measurement_definitions",
+      "subject_id": "pulley_shaft",
+      "category": "specification",
+      "value": {
+        "SL": "shaft length",
+        "GDi": "groove distance",
+        "SD": "shaft diameter",
+        "GDe": "groove depth",
+        "GW": "groove width"
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Mil ve aks teknik ölçülerinde SL mil uzunluğu, GDi kanal mesafesi, SD mil çapı, GDe kanal derinliği ve GW kanal genişliğidir. Mil, talep edilen ölçü ve özelliklere göre işlenir; bu verilerin eksiksiz paylaşılması gerekir."
+      },
+      "search_terms": [
+        "mil ölçüleri",
+        "aks ölçüleri",
+        "SL",
+        "GDi",
+        "SD",
+        "GDe",
+        "GW"
+      ],
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, page 20"
+    },
+    {
+      "id": "side_support_standard_dimensions",
+      "subject_id": "side_support",
+      "category": "specification",
+      "value": {
+        "shaft_diameters_mm": [
+          40,
+          45,
+          50,
+          55,
+          60,
+          65,
+          70
+        ],
+        "models": [
+          "eco",
+          "standard"
+        ],
+        "custom_dimensions_available": true
+      },
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Yan destekler standart olarak 40, 45, 50, 55, 60, 65 ve 70 mm mil çapları için katalogda yer alır. Eco ve standart modeller talep edilen ölçülere göre üretilebilir."
+      },
+      "search_terms": [
+        "yan destek ölçüleri",
+        "yan destek mil çapı",
+        "yataklı rulman ölçüleri"
+      ],
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, pages 21-24"
+    },
+    {
+      "id": "traction_sheave_available_dimensions",
+      "subject_id": "traction_sheave",
+      "category": "specification",
+      "value": [
+        {
+          "reference_code": "TS160092",
+          "diameter_mm": 160,
+          "width_mm": 92,
+          "rope_quantity": "4-5-6",
+          "rope_size_mm": 6.5,
+          "groove_distance_mm": 10
+        },
+        {
+          "reference_code": "TS180118",
+          "diameter_mm": 180,
+          "width_mm": 118,
+          "rope_quantity": "5-6-7-8",
+          "rope_size_mm": 6.5,
+          "groove_distance_mm": 10
+        }
+      ],
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Çekiş kasnağı kataloğunda TS160092: 160×92 mm, 4-6 halat; TS180118: 180×118 mm, 5-8 halat seçenekleri yer alır. Her ikisi 6,5 mm halat ve 10 mm kanal mesafesi içindir; özel ölçü işleme mümkündür."
+      },
+      "search_terms": [
+        "çekiş kasnağı ölçüleri",
+        "TS160092",
+        "TS180118"
+      ],
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, pages 27-28"
+    },
+    {
+      "id": "belt_pulley_available_dimensions",
+      "subject_id": "belt_pulley",
+      "category": "specification",
+      "value": [
+        "BP110092",
+        "BP120118",
+        "BP160092",
+        "BP180118"
+      ],
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Kayış kasnağı kataloğunda BP110092, BP120118, BP160092 ve BP180118 referansları; 110, 120, 160 ve 180 mm çap seçenekleriyle yer alır. Halat adedi, halat çapı, rulman ve diğer ölçülere göre özel işleme yapılabilir."
+      },
+      "search_terms": [
+        "kayış kasnağı ölçüleri",
+        "BP110092",
+        "BP120118",
+        "BP160092",
+        "BP180118"
+      ],
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, pages 31-32"
+    },
+    {
+      "id": "trademark_renewal_record",
+      "subject_id": "company",
+      "category": "other",
+      "value": {
+        "record_number": "2015 23791",
+        "renewed_from": "2025-03-19",
+        "duration_years": 10,
+        "classes": [
+          37,
+          7,
+          35
+        ]
+      },
+      "customer_visible": false,
+      "source": "Artı Kasnak Traction Sheaves Catalogue 2025, page 34"
     },
     {
       "id": "technical_support",
@@ -202,6 +1590,17 @@
       "customer_text": {
         "tr": "İletişim: +90 216 378 35 38, info@artikasnak.com. İhracat talepleri: export@artikasnak.com. Adres: Ramazanoğlu Mah. Muhsin Yazıcıoğlu Cad. 144/1, 34906 Pendik/İstanbul."
       },
+      "selection_guidance": {
+        "tr": "Müşteri bir insanla, temsilciyle, satış ekibiyle veya yetkiliyle görüşmek ya da doğrudan iletişim kurmak istiyorsa seç. Bağlantı kurulduğunu iddia etme; yalnızca onaylı iletişim kanallarını ver."
+      },
+      "search_terms": [
+        "iletişim",
+        "telefon",
+        "adres",
+        "e-posta",
+        "mail",
+        "ihracat iletişim"
+      ],
       "source": "https://www.artikasnak.com/contact-3"
     },
     {
@@ -213,6 +1612,16 @@
       "customer_text": {
         "tr": "Teklif ön hazırlığı için ihtiyaç duyduğunuz kasnak türünü ve kullanım amacını paylaşır mısınız?"
       },
+      "search_terms": [
+        "teklif",
+        "fiyat teklifi",
+        "fiyat almak",
+        "fiyat",
+        "ücret",
+        "maliyet",
+        "bedel",
+        "kaç para"
+      ],
       "source": "Artı Kasnak production policy: quote-intake/1.0"
     },
     {
@@ -319,6 +1728,18 @@
           "allowed_values": []
         },
         {
+          "id": "email",
+          "type": "string",
+          "required": false,
+          "allowed_values": []
+        },
+        {
+          "id": "phone",
+          "type": "string",
+          "required": false,
+          "allowed_values": []
+        },
+        {
           "id": "requested_product",
           "type": "string",
           "required": true,
@@ -369,8 +1790,90 @@
       ]
     }
   ],
-  "processes": [],
-  "policies": [],
+  "processes": [
+    {
+      "id": "quote_intake",
+      "states": [
+        "new",
+        "product_identified",
+        "technical_data_collected",
+        "commercial_data_collected",
+        "ready_for_handoff"
+      ],
+      "initial_state": "new",
+      "allowed_actions": [
+        "ask_product",
+        "ask_technical_data",
+        "ask_quantity_location",
+        "handoff_technical_team"
+      ],
+      "transitions": [
+        {
+          "from_state": "new",
+          "event": "product_identified",
+          "to_state": "product_identified",
+          "action": "ask_technical_data"
+        },
+        {
+          "from_state": "product_identified",
+          "event": "technical_data_received",
+          "to_state": "technical_data_collected",
+          "action": "ask_quantity_location"
+        },
+        {
+          "from_state": "technical_data_collected",
+          "event": "commercial_data_received",
+          "to_state": "commercial_data_collected",
+          "action": "handoff_technical_team"
+        },
+        {
+          "from_state": "commercial_data_collected",
+          "event": "handoff_confirmed",
+          "to_state": "ready_for_handoff",
+          "action": "handoff_technical_team"
+        }
+      ]
+    }
+  ],
+  "policies": [
+    {
+      "id": "unknown_price_handoff",
+      "when": [
+        {
+          "field": "intent",
+          "operator": "equals",
+          "value": "price"
+        }
+      ],
+      "effect": "handoff"
+    },
+    {
+      "id": "stock_or_delivery_handoff",
+      "when": [
+        {
+          "field": "intent",
+          "operator": "in",
+          "value": [
+            "stock",
+            "delivery_time"
+          ]
+        }
+      ],
+      "effect": "handoff"
+    },
+    {
+      "id": "final_selection_technical_review",
+      "when": [
+        {
+          "field": "intent",
+          "operator": "equals",
+          "value": "final_product_selection"
+        }
+      ],
+      "effect": "use_template",
+      "template_fact_id": "technical_selection_handoff"
+    }
+  ],
   "agent": {
     "response_mode": "strict",
     "purposes": [
@@ -386,7 +1889,110 @@
     "max_characters": 1200,
     "require_fact_ids_for_claims": true,
     "unknown_fact_action": "handoff",
-    "handoff_fact_id": "contact_information"
+    "handoff_fact_id": "contact_information",
+    "semantic_fallback_fact_ids": [
+      "conversation_greeting",
+      "conversation_wellbeing",
+      "conversation_positive_mood",
+      "conversation_gratitude",
+      "conversation_acknowledgement",
+      "conversation_vague_help",
+      "conversation_empathy",
+      "conversation_assistant_identity",
+      "conversation_off_topic",
+      "conversation_farewell",
+      "conversation_respectful_boundary",
+      "conversation_apology",
+      "conversation_casual_chat",
+      "conversation_confusion",
+      "conversation_correction",
+      "conversation_disinterest",
+      "conversation_indecision",
+      "conversation_waiting"
+    ],
+    "starter_trigger_fact_ids": [
+      "welcome",
+      "conversation_greeting",
+      "conversation_wellbeing",
+      "conversation_positive_mood",
+      "conversation_gratitude",
+      "conversation_acknowledgement",
+      "conversation_vague_help",
+      "conversation_assistant_identity",
+      "conversation_off_topic",
+      "conversation_casual_chat"
+    ],
+    "starter_actions": [
+      {
+        "fact_id": "all_product_groups",
+        "display_names": {
+          "tr": "Ürünleri göster"
+        }
+      },
+      {
+        "fact_id": "company_overview",
+        "display_names": {
+          "tr": "Şirketi tanı"
+        }
+      },
+      {
+        "fact_id": "quote_product_question",
+        "display_names": {
+          "tr": "Teklif al"
+        }
+      }
+    ]
+  },
+  "whatsapp_presentation": {
+    "assets": [
+      {
+        "id": "captormal-elevator-image",
+        "kind": "image",
+        "url": "https://api.ashiraai.com/media/arti-kasnak/captormal-elevator.jpg",
+        "mime_type": "image/jpeg",
+        "size_bytes": 90083,
+        "provenance": "https://www.artikasnak.com/urunler/captormal-asansor-kasnagi"
+      },
+      {
+        "id": "cast-elevator-image",
+        "kind": "image",
+        "url": "https://api.ashiraai.com/media/arti-kasnak/cast-elevator.jpg",
+        "mime_type": "image/jpeg",
+        "size_bytes": 125757,
+        "provenance": "https://www.artikasnak.com/urunler/dokum-kasnaklar"
+      },
+      {
+        "id": "captormal-belt-image",
+        "kind": "image",
+        "url": "https://api.ashiraai.com/media/arti-kasnak/captormal-belt.jpg",
+        "mime_type": "image/jpeg",
+        "size_bytes": 50137,
+        "provenance": "https://www.artikasnak.com/urunler/captormal-kayis-kasnagi"
+      },
+      {
+        "id": "steel-belt-image",
+        "kind": "image",
+        "url": "https://api.ashiraai.com/media/arti-kasnak/steel-belt.jpg",
+        "mime_type": "image/jpeg",
+        "size_bytes": 59201,
+        "provenance": "https://www.artikasnak.com/urunler/celik-kayis-kasnaklari"
+      },
+      {
+        "id": "hydraulic-image",
+        "kind": "image",
+        "url": "https://api.ashiraai.com/media/arti-kasnak/hydraulic.jpg",
+        "mime_type": "image/jpeg",
+        "size_bytes": 81589,
+        "provenance": "https://www.artikasnak.com/urunler/hidrolik-kasnaklar"
+      }
+    ],
+    "offering_media": {
+      "plastic_elevator_pulley": "captormal-elevator-image",
+      "cast_elevator_pulley": "cast-elevator-image",
+      "plastic_belt_pulley": "captormal-belt-image",
+      "steel_belt_pulley": "steel-belt-image",
+      "hydraulic_pulley": "hydraulic-image"
+    }
   },
   "modules": []
 }

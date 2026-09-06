@@ -1,0 +1,21 @@
+[Unit]
+Description=Ashiraai Qwen3 llama.cpp inference server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=binc
+Environment=HOME=/home/binc
+Environment=LD_LIBRARY_PATH=/home/binc/.local/opt/llama.cpp-b10612
+ExecStart=/home/binc/.local/opt/llama.cpp-b10612/llama-server --hf-repo Qwen/Qwen3-8B-GGUF:Q4_K_M --host 127.0.0.1 --port 11435 --alias qwen3:8b --ctx-size 4096 --parallel 1 --device Vulkan1 --n-gpu-layers 99 --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0 --reasoning off --metrics
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/binc/.cache/huggingface /home/binc/.cache/llama.cpp
+
+[Install]
+WantedBy=multi-user.target

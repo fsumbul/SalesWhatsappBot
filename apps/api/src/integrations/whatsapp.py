@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 from typing import Any, cast
+from urllib.parse import urlparse
 
 import httpx
 import structlog
@@ -80,12 +81,178 @@ class WhatsAppClient:
         }
         return await self._post_message(body)
 
+    async def send_reply_buttons_once(
+        self,
+        to: str,
+        body_text: str,
+        buttons: list[dict[str, str]],
+        header_media: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Send one session message with one to three inline reply buttons."""
+
+        self._validate_interactive_body(body_text)
+        if not 1 <= len(buttons) <= 3:
+            raise ValueError("WhatsApp reply messages require one to three buttons")
+        for button in buttons:
+            if not button.get("id") or len(button["id"]) > 256:
+                raise ValueError("WhatsApp reply button ids must contain 1-256 characters")
+            if not button.get("title") or len(button["title"]) > 20:
+                raise ValueError("WhatsApp reply button titles must contain 1-20 characters")
+        body = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                **self._interactive_image_header(header_media),
+                "body": {"text": body_text},
+                "action": {
+                    "buttons": [
+                        {
+                            "type": "reply",
+                            "reply": {"id": button["id"], "title": button["title"]},
+                        }
+                        for button in buttons
+                    ]
+                },
+            },
+        }
+        return await self._post_message(body)
+
+    async def send_list_once(
+        self,
+        to: str,
+        body_text: str,
+        *,
+        button_text: str,
+        section_title: str,
+        rows: list[dict[str, str]],
+        header_media: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Send one session list containing up to ten deterministic choices."""
+
+        self._validate_interactive_body(body_text)
+        if not button_text or len(button_text) > 20:
+            raise ValueError("WhatsApp list button text must contain 1-20 characters")
+        if not section_title or len(section_title) > 24:
+            raise ValueError("WhatsApp list section titles must contain 1-24 characters")
+        if not 1 <= len(rows) <= 10:
+            raise ValueError("WhatsApp list messages require one to ten rows")
+        for row in rows:
+            if not row.get("id") or len(row["id"]) > 200:
+                raise ValueError("WhatsApp list row ids must contain 1-200 characters")
+            if not row.get("title") or len(row["title"]) > 24:
+                raise ValueError("WhatsApp list row titles must contain 1-24 characters")
+            if len(row.get("description", "")) > 72:
+                raise ValueError("WhatsApp list descriptions may contain at most 72 characters")
+        body = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "interactive",
+            "interactive": {
+                "type": "list",
+                **self._interactive_image_header(header_media),
+                "body": {"text": body_text},
+                "action": {
+                    "button": button_text,
+                    "sections": [
+                        {
+                            "title": section_title,
+                            "rows": [
+                                {
+                                    "id": row["id"],
+                                    "title": row["title"],
+                                    **(
+                                        {"description": row["description"]}
+                                        if row.get("description")
+                                        else {}
+                                    ),
+                                }
+                                for row in rows
+                            ],
+                        }
+                    ],
+                },
+            },
+        }
+        return await self._post_message(body)
+
+    async def send_cta_url_once(
+        self,
+        to: str,
+        body_text: str,
+        *,
+        button_text: str,
+        url: str,
+        header_media: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Send one session call-to-action button to an approved HTTPS URL."""
+
+        self._validate_interactive_body(body_text)
+        if not button_text or len(button_text) > 20:
+            raise ValueError("WhatsApp CTA text must contain 1-20 characters")
+        if not self._is_https_url(url) or len(url) > 2000:
+            raise ValueError("WhatsApp CTA URLs must be HTTPS and at most 2000 characters")
+        body = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "interactive",
+            "interactive": {
+                "type": "cta_url",
+                **self._interactive_image_header(header_media),
+                "body": {"text": body_text},
+                "action": {
+                    "name": "cta_url",
+                    "parameters": {
+                        "display_text": button_text,
+                        "url": url,
+                    },
+                },
+            },
+        }
+        return await self._post_message(body)
+
+    @staticmethod
+    def _is_https_url(url: str) -> bool:
+        parsed = urlparse(url)
+        return parsed.scheme == "https" and bool(parsed.netloc) and not parsed.username
+
+    @classmethod
+    def _interactive_image_header(
+        cls,
+        media: dict[str, str] | None,
+    ) -> dict[str, Any]:
+        if media is None:
+            return {}
+        link = media.get("link", "")
+        mime_type = media.get("mime_type", "")
+        try:
+            size_bytes = int(media.get("size_bytes", "0"))
+        except ValueError as exc:
+            raise ValueError("WhatsApp image size must be an integer") from exc
+        if (
+            media.get("kind") != "image"
+            or not cls._is_https_url(link)
+            or mime_type not in {"image/jpeg", "image/png"}
+            or not 0 < size_bytes <= 5 * 1024 * 1024
+        ):
+            raise ValueError("WhatsApp image header metadata is invalid")
+        return {"header": {"type": "image", "image": {"link": link}}}
+
+    @staticmethod
+    def _validate_interactive_body(body_text: str) -> None:
+        if not body_text or len(body_text) > 1024:
+            raise ValueError("WhatsApp interactive bodies must contain 1-1024 characters")
+
     async def send_typing_indicator(self, message_id: str) -> dict[str, Any]:
         """Mark an inbound message read and show WhatsApp's native typing UI.
 
-        This is deliberately a single, short best-effort request. The runtime
-        must never delay or suppress the actual customer reply when the
-        transient indicator is unavailable.
+        Each call is deliberately short and best-effort. The runtime may
+        refresh the transient indicator while a reply is being prepared, but
+        indicator failures must never delay or suppress the customer reply.
         """
 
         body = {

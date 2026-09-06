@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 """Mock-based tests for WhatsAppClient — no live Meta Graph API calls.
 
 send_template/send_text are wrapped in @retry with exponential backoff;
@@ -59,6 +60,226 @@ async def test_send_text_builds_correct_payload(client: WhatsAppClient) -> None:
     payload = json.loads(route.calls.last.request.content)
     assert payload["type"] == "text"
     assert payload["text"]["body"] == "Hello there"
+
+
+@respx.mock
+async def test_send_reply_buttons_builds_official_interactive_payload(
+    client: WhatsAppClient,
+) -> None:
+    route = respx.post("https://graph.facebook.com/v20.0/123456/messages").mock(
+        return_value=Response(200, json={"messages": [{"id": "wamid.buttons"}]})
+    )
+
+    await client.send_reply_buttons_once(
+        "+905321234567",
+        "Kayış kasnağı türleri",
+        [
+            {"id": "product_detail:steel_belt_pulley", "title": "Çelik detayı"},
+            {"id": "product_detail:plastic_belt_pulley", "title": "Plastik detayı"},
+        ],
+    )
+
+    payload = json.loads(route.calls.last.request.content)
+    assert payload["type"] == "interactive"
+    assert payload["interactive"] == {
+        "type": "button",
+        "body": {"text": "Kayış kasnağı türleri"},
+        "action": {
+            "buttons": [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "product_detail:steel_belt_pulley",
+                        "title": "Çelik detayı",
+                    },
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "product_detail:plastic_belt_pulley",
+                        "title": "Plastik detayı",
+                    },
+                },
+            ]
+        },
+    }
+
+
+@respx.mock
+async def test_send_list_builds_official_interactive_payload(client: WhatsAppClient) -> None:
+    route = respx.post("https://graph.facebook.com/v20.0/123456/messages").mock(
+        return_value=Response(200, json={"messages": [{"id": "wamid.list"}]})
+    )
+
+    await client.send_list_once(
+        "+905321234567",
+        "Ürün gruplarımız",
+        button_text="Ürün seç",
+        section_title="Ürün detayları",
+        rows=[
+            {
+                "id": "product_detail:hoisting_pulley",
+                "title": "Palanga detayı",
+                "description": "Ürün detayını ve teknik bilgileri gör",
+            }
+        ],
+    )
+
+    payload = json.loads(route.calls.last.request.content)
+    assert payload["interactive"]["type"] == "list"
+    assert payload["interactive"]["action"]["button"] == "Ürün seç"
+    assert payload["interactive"]["action"]["sections"][0]["rows"][0]["id"] == (
+        "product_detail:hoisting_pulley"
+    )
+
+
+@respx.mock
+async def test_send_cta_url_builds_official_interactive_payload(client: WhatsAppClient) -> None:
+    route = respx.post("https://graph.facebook.com/v20.0/123456/messages").mock(
+        return_value=Response(200, json={"messages": [{"id": "wamid.cta"}]})
+    )
+
+    await client.send_cta_url_once(
+        "+905321234567",
+        "Palanga kasnağı detayları",
+        button_text="Ürünü incele",
+        url="https://www.artikasnak.com/asansor-kasnagi",
+    )
+
+    payload = json.loads(route.calls.last.request.content)
+    assert payload["interactive"] == {
+        "type": "cta_url",
+        "body": {"text": "Palanga kasnağı detayları"},
+        "action": {
+            "name": "cta_url",
+            "parameters": {
+                "display_text": "Ürünü incele",
+                "url": "https://www.artikasnak.com/asansor-kasnagi",
+            },
+        },
+    }
+
+
+@respx.mock
+async def test_send_cta_url_can_include_an_approved_session_image(
+    client: WhatsAppClient,
+) -> None:
+    route = respx.post("https://graph.facebook.com/v20.0/123456/messages").mock(
+        return_value=Response(200, json={"messages": [{"id": "wamid.image-header"}]})
+    )
+
+    await client.send_cta_url_once(
+        "+905321234567",
+        "Captormal plastik asansör kasnağı",
+        button_text="Ürünü incele",
+        url="https://www.artikasnak.com/urunler/captormal-asansor-kasnagi",
+        header_media={
+            "kind": "image",
+            "link": "https://api.ashiraai.com/media/arti-kasnak/captormal-elevator.jpg",
+            "mime_type": "image/jpeg",
+            "size_bytes": "90083",
+        },
+    )
+
+    payload = json.loads(route.calls.last.request.content)
+    assert payload["type"] == "interactive"
+    assert payload["interactive"]["header"] == {
+        "type": "image",
+        "image": {
+            "link": "https://api.ashiraai.com/media/arti-kasnak/captormal-elevator.jpg"
+        },
+    }
+
+
+@respx.mock
+async def test_send_list_can_include_an_approved_session_image(
+    client: WhatsAppClient,
+) -> None:
+    route = respx.post("https://graph.facebook.com/v20.0/123456/messages").mock(
+        return_value=Response(200, json={"messages": [{"id": "wamid.image-list"}]})
+    )
+
+    await client.send_list_once(
+        "+905321234567",
+        "Döküm kasnak türleri",
+        button_text="Ürün seç",
+        section_title="Ürün detayları",
+        rows=[{"id": "product_detail:hydraulic_pulley", "title": "Hidrolik"}],
+        header_media={
+            "kind": "image",
+            "link": "https://api.ashiraai.com/media/arti-kasnak/cast-elevator.jpg",
+            "mime_type": "image/jpeg",
+            "size_bytes": "125757",
+        },
+    )
+
+    payload = json.loads(route.calls.last.request.content)
+    assert payload["interactive"]["header"] == {
+        "type": "image",
+        "image": {
+            "link": "https://api.ashiraai.com/media/arti-kasnak/cast-elevator.jpg"
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "header_media",
+    [
+        {
+            "kind": "image",
+            "link": "http://insecure.example/product.jpg",
+            "mime_type": "image/jpeg",
+            "size_bytes": "123",
+        },
+        {
+            "kind": "image",
+            "link": "https://media.example/product.webp",
+            "mime_type": "image/webp",
+            "size_bytes": "123",
+        },
+        {
+            "kind": "image",
+            "link": "https://media.example/product.jpg",
+            "mime_type": "image/jpeg",
+            "size_bytes": str(5 * 1024 * 1024 + 1),
+        },
+    ],
+)
+async def test_session_image_header_rejects_unsafe_metadata_before_network(
+    client: WhatsAppClient,
+    header_media: dict[str, str],
+) -> None:
+    with pytest.raises(ValueError, match="image header metadata"):
+        await client.send_cta_url_once(
+            "+905321234567",
+            "Ürün bilgisi",
+            button_text="Ürünü incele",
+            url="https://www.artikasnak.com/urunler",
+            header_media=header_media,
+        )
+
+
+@pytest.mark.parametrize(
+    ("method", "kwargs"),
+    [
+        ("send_reply_buttons_once", {"buttons": []}),
+        (
+            "send_list_once",
+            {"button_text": "Ürün seç", "section_title": "Ürünler", "rows": []},
+        ),
+        (
+            "send_cta_url_once",
+            {"button_text": "Aç", "url": "http://insecure.example"},
+        ),
+    ],
+)
+async def test_interactive_sends_validate_limits_before_network(
+    client: WhatsAppClient,
+    method: str,
+    kwargs: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError):
+        await getattr(client, method)("+905321234567", "Yanıt", **kwargs)
 
 
 @respx.mock

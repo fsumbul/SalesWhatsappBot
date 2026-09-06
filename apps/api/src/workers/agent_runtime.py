@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -17,7 +18,12 @@ from src.core.db import session_scope
 from src.integrations.llm import LLMMessage, get_llm_client
 from src.integrations.whatsapp import WhatsAppClient
 from src.modules.agents.company_config import CompanyAgentConfig
-from src.modules.agents.company_runtime import CompanyAgentRuntime, CustomerReplyAction
+from src.modules.agents.company_runtime import (
+    CompanyAgentRuntime,
+    CustomerReplyAction,
+    RuntimeInteractionKind,
+    RuntimeTurn,
+)
 from src.modules.agents.models import Agent, AgentVersion, AgentVersionStatus
 from src.modules.agents.runtime_models import AgentRuntimeJob, AgentRuntimeJobStatus
 from src.modules.auth.models import Tenant, TenantStatus, User, UserRole
@@ -35,6 +41,103 @@ from ._asyncrun import run_async
 
 logger = structlog.get_logger(__name__)
 
+_TYPING_INDICATOR_REFRESH_SECONDS = 20.0
+_HISTORY_MESSAGE_LIMIT = 8
+_HISTORY_CHARACTER_LIMIT = 3000
+_HISTORY_MESSAGE_CHARACTER_LIMIT = 1500
+
+
+def _interaction_audit(turn: RuntimeTurn) -> dict[str, Any] | None:
+    interaction = turn.interaction
+    if interaction is None:
+        return None
+    return {
+        "kind": interaction.kind.value,
+        "button_text": interaction.button_text,
+        "url": interaction.url,
+        "header_media_id": (
+            interaction.header_media.id if interaction.header_media is not None else None
+        ),
+        "options": [
+            {
+                "id": option.id,
+                "title": option.title,
+                "description": option.description,
+            }
+            for option in interaction.options
+        ],
+    }
+
+
+async def _send_runtime_turn_once(to: str, turn: RuntimeTurn) -> tuple[dict[str, Any], str]:
+    """Cross the at-most-once Meta boundary with the planned message shape."""
+
+    client = WhatsAppClient()
+    interaction = turn.interaction
+    if interaction is None:
+        return await client.send_text_once(to, turn.reply), "text"
+    header_media = (
+        {
+            "kind": interaction.header_media.kind.value,
+            "link": interaction.header_media.url,
+            "mime_type": interaction.header_media.mime_type,
+            "size_bytes": str(interaction.header_media.size_bytes),
+        }
+        if interaction.header_media is not None
+        else None
+    )
+    if interaction.kind == RuntimeInteractionKind.REPLY_BUTTONS:
+        button_kwargs: dict[str, Any] = {}
+        if header_media is not None:
+            button_kwargs["header_media"] = header_media
+        response = await client.send_reply_buttons_once(
+            to,
+            turn.reply,
+            [
+                {"id": option.id, "title": option.title}
+                for option in interaction.options
+            ],
+            **button_kwargs,
+        )
+    elif interaction.kind == RuntimeInteractionKind.LIST:
+        list_kwargs: dict[str, Any] = {}
+        if header_media is not None:
+            list_kwargs["header_media"] = header_media
+        response = await client.send_list_once(
+            to,
+            turn.reply,
+            button_text=interaction.button_text,
+            section_title=interaction.section_title or "Seçenekler",
+            rows=[
+                {
+                    "id": option.id,
+                    "title": option.title,
+                    **(
+                        {"description": option.description}
+                        if option.description is not None
+                        else {}
+                    ),
+                }
+                for option in interaction.options
+            ],
+            **list_kwargs,
+        )
+    elif interaction.kind == RuntimeInteractionKind.CTA_URL and interaction.url is not None:
+        cta_kwargs: dict[str, Any] = {
+            "button_text": interaction.button_text,
+            "url": interaction.url,
+        }
+        if header_media is not None:
+            cta_kwargs["header_media"] = header_media
+        response = await client.send_cta_url_once(
+            to,
+            turn.reply,
+            **cta_kwargs,
+        )
+    else:  # pragma: no cover - planner constructs only complete interactions
+        raise ValueError("invalid runtime interaction")
+    return response, f"interactive:{interaction.kind.value}"
+
 
 async def _send_typing_indicator_best_effort(message_id: str | None) -> bool:
     """Show WhatsApp's native typing UI without making replies depend on it."""
@@ -50,6 +153,20 @@ async def _send_typing_indicator_best_effort(message_id: str | None) -> bool:
             error_type=type(exc).__name__,
         )
         return False
+
+
+async def _refresh_typing_indicator(
+    message_id: str,
+    stats: dict[str, int],
+) -> None:
+    """Refresh Meta's short-lived typing UI until the reply is ready."""
+
+    while True:
+        await asyncio.sleep(_TYPING_INDICATOR_REFRESH_SECONDS)
+        stats["attempts"] += 1
+        if await _send_typing_indicator_best_effort(message_id):
+            stats["successes"] += 1
+            stats["refreshes"] += 1
 
 
 @celery_app.task(name="src.workers.agent_runtime.process_runtime_job")
@@ -317,11 +434,32 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
         if version is None:
             raise RuntimeError("no active live WhatsApp agent version")
         config = CompanyAgentConfig.model_validate(version.company_config)
-        history = await _conversation_history(session, conversation.id, inbound)
-        typing_indicator_sent = await _send_typing_indicator_best_effort(inbound.wa_message_id)
-        turn = await CompanyAgentRuntime(config, get_llm_client()).reply(
-            inbound.body, history=history
+        history, context_fact_ids = await _conversation_history_with_context(
+            session,
+            conversation.id,
+            inbound,
+            agent_version_id=version.id,
         )
+        typing_stats = {"attempts": 0, "successes": 0, "refreshes": 0}
+        typing_refresh_task: asyncio.Task[None] | None = None
+        if inbound.wa_message_id:
+            typing_stats["attempts"] = 1
+            if await _send_typing_indicator_best_effort(inbound.wa_message_id):
+                typing_stats["successes"] = 1
+            typing_refresh_task = asyncio.create_task(
+                _refresh_typing_indicator(inbound.wa_message_id, typing_stats)
+            )
+        try:
+            turn = await CompanyAgentRuntime(config, get_llm_client()).reply(
+                inbound.body,
+                history=history,
+                context_fact_ids=context_fact_ids,
+            )
+        finally:
+            if typing_refresh_task is not None:
+                typing_refresh_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await typing_refresh_task
 
         # A second customer message may arrive while the local model is
         # deciding. Prefer one reply to the latest turn instead of sending a
@@ -411,14 +549,21 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 "model": settings.llm_model,
                 "provider": settings.llm_provider,
                 "history_messages": len(history),
-                "typing_indicator_sent": typing_indicator_sent,
+                "context_fact_ids": list(context_fact_ids),
+                "typing_indicator_sent": typing_stats["successes"] > 0,
+                "typing_indicator_attempts": typing_stats["attempts"],
+                "typing_indicator_refreshes": typing_stats["refreshes"],
                 "planned_reply": turn.reply,
+                "planned_interaction": _interaction_audit(turn),
                 "send_started_at": datetime.now(UTC).isoformat(),
                 "external_send_attempts": 1,
             }
             await session.commit()
 
-            response = await WhatsAppClient().send_text_once(contact.normalized_value, turn.reply)
+            response, transport_type = await _send_runtime_turn_once(
+                contact.normalized_value,
+                turn,
+            )
             wa_id: str | None = None
             with contextlib.suppress(KeyError, IndexError, TypeError):
                 wa_id = response.get("messages", [{}])[0].get("id")
@@ -440,6 +585,8 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                     "action": turn.action.value,
                     "fact_ids": list(turn.fact_ids),
                     "used_fallback": turn.used_fallback,
+                    "transport_type": transport_type,
+                    "interaction": _interaction_audit(turn),
                 },
             )
             session.add(outbound)
@@ -584,35 +731,124 @@ async def _resolve_live_version(session: Any, tenant_id: UUID) -> AgentVersion |
 async def _conversation_history(
     session: Any, conversation_id: UUID, current_message: Message
 ) -> list[LLMMessage]:
+    history, _ = await _conversation_history_with_context(
+        session,
+        conversation_id,
+        current_message,
+        agent_version_id=None,
+    )
+    return history
+
+
+def _trusted_runtime_context_fact_ids(
+    message: Message | None,
+    *,
+    agent_version_id: UUID | None,
+) -> tuple[str, ...]:
+    """Read canonical fact ids only from a matching server-owned bot turn."""
+
+    if (
+        message is None
+        or agent_version_id is None
+        or message.direction != MessageDirection.OUTBOUND
+        or not isinstance(message.raw, dict)
+    ):
+        return ()
+    raw = message.raw
+    fact_ids = raw.get("fact_ids")
+    if (
+        not isinstance(raw.get("runtime_job_id"), str)
+        or raw.get("agent_version_id") != str(agent_version_id)
+        or raw.get("action") != CustomerReplyAction.REPLY.value
+        or not isinstance(fact_ids, list)
+        or not 1 <= len(fact_ids) <= 2
+        or any(not isinstance(fact_id, str) for fact_id in fact_ids)
+        or len(set(fact_ids)) != len(fact_ids)
+    ):
+        return ()
+    return tuple(fact_ids)
+
+
+async def _conversation_history_with_context(
+    session: Any,
+    conversation_id: UUID,
+    current_message: Message,
+    *,
+    agent_version_id: UUID | None,
+) -> tuple[list[LLMMessage], tuple[str, ...]]:
+    precedes_current = or_(
+        Message.created_at < current_message.created_at,
+        and_(
+            Message.created_at == current_message.created_at,
+            Message.id < current_message.id,
+        ),
+    )
     rows = list(
         (
             await session.execute(
                 select(Message)
                 .where(
                     Message.conversation_id == conversation_id,
-                    or_(
-                        Message.created_at < current_message.created_at,
-                        and_(
-                            Message.created_at == current_message.created_at,
-                            Message.id < current_message.id,
-                        ),
-                    ),
+                    precedes_current,
                     Message.body.is_not(None),
                     Message.message_type == MessageType.TEXT,
                 )
-                .order_by(Message.created_at.desc())
-                .limit(12)
+                .order_by(Message.created_at.desc(), Message.id.desc())
+                .limit(_HISTORY_MESSAGE_LIMIT)
             )
         )
         .scalars()
         .all()
     )
-    # Qwen runs with a 4096-token context. Keep recent history bounded so the
-    # approved system facts and current customer turn cannot be truncated.
-    remaining_characters = 6000
+    current_raw = current_message.raw if isinstance(current_message.raw, dict) else {}
+    quoted_context = current_raw.get("context")
+    quoted_wa_message_id = (
+        quoted_context.get("id")
+        if isinstance(quoted_context, dict)
+        and isinstance(quoted_context.get("id"), str)
+        else None
+    )
+    context_message: Message | None
+    if quoted_wa_message_id:
+        context_message = (
+            await session.execute(
+                select(Message)
+                .where(
+                    Message.conversation_id == conversation_id,
+                    Message.wa_message_id == quoted_wa_message_id,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    else:
+        # Context has a stricter barrier than LLM history. The latest outbound
+        # message of any type wins, including a manual text, template, image,
+        # document or internal system turn. If that message has no matching
+        # runtime metadata, do not jump backwards and revive stale bot facts.
+        # Explicit WhatsApp quotes above intentionally override this barrier.
+        context_message = (
+            await session.execute(
+                select(Message)
+                .where(
+                    Message.conversation_id == conversation_id,
+                    Message.direction == MessageDirection.OUTBOUND,
+                    precedes_current,
+                )
+                .order_by(Message.created_at.desc(), Message.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    context_fact_ids = _trusted_runtime_context_fact_ids(
+        context_message,
+        agent_version_id=agent_version_id,
+    )
+    # The production llama.cpp runtime uses a measured 4096-token context.
+    # Keep recent history bounded so approved facts, the current turn and the
+    # 256-token decision budget retain ample headroom.
+    remaining_characters = _HISTORY_CHARACTER_LIMIT
     history_desc: list[LLMMessage] = []
     for item in rows:
-        content = (item.body or "")[:1500]
+        content = (item.body or "")[:_HISTORY_MESSAGE_CHARACTER_LIMIT]
         if not content or remaining_characters <= 0:
             continue
         content = content[:remaining_characters]
@@ -624,4 +860,4 @@ async def _conversation_history(
             )
         )
     history_desc.reverse()
-    return history_desc
+    return history_desc, context_fact_ids
