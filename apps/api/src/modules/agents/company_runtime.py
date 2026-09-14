@@ -30,6 +30,7 @@ from .company_config import (
 )
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$")
+_FLOW_RESPONSE_MARKER = "[flow_response]"
 _SEARCH_TOKEN_RE = re.compile(r"[^a-z0-9]+")
 _SEARCH_TRANSLATION = str.maketrans(
     {
@@ -195,6 +196,7 @@ _BUSINESS_REQUEST_CUE_STEMS = {
     "teknik",
     "tur",
 }
+_PRODUCT_VISUAL_STEMS = {"fotograf", "gorsel", "resim"}
 _GUIDED_FACT_ALIASES = {
     "merhaba": "welcome",
     "selam": "welcome",
@@ -227,6 +229,8 @@ class RuntimeInteractionKind(StrEnum):
     REPLY_BUTTONS = "reply_buttons"
     LIST = "list"
     CTA_URL = "cta_url"
+    CAROUSEL = "carousel"
+    FLOW = "flow"
 
 
 class CustomerReply(StrictModel):
@@ -249,13 +253,37 @@ class RuntimeInteractionOption:
 
 
 @dataclass(frozen=True)
+class RuntimeCarouselCard:
+    offering_id: str
+    body_text: str
+    button_text: str
+    url: str
+    header_media: MediaAsset
+
+
+@dataclass(frozen=True)
 class RuntimeInteraction:
     kind: RuntimeInteractionKind
     button_text: str
     options: tuple[RuntimeInteractionOption, ...] = ()
     url: str | None = None
     section_title: str | None = None
+    flow_id: str | None = None
+    flow_token: str | None = None
     header_media: MediaAsset | None = None
+    carousel_cards: tuple[RuntimeCarouselCard, ...] = ()
+
+
+@dataclass(frozen=True)
+class RuntimeWhatsAppCapabilities:
+    """Private tenant bindings for enabled WhatsApp-native features."""
+
+    flow_ids: dict[str, str]
+    flow_tokens: dict[str, str]
+    enabled: frozenset[RuntimeInteractionKind] = frozenset()
+
+    def supports(self, kind: RuntimeInteractionKind) -> bool:
+        return kind in self.enabled
 
 
 @dataclass(frozen=True)
@@ -266,13 +294,49 @@ class RuntimeTurn:
     reply: str
     fact_ids: tuple[str, ...]
     used_fallback: bool = False
+    response_source: str = "model"
+    fallback_reason: str | None = None
     interaction: RuntimeInteraction | None = None
+    request_resolutions: tuple[dict[str, object], ...] = ()
 
 
 def _localized_text(texts: dict[str, str], default_locale: str) -> str:
     """Choose a deterministic customer-facing rendering of localized text."""
 
     return texts.get(default_locale) or next(iter(texts.values()))
+
+
+def _flow_completion_turn(
+    config: CompanyAgentConfig,
+    customer_message: str,
+) -> RuntimeTurn | None:
+    """Render the approved acknowledgement without exposing form values."""
+
+    if customer_message.strip().casefold() != _FLOW_RESPONSE_MARKER:
+        return None
+    presentation = config.whatsapp_presentation
+    if presentation is None or not presentation.flows:
+        return None
+    completion_ids = {flow.completion_fact_id for flow in presentation.flows}
+    if len(completion_ids) != 1:
+        return None
+    completion_id = next(iter(completion_ids))
+    completion_fact = next(
+        (
+            fact
+            for fact in config.facts
+            if fact.id == completion_id and fact.customer_visible and fact.customer_text
+        ),
+        None,
+    )
+    if completion_fact is None:
+        return None
+    assert config.agent is not None
+    return RuntimeTurn(
+        action=CustomerReplyAction.REPLY,
+        reply=_localized_text(completion_fact.customer_text or {}, config.agent.default_locale),
+        fact_ids=(completion_id,),
+    )
 
 
 def _search_tokens(value: str) -> set[str]:
@@ -359,6 +423,17 @@ def _protected_intent_tokens(
 def _normalized_search_text(value: str) -> str:
     normalized = value.casefold().translate(_SEARCH_TRANSLATION)
     return " ".join(token for token in _SEARCH_TOKEN_RE.split(normalized) if token)
+
+
+def _is_product_visual_request(customer_message: str) -> bool:
+    """Recognize a safe request to browse product photos despite minor typos."""
+
+    tokens = set(_normalized_search_text(customer_message).split())
+    mentions_products = any(token.startswith("urun") for token in tokens)
+    mentions_visuals = any(
+        token.startswith(stem) for token in tokens for stem in _PRODUCT_VISUAL_STEMS
+    )
+    return mentions_products and mentions_visuals
 
 
 def _preferred_quote_fact_id(
@@ -471,6 +546,13 @@ def _explicit_fact_action_id(
         if match is not None
         else _GUIDED_FACT_ALIASES.get(_normalized_search_text(customer_message))
     )
+    if (
+        requested_id is None
+        and config.agent is not None
+        and config.agent.semantic_dialogue is None
+        and _is_product_visual_request(customer_message)
+    ):
+        requested_id = "all_product_groups"
     if requested_id is None:
         return None
     return next(
@@ -648,10 +730,64 @@ def _presentation_asset(
     )
 
 
+def _presentation_carousel(
+    config: CompanyAgentConfig,
+    fact_id_set: set[str],
+) -> RuntimeInteraction | None:
+    """Build one reviewed product carousel from approved graph coordinates."""
+
+    if config.whatsapp_presentation is None or config.agent is None:
+        return None
+    offering_by_id = {offering.id: offering for offering in config.offerings}
+    carousel = next(
+        (
+            item
+            for item in config.whatsapp_presentation.carousels
+            if item.trigger_fact_id in fact_id_set
+        ),
+        None,
+    )
+    if carousel is None:
+        return None
+
+    cards: list[RuntimeCarouselCard] = []
+    for offering_id in carousel.offering_ids:
+        offering = offering_by_id[offering_id]
+        media = _presentation_asset(config, offering_id)
+        link = _customer_link_for_subject(config, offering_id)
+        if media is None or link is None:  # pragma: no cover - config validator closes graph
+            return None
+        _link_label, url = link
+        cards.append(
+            RuntimeCarouselCard(
+                offering_id=offering_id,
+                body_text=_localized_text(
+                    offering.display_names,
+                    config.agent.default_locale,
+                ),
+                button_text=_localized_text(
+                    carousel.button_text,
+                    config.agent.default_locale,
+                ),
+                url=url,
+                header_media=media,
+            )
+        )
+    return RuntimeInteraction(
+        kind=RuntimeInteractionKind.CAROUSEL,
+        button_text=_localized_text(
+            carousel.button_text,
+            config.agent.default_locale,
+        ),
+        carousel_cards=tuple(cards),
+    )
+
+
 def _suggest_interaction(
     config: CompanyAgentConfig,
     turn: RuntimeTurn,
     customer_message: str,
+    capabilities: RuntimeWhatsAppCapabilities | None = None,
 ) -> RuntimeInteraction | None:
     """Derive safe UI affordances from approved graph data, never from the LLM."""
 
@@ -659,6 +795,30 @@ def _suggest_interaction(
         return None
 
     fact_id_set = set(turn.fact_ids)
+    if (
+        any(fact_id.startswith("quote_") for fact_id in fact_id_set)
+        and config.whatsapp_presentation is not None
+        and capabilities is not None
+        and capabilities.supports(RuntimeInteractionKind.FLOW)
+    ):
+        assert config.agent is not None
+        flow = next(
+            (
+                item
+                for item in config.whatsapp_presentation.flows
+                if item.locale == config.agent.default_locale
+                and capabilities.flow_ids.get(item.flow_ref)
+                and capabilities.flow_tokens.get(item.flow_ref)
+            ),
+            None,
+        )
+        if flow is not None:
+            return RuntimeInteraction(
+                kind=RuntimeInteractionKind.FLOW,
+                button_text=_localized_text(flow.button_text, config.agent.default_locale),
+                flow_id=capabilities.flow_ids[flow.flow_ref],
+                flow_token=capabilities.flow_tokens[flow.flow_ref],
+            )
     priority_link_kind: CustomerLinkKind | None = None
     if any(fact_id.startswith("quote_") for fact_id in fact_id_set):
         priority_link_kind = CustomerLinkKind.QUOTE_FORM
@@ -673,6 +833,10 @@ def _suggest_interaction(
                 button_text=label[:20].rstrip(),
                 url=url,
             )
+
+    carousel_interaction = _presentation_carousel(config, fact_id_set)
+    if carousel_interaction is not None:
+        return carousel_interaction
 
     matched_subject_ids = _matched_offering_subject_ids(config, customer_message)
     visible_fact_by_id = {
@@ -723,10 +887,7 @@ def _suggest_interaction(
                 section_title="Ürün detayları",
                 options=options,
             )
-            return replace(
-                interaction,
-                header_media=_presentation_asset(config, product_subject_id),
-            )
+            return interaction
 
         product_link = _customer_link_for_subject(config, product_subject_id)
         if product_link is not None:
@@ -741,6 +902,7 @@ def _suggest_interaction(
                 header_media=_presentation_asset(config, product_subject_id),
             )
 
+    assert config.agent is not None
     starter_actions = config.agent.starter_actions
     starter_trigger_ids = set(config.agent.starter_trigger_fact_ids)
     if starter_actions and fact_id_set & starter_trigger_ids:
@@ -1135,6 +1297,11 @@ def _visible_facts(
                     for fact in ordered_candidates
                 }.values()
             )
+        # Small new company spaces do not require curated lexical aliases:
+        # let the model judge the complete approved space when retrieval is empty.
+        # Commercial/technical protection still excludes unsupported candidates.
+        if not selected and len(visible) <= 6 and not protected_intent_tokens:
+            selected = visible
         selected = selected[:_FACT_CONTEXT_LIMIT]
     return [_fact_projection(config, fact) for fact in selected]
 
@@ -1383,7 +1550,7 @@ def parse_customer_reply(
     return RuntimeTurn(action=reply.action, reply=rendered, fact_ids=fact_ids)
 
 
-def safe_unknown_fact_turn(config: CompanyAgentConfig) -> RuntimeTurn:
+def safe_unknown_fact_turn(config: CompanyAgentConfig, reason: str | None = None) -> RuntimeTurn:
     """A deterministic fail-closed response; raw model output never escapes."""
 
     _require_runtime_config(config)
@@ -1394,6 +1561,8 @@ def safe_unknown_fact_turn(config: CompanyAgentConfig) -> RuntimeTurn:
         reply=_unknown_fact_reply(config, action),
         fact_ids=_server_owned_fallback_fact_ids(config, action),
         used_fallback=True,
+        response_source="fallback",
+        fallback_reason=reason,
     )
 
 
@@ -1405,10 +1574,17 @@ class CompanyAgentRuntime:
     configured action is ``handoff``.
     """
 
-    def __init__(self, config: CompanyAgentConfig, llm_client: LLMClient) -> None:
+    def __init__(
+        self,
+        config: CompanyAgentConfig,
+        llm_client: LLMClient,
+        *,
+        whatsapp_capabilities: RuntimeWhatsAppCapabilities | None = None,
+    ) -> None:
         _require_runtime_config(config)
         self.config = config
         self.llm = llm_client
+        self.whatsapp_capabilities = whatsapp_capabilities
 
     async def reply(
         self,
@@ -1417,6 +1593,10 @@ class CompanyAgentRuntime:
         history: list[LLMMessage] | None = None,
         context_fact_ids: tuple[str, ...] | None = None,
     ) -> RuntimeTurn:
+        completion_turn = _flow_completion_turn(self.config, customer_message)
+        if completion_turn is not None:
+            return replace(completion_turn, response_source="guided")
+
         # Our own quick-reply IDs and a deliberately small set of exact menu
         # phrases are deterministic navigation, not open-ended language
         # understanding.  Rendering their approved fact directly prevents an
@@ -1427,6 +1607,13 @@ class CompanyAgentRuntime:
             self.config,
             customer_message,
         )
+        if guided_fact_id is None and (_FACT_ACTION_RE.search(customer_message) or _PRODUCT_ACTION_RE.search(customer_message)):
+            # A stale menu ID is navigation, never a fresh model instruction.
+            menu_id = self.config.agent.menu_fact_id if self.config.agent else None
+            guided_fact_id = next((f.id for f in self.config.facts
+                                   if f.id == menu_id and f.customer_visible and f.customer_text), None)
+            if guided_fact_id is None:
+                return replace(safe_unknown_fact_turn(self.config), response_source="guided", used_fallback=False)
         if guided_fact_id is not None:
             turn = parse_customer_reply(
                 json.dumps(
@@ -1438,12 +1625,29 @@ class CompanyAgentRuntime:
             )
             return replace(
                 turn,
+                response_source="guided",
                 interaction=_suggest_interaction(
                     self.config,
                     turn,
                     customer_message,
+                    self.whatsapp_capabilities,
                 ),
             )
+
+        if self.config.agent is not None and self.config.agent.semantic_dialogue is not None:
+            from .semantic_dialogue import reply_to_requests
+
+            try:
+                return await reply_to_requests(
+                    self.config,
+                    self.llm,
+                    customer_message,
+                    history=history or [],
+                    context_fact_ids=context_fact_ids or (),
+                    capabilities=self.whatsapp_capabilities,
+                )
+            except Exception as exc:
+                return safe_unknown_fact_turn(self.config, type(exc).__name__)
 
         messages = [*(history or []), LLMMessage(role="user", content=customer_message)]
         system_prompt = build_customer_system_prompt(
@@ -1475,12 +1679,13 @@ class CompanyAgentRuntime:
                     self.config,
                     turn,
                     customer_message,
+                    self.whatsapp_capabilities,
                 ),
             )
-        except Exception:
+        except Exception as exc:
             # The model is an untrusted availability boundary. Network errors,
             # malformed provider envelopes, invalid JSON and unexpected model
             # output must all resolve to the same server-owned safe response.
             # asyncio cancellation derives from BaseException and is therefore
             # deliberately not swallowed here.
-            return safe_unknown_fact_turn(self.config)
+            return safe_unknown_fact_turn(self.config, type(exc).__name__)

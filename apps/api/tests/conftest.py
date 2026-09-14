@@ -12,6 +12,7 @@ import os
 from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
 
+import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -74,3 +75,11 @@ async def db_session(db_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
 def new_tenant_id() -> UUID:
     """A fresh tenant id per test — cheaper than truncating tables between tests."""
     return uuid4()
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Release acceptance must never turn a missing database into green tests."""
+    if os.environ.get("REQUIRE_DB_TESTS") == "1":
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        if reporter and reporter.stats.get("skipped"):
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED

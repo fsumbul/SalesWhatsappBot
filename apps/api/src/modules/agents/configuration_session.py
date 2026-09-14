@@ -14,19 +14,21 @@ later (for example a fact's subject) live in a typed staging aggregate until
 from __future__ import annotations
 
 import base64
-from collections.abc import Callable, Iterable
-from copy import deepcopy
-from dataclasses import dataclass, field
-from enum import StrEnum
 import hashlib
 import hmac
 import json
 import secrets
 import time
+from collections.abc import Callable, Iterable
+from copy import deepcopy
+from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import Field, JsonValue, model_validator
+
+from src.modules.selection.schema import SelectionFlow
 
 from .company_config import (
     AgentReplyPolicy,
@@ -45,9 +47,11 @@ from .company_config import (
     PolicyEffect,
     ProcessTransition,
     StrictModel,
+    WhatsAppPresentation,
 )
 from .config_flow import (
     CORE_FLOW_SPECS,
+    CompiledConfigurationFlow,
     ConfigurationFlowRegistry,
     FlowCompilationError,
     FlowKind,
@@ -130,7 +134,7 @@ class FactCore(StrictModel):
     source: str = Field(min_length=1, max_length=160)
 
     @model_validator(mode="after")
-    def _visible_facts_need_customer_text(self) -> "FactCore":
+    def _visible_facts_need_customer_text(self) -> FactCore:
         if self.customer_visible and not self.customer_text:
             raise ValueError("customer_visible facts require customer_text")
         return self
@@ -152,7 +156,7 @@ class ProcessCore(StrictModel):
     allowed_actions: list[Identifier] = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")
-    def _validate_core_state_machine(self) -> "ProcessCore":
+    def _validate_core_state_machine(self) -> ProcessCore:
         # Reuse the canonical schema validator instead of duplicating its
         # state/action uniqueness and initial-state rules.
         BusinessProcess.model_validate({**self.model_dump(mode="json"), "transitions": []})
@@ -264,6 +268,8 @@ class BindPolicyTemplatesCommand(ConfigurationCommand):
 
 class SetAgentPolicyCommand(ConfigurationCommand):
     agent: AgentReplyPolicy
+    whatsapp_presentation: WhatsAppPresentation | None = None
+    selection_flow: SelectionFlow | None = None
 
 
 class RegisterModuleCommand(ConfigurationCommand):
@@ -307,6 +313,8 @@ class StagedCompanyDraft:
     policy_conditions: dict[UUID, list[PolicyCondition]] = field(default_factory=dict)
     policy_templates: dict[UUID, UUID | None] = field(default_factory=dict)
     agent: AgentReplyPolicy | None = None
+    whatsapp_presentation: WhatsAppPresentation | None = None
+    selection_flow: SelectionFlow | None = None
     modules: dict[UUID, ModuleCore] = field(default_factory=dict)
     module_configs: dict[UUID, dict[str, JsonValue]] = field(default_factory=dict)
     lifecycle: ConfigurationLifecycle = ConfigurationLifecycle.DRAFT
@@ -589,32 +597,32 @@ class ConfigurationFlowSession:
             if self._stage.organization_ref and self._stage.organization and self._stage.organization.id == business_id:
                 return self._stage.organization_ref
         elif kind == DraftKind.PARTY:
-            for token, item in self._stage.parties.items():
-                if item.id == business_id:
+            for token, parties_item in self._stage.parties.items():
+                if parties_item.id == business_id:
                     return DraftRef(kind=kind, token=token)
         elif kind == DraftKind.OFFERING:
-            for token, item in self._stage.offerings.items():
-                if item.id == business_id:
+            for token, offerings_item in self._stage.offerings.items():
+                if offerings_item.id == business_id:
                     return DraftRef(kind=kind, token=token)
         elif kind == DraftKind.FACT:
-            for token, item in self._stage.facts.items():
-                if item.id == business_id:
+            for token, facts_item in self._stage.facts.items():
+                if facts_item.id == business_id:
                     return DraftRef(kind=kind, token=token)
         elif kind == DraftKind.CUSTOMER_PROFILE:
-            for token, item in self._stage.customer_profiles.items():
-                if item.id == business_id:
+            for token, customer_profiles_item in self._stage.customer_profiles.items():
+                if customer_profiles_item.id == business_id:
                     return DraftRef(kind=kind, token=token)
         elif kind == DraftKind.PROCESS:
-            for token, item in self._stage.processes.items():
-                if item.id == business_id:
+            for token, processes_item in self._stage.processes.items():
+                if processes_item.id == business_id:
                     return DraftRef(kind=kind, token=token)
         elif kind == DraftKind.POLICY:
-            for token, item in self._stage.policies.items():
-                if item.id == business_id:
+            for token, policies_item in self._stage.policies.items():
+                if policies_item.id == business_id:
                     return DraftRef(kind=kind, token=token)
         elif kind == DraftKind.MODULE:
-            for token, item in self._stage.modules.items():
-                if item.id == business_id:
+            for token, modules_item in self._stage.modules.items():
+                if modules_item.id == business_id:
                     return DraftRef(kind=kind, token=token)
         raise ConfigurationSessionError(f"no current {kind.value} ref for {business_id!r}")
 
@@ -942,6 +950,8 @@ class ConfigurationFlowSession:
             if self._stage.agent is not None:
                 raise ConfigurationSessionError("agent policy is already configured in this session")
             self._stage.agent = command.agent
+            self._stage.whatsapp_presentation = command.whatsapp_presentation
+            self._stage.selection_flow = command.selection_flow
         elif isinstance(command, RegisterModuleCommand):
             self._register_module(command)
         elif isinstance(command, ConfigureModuleCommand):
@@ -1146,8 +1156,8 @@ class ConfigurationFlowSession:
                 "when": [item.model_dump(mode="json") for item in self._stage.policy_conditions[token]],
                 "effect": core.effect.value,
                 "template_fact_id": (
-                    self._stage.facts[self._stage.policy_templates[token]].id
-                    if self._stage.policy_templates[token] is not None
+                    self._stage.facts[template_token].id
+                    if (template_token := self._stage.policy_templates[token]) is not None
                     else None
                 ),
             }
@@ -1174,6 +1184,8 @@ class ConfigurationFlowSession:
             "policies": policies,
             "agent": self._stage.agent.model_dump(mode="json") if self._stage.agent else None,
             "modules": modules,
+            "selection_flow": self._stage.selection_flow.model_dump(mode="json") if self._stage.selection_flow else None,
+            "whatsapp_presentation": self._stage.whatsapp_presentation.model_dump(mode="json") if self._stage.whatsapp_presentation else None,
         }
         try:
             config = CompanyAgentConfig.model_validate(data)
@@ -1193,7 +1205,7 @@ class ConfigurationFlowSession:
 
     # ---- flow/session mechanics -------------------------------------------
 
-    def _compile_stage(self):
+    def _compile_stage(self) -> CompiledConfigurationFlow:
         """Compile only the registered module envelope; core may stay partial."""
 
         envelope = CompanyAgentConfig.model_validate(

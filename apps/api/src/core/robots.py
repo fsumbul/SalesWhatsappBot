@@ -54,7 +54,15 @@ async def _get_parser(origin: str, user_agent: str) -> RobotFileParser | None:
             parser = rfp
         elif resp.status_code == 200:
             rfp = RobotFileParser()
-            rfp.parse(resp.text.splitlines())
+            # Some sites put a full product/version in User-agent. Match its
+            # product token consistently with RobotFileParser.can_fetch().
+            lines = []
+            for line in resp.text.splitlines():
+                name, sep, value = line.partition(":")
+                if sep and name.strip().lower() == "user-agent":
+                    line = name + ": " + value.strip().split("/", 1)[0]
+                lines.append(line)
+            rfp.parse(lines)
             parser = rfp
         else:
             logger.warning(

@@ -120,6 +120,7 @@ class MessageTemplate(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
 class SenderProfile(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     __tablename__ = "sender_profiles"
 
+    agent_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), ForeignKey("agents.id"), nullable=True)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     phone_number_id: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     business_account_id: Mapped[str | None] = mapped_column(String(80), nullable=True)

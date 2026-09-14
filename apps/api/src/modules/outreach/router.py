@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, status
 
 from src.core.deps import ClaimsDep, DBSessionDep
-from src.core.rbac import RequireManager
+from src.core.rbac import RequireAgent, RequireManager
 
 from .schemas import (
     ConversationOut,
@@ -139,7 +139,7 @@ async def send_message(
     conv_id: UUID,
     payload: MessageSendIn,
     db: DBSessionDep,
-    claims: RequireManager,
+    claims: RequireAgent,
 ) -> MessageOut:
     msg = await ConversationService(db).send_free_form(_tid(claims), conv_id, payload.body)
     return MessageOut.model_validate(msg)

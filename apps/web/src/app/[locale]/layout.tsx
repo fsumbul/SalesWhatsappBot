@@ -10,8 +10,8 @@ import { type Locale, locales, rtlLocales } from "@/i18n/request";
 import "../globals.css";
 
 export const metadata: Metadata = {
-  title: "LeadPulse",
-  description: "B2B lead generation & WhatsApp outreach platform",
+  title: "Ashira | Şirket çalışma alanı",
+  description: "Şirket bilgileri, müşteri asistanları ve ekip çalışma alanı",
 };
 
 export function generateStaticParams() {

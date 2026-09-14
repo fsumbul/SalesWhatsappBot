@@ -9,8 +9,8 @@ from fastapi import APIRouter, Header, status
 from fastapi.responses import Response
 
 from src.core.deps import ClaimsDep, ClientIPDep, DBSessionDep
-from src.core.errors import NotFoundError
-from src.core.rbac import RequireOwner
+from src.core.errors import ConflictError, ForbiddenError, NotFoundError
+from src.core.rbac import RequireOwner, RequireSuperAdmin
 
 from .repository import TenantRepo, UserRepo
 from .schemas import (
@@ -37,7 +37,7 @@ users_router = APIRouter(prefix="/users", tags=["users"])
     response_model=MeOut,
     status_code=status.HTTP_201_CREATED,
 )
-async def register_tenant(payload: TenantRegisterIn, db: DBSessionDep) -> MeOut:
+async def register_tenant(payload: TenantRegisterIn, db: DBSessionDep, _: RequireSuperAdmin) -> MeOut:
     service = AuthService(db)
     tenant, user = await service.register_tenant(payload)
     return MeOut(user=UserOut.model_validate(user), tenant=TenantOut.model_validate(tenant))
@@ -123,10 +123,25 @@ async def patch_user(
     db: DBSessionDep,
     claims: RequireOwner,
 ) -> UserOut:
+    from sqlalchemy import select
+
+    from .models import Tenant, User, UserRole
+    tenant_id = UUID(claims["tid"])
+    await db.execute(select(Tenant).where(Tenant.id == tenant_id).with_for_update())
     repo = UserRepo(db)
     user = await repo.get_by_id(user_id)
     if user is None or user.tenant_id != UUID(claims["tid"]):
         raise NotFoundError("User", str(user_id))
+    if user.role == UserRole.SUPER_ADMIN or payload.role == UserRole.SUPER_ADMIN:
+        raise ForbiddenError("Platform roles cannot be changed through tenant administration")
+    if user.role == UserRole.TENANT_OWNER and user.is_active and (
+        payload.is_active is False or (payload.role is not None and payload.role != UserRole.TENANT_OWNER)
+    ):
+        owners = (await db.execute(select(User.id).where(
+            User.tenant_id == tenant_id, User.role == UserRole.TENANT_OWNER,
+            User.is_active.is_(True)))).scalars().all()
+        if len(owners) <= 1:
+            raise ConflictError("The last active owner must be retained")
     if payload.role is not None:
         user.role = payload.role
     if payload.is_active is not None:

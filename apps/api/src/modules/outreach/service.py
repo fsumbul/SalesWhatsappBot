@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import contextlib
 from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from src.core.errors import ConflictError, NotFoundError, ValidationError
-from src.modules.discovery.models import ContactType, Lead, LeadContact
+from src.core.errors import ConflictError, NotFoundError
+from src.modules.discovery.models import LeadContact
 
 from .models import (
     Conversation,
@@ -21,7 +19,6 @@ from .models import (
     MessageTemplate,
     MessageType,
     OutreachJob,
-    OutreachJobStatus,
     SenderProfile,
     TemplateStatus,
 )
@@ -129,39 +126,9 @@ class OutreachService:
         self.session = session
 
     async def enqueue(self, tenant_id: UUID, data: OutreachEnqueueIn) -> list[OutreachJob]:
-        template = await TemplateService(self.session).get(tenant_id, data.template_id)
-        if template.status != TemplateStatus.APPROVED:
-            raise ValidationError("template must be APPROVED before use")
-
-        leads_stmt = (
-            select(Lead)
-            .where(Lead.tenant_id == tenant_id, Lead.id.in_(data.lead_ids))
-            .options(selectinload(Lead.contacts))
+        raise ConflictError(
+            "Legacy outreach enqueue is retired. Prepare and send via the authenticated admin-chat outbox."
         )
-        leads = list((await self.session.execute(leads_stmt)).scalars().all())
-        jobs: list[OutreachJob] = []
-        for lead in leads:
-            phone_contact = next(
-                (c for c in lead.contacts if c.type == ContactType.PHONE and c.is_valid),
-                None,
-            )
-            if phone_contact is None:
-                continue
-            job = OutreachJob(
-                tenant_id=tenant_id,
-                campaign_id=data.campaign_id or lead.campaign_id,
-                lead_id=lead.id,
-                contact_id=phone_contact.id,
-                template_id=template.id,
-                sender_id=data.sender_id,
-                variables=data.variables,
-                status=OutreachJobStatus.PENDING,
-                scheduled_for=data.scheduled_for,
-            )
-            self.session.add(job)
-            jobs.append(job)
-        await self.session.commit()
-        return jobs
 
     async def list_jobs(self, tenant_id: UUID, limit: int = 100) -> list[OutreachJob]:
         stmt = (
@@ -221,62 +188,51 @@ class ConversationService:
         if contact is None:
             raise NotFoundError("LeadContact", str(conv.contact_id))
 
-        # WhatsApp session window: last inbound must be within 24h
+        from datetime import timedelta
+
+        from sqlalchemy import text
+
+        from src.core.db import session_scope
+        from src.core.errors import ConflictError
         from src.integrations.whatsapp import WhatsAppClient
+        from src.modules.compliance.models import OptOut
 
-        wa = WhatsAppClient()
-        resp = await wa.send_text_once(contact.normalized_value, body)
-        wa_id = None
-        with contextlib.suppress(KeyError, IndexError):
-            wa_id = resp.get("messages", [{}])[0].get("id")
-        if not wa_id:
-            raise RuntimeError("WhatsApp response did not include a message id")
+        from .channel import resolve_channel
 
-        msg = Message(
-            tenant_id=tenant_id,
-            conversation_id=conv_id,
-            direction=MessageDirection.OUTBOUND,
-            message_type=MessageType.TEXT,
-            body=body,
-            wa_message_id=wa_id,
-            raw=resp,
-        )
-        self.session.add(msg)
-        await self.session.flush()
-        conv.last_message_at = datetime.now(UTC)
-        # A verified manual reply is the explicit resume action for a bot
-        # conversation paused in the human-review queue.
-        from src.modules.agents.runtime_models import (
-            AgentRuntimeJob,
-            AgentRuntimeJobStatus,
-        )
-
-        handoffs = list(
-            (
-                await self.session.execute(
-                    select(AgentRuntimeJob).where(
-                        AgentRuntimeJob.tenant_id == tenant_id,
-                        AgentRuntimeJob.conversation_id == conv_id,
-                        AgentRuntimeJob.status.in_(
-                            [
-                                AgentRuntimeJobStatus.HANDOFF.value,
-                                AgentRuntimeJobStatus.FAILED.value,
-                            ]
-                        ),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        resolved_at = datetime.now(UTC).isoformat()
-        for handoff in handoffs:
-            handoff.status = AgentRuntimeJobStatus.RESOLVED.value
-            handoff.audit = {
-                **(handoff.audit or {}),
-                "manual_review_required": False,
-                "human_review_resolved_at": resolved_at,
-                "resolved_by_manual_message_id": str(msg.id),
-            }
-        await self.session.commit()
-        return msg
+        async with session_scope(tenant_id) as guard:
+            await guard.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:identity, 0))"),
+                                {"identity": f"{tenant_id}:{contact.normalized_value}"})
+            await resolve_channel(guard, tenant_id)
+            if (await guard.execute(select(OptOut.id).where(OptOut.tenant_id == tenant_id,
+                    OptOut.phone_e164 == contact.normalized_value))).first():
+                raise ConflictError("Customer opted out")
+            ambiguous = (await guard.execute(select(Message.id).where(Message.tenant_id == tenant_id,
+                Message.conversation_id == conv_id,
+                Message.raw["manual_send_state"].astext.in_(["sending", "ambiguous"])))).first()
+            if ambiguous:
+                raise ConflictError("Previous manual delivery is ambiguous; review it before sending again")
+            last_inbound = await guard.scalar(select(Message.created_at).where(
+                Message.tenant_id == tenant_id, Message.conversation_id == conv_id,
+                Message.direction == MessageDirection.INBOUND).order_by(Message.created_at.desc()).limit(1))
+            if last_inbound is None or last_inbound < datetime.now(UTC) - timedelta(hours=24):
+                raise ConflictError("The WhatsApp 24-hour response window has closed")
+            msg = Message(tenant_id=tenant_id, conversation_id=conv_id,
+                          direction=MessageDirection.OUTBOUND, message_type=MessageType.TEXT,
+                          body=body, raw={"manual_send_state": "sending"})
+            self.session.add(msg)
+            await self.session.commit()
+            try:
+                response = await WhatsAppClient().send_text_once(contact.normalized_value, body)
+                wa_id = response.get("messages", [{}])[0].get("id")
+                if not wa_id:
+                    raise RuntimeError("Missing delivery id")
+            except Exception as exc:
+                msg.raw = {"manual_send_state": "ambiguous"}
+                await self.session.commit()
+                raise ConflictError("Manual delivery could not be confirmed; do not resend before review") from exc
+            msg.wa_message_id = wa_id
+            msg.raw = {"manual_send_state": "sent", "transport": response}
+            conv.last_message_at = datetime.now(UTC)
+            await self.session.commit()
+            await self.session.refresh(msg)
+            return msg

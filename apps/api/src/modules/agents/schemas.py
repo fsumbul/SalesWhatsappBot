@@ -33,6 +33,7 @@ class AgentVersionPatchIn(BaseModel):
     """All fields optional — only supplied fields are changed. Only valid
     against a version currently in DRAFT status (see AgentService.update_draft)."""
 
+    expected_revision: int | None = None
     persona: str | None = None
     tone: str | None = Field(default=None, max_length=80)
     languages: list[str] | None = None
@@ -51,6 +52,7 @@ class AgentVersionOut(BaseModel):
     id: UUID
     agent_id: UUID
     version: int
+    revision: int
     status: AgentVersionStatus
     persona: str
     tone: str

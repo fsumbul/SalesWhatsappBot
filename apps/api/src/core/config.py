@@ -113,13 +113,17 @@ class Settings(BaseSettings):
 
     # --- External APIs (optional in early phases) ---
     whatsapp_app_secret: str = ""
+    selection_rollout: Literal["disabled", "pilot", "all"] = "disabled"
+    selection_pilot_conversation_ids: str = ""
     whatsapp_access_token: str = ""
     whatsapp_verify_token: str = ""
     whatsapp_phone_number_id: str = ""
     whatsapp_business_account_id: str = ""
     whatsapp_graph_api_version: str = "v20.0"
-    # Explicit sender/webhook -> live agent binding for the WhatsApp runtime.
-    # Leaving this empty is allowed only when a tenant has exactly one live agent.
+    # Private deployment binding from tenant UUID to logical Flow references.
+    # Source defaults to empty so Flow delivery fails closed.
+    whatsapp_tenant_capabilities_json: str = ""
+    # Legacy compatibility setting. Runtime selection uses SenderProfile.agent_id.
     whatsapp_agent_slug: str = ""
 
     google_places_api_key: str = ""
@@ -215,7 +219,6 @@ class Settings(BaseSettings):
             "WHATSAPP_VERIFY_TOKEN": self.whatsapp_verify_token,
             "WHATSAPP_PHONE_NUMBER_ID": self.whatsapp_phone_number_id,
             "WHATSAPP_BUSINESS_ACCOUNT_ID": self.whatsapp_business_account_id,
-            "WHATSAPP_AGENT_SLUG": self.whatsapp_agent_slug,
             "LLM_MODEL": self.llm_model,
             "LLM_BASE_URL": self.llm_base_url,
         }

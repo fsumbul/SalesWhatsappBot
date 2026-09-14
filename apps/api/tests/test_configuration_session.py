@@ -29,7 +29,6 @@ from src.modules.agents.configuration_session import (
     typed_reducer_coverage_errors,
 )
 
-
 TENANT = "tenant-a"
 ADMIN = "admin-a"
 

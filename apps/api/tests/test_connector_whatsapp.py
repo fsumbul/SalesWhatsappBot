@@ -192,34 +192,17 @@ async def test_send_cta_url_can_include_an_approved_session_image(
 
 
 @respx.mock
-async def test_send_list_can_include_an_approved_session_image(
-    client: WhatsAppClient,
-) -> None:
+async def test_send_list_uses_supported_text_only_payload(client: WhatsAppClient) -> None:
     route = respx.post("https://graph.facebook.com/v20.0/123456/messages").mock(
-        return_value=Response(200, json={"messages": [{"id": "wamid.image-list"}]})
+        return_value=Response(200, json={"messages": [{"id": "wamid.list"}]})
     )
-
     await client.send_list_once(
-        "+905321234567",
-        "Döküm kasnak türleri",
-        button_text="Ürün seç",
-        section_title="Ürün detayları",
+        "+905321234567", "Ürün türleri", button_text="Ürün seç", section_title="Ürünler",
         rows=[{"id": "product_detail:hydraulic_pulley", "title": "Hidrolik"}],
-        header_media={
-            "kind": "image",
-            "link": "https://api.ashiraai.com/media/arti-kasnak/cast-elevator.jpg",
-            "mime_type": "image/jpeg",
-            "size_bytes": "125757",
-        },
     )
-
     payload = json.loads(route.calls.last.request.content)
-    assert payload["interactive"]["header"] == {
-        "type": "image",
-        "image": {
-            "link": "https://api.ashiraai.com/media/arti-kasnak/cast-elevator.jpg"
-        },
-    }
+    assert "header" not in payload["interactive"]
+    assert route.call_count == 1
 
 
 @pytest.mark.parametrize(

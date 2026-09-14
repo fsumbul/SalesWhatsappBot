@@ -17,7 +17,7 @@ from src.core.config import get_settings
 from src.core.db import session_scope, set_tenant_context
 from src.integrations.whatsapp import WhatsAppClient
 from src.modules.agents.runtime_models import AgentRuntimeJob, AgentRuntimeJobStatus
-from src.modules.auth.models import Tenant, TenantStatus, User
+from src.modules.auth.models import Tenant, TenantStatus
 from src.modules.compliance.models import OptOut, OptOutSource
 from src.modules.discovery.models import (
     ConsentStatus,
@@ -108,7 +108,7 @@ def _meta_callback_at(status_payload: dict[str, Any]) -> tuple[datetime, str]:
 
     received_at = datetime.now(UTC)
     raw_timestamp = status_payload.get("timestamp")
-    if isinstance(raw_timestamp, bool):
+    if isinstance(raw_timestamp, bool) or not isinstance(raw_timestamp, str | int | float):
         return received_at, "received_at"
     try:
         callback_at = datetime.fromtimestamp(int(raw_timestamp), UTC)
@@ -245,15 +245,17 @@ async def receive_webhook(
             raise HTTPException(status_code=403, detail="sender binding mismatch")
         await set_tenant_context(session, tenant.id)
 
+        from .channel import resolve_channel
+        sender = await resolve_channel(session, tenant.id)
         runtime_job_ids: list[UUID] = []
         for entry in payload.get("entry", []):
-            if entry.get("id") != settings.whatsapp_business_account_id:
+            if entry.get("id") != sender.business_account_id:
                 logger.warning("webhook_entry_waba_mismatch", slug=tenant_slug)
                 raise HTTPException(status_code=403, detail="sender binding mismatch")
             for change in entry.get("changes", []):
                 value = change.get("value", {})
                 metadata = value.get("metadata") or {}
-                if metadata.get("phone_number_id") != settings.whatsapp_phone_number_id:
+                if metadata.get("phone_number_id") != sender.phone_number_id:
                     logger.warning("webhook_phone_number_mismatch", slug=tenant_slug)
                     raise HTTPException(status_code=403, detail="sender binding mismatch")
                 await _handle_statuses(session, tenant.id, value.get("statuses", []))
@@ -284,6 +286,27 @@ async def _handle_statuses(
         status_name = st.get("status")
         if not wa_id or not isinstance(status_name, str):
             continue
+        from src.modules.admin_chat.outbound_models import OutboundRecipient
+        outbound = await session.scalar(select(OutboundRecipient).where(
+            OutboundRecipient.tenant_id == tenant_id, OutboundRecipient.wa_message_id == wa_id))
+        callback = st.get("biz_opaque_callback_data", "")
+        if outbound is None and isinstance(callback, str) and callback.startswith("chat-outbound:"):
+            try:
+                recipient_id = UUID(callback.removeprefix("chat-outbound:"))
+                outbound = await session.scalar(select(OutboundRecipient).where(
+                    OutboundRecipient.tenant_id == tenant_id, OutboundRecipient.id == recipient_id,
+                    OutboundRecipient.status.in_(["sending", "ambiguous"])))
+            except ValueError:
+                pass
+        if outbound is not None:
+            ranks = {"sending": 0, "ambiguous": 0, "accepted": 0, "failed": 0, "sent": 1, "delivered": 2, "read": 3}
+            if status_name in {"sent", "delivered", "read", "failed"} and ranks.get(status_name, 0) >= ranks.get(outbound.status, 0):
+                outbound.status = status_name
+                outbound.wa_message_id = wa_id
+                if status_name == "failed":
+                    outbound.reason = "Meta teslimatı başarısız bildirdi; otomatik tekrar yapılmaz."
+                else:
+                    outbound.reason = None
         callback_at, timestamp_source = _meta_callback_at(st)
         errors = _meta_errors(st)
         stmt = select(OutreachJob).where(
@@ -455,13 +478,13 @@ async def _handle_messages(
             await session.flush()
             logger.info("webhook_inbound_contact_created", contact_id=str(contact.id))
         else:
-            lead = await session.get(Lead, contact.lead_id)
-            if lead is not None and lead.status not in {
+            existing_lead = await session.get(Lead, contact.lead_id)
+            if existing_lead is not None and existing_lead.status not in {
                 LeadStatus.WON,
                 LeadStatus.LOST,
                 LeadStatus.BLACKLISTED,
             }:
-                lead.status = LeadStatus.REPLIED
+                existing_lead.status = LeadStatus.REPLIED
 
         # Get-or-create conversation
         conv_stmt = select(Conversation).where(
@@ -476,6 +499,23 @@ async def _handle_messages(
             )
             session.add(conv)
             await session.flush()
+
+        if (
+            not body
+            and msg_type in {"image", "document"}
+            and get_settings().selection_rollout != "disabled"
+        ):
+            from src.modules.selection.models import SelectionRequest
+
+            active_selection = await session.scalar(
+                select(SelectionRequest.id)
+                .where(
+                    SelectionRequest.conversation_id == conv.id, SelectionRequest.status == "draft"
+                )
+                .limit(1)
+            )
+            if active_selection is not None:
+                body = "[attachment]"
 
         received_at = datetime.now(UTC)
         conv.last_message_at = received_at
@@ -519,6 +559,19 @@ async def _handle_messages(
                     )
                 )
                 logger.info("auto_opt_out", phone=contact.normalized_value)
+            from src.modules.selection.models import SelectionRequest
+
+            draft = await session.scalar(
+                select(SelectionRequest)
+                .where(
+                    SelectionRequest.conversation_id == conv.id,
+                    SelectionRequest.status == "draft",
+                )
+                .with_for_update(skip_locked=True)
+            )
+            if draft is not None:
+                draft.status = "cancelled"
+                draft.revision += 1
             cancelled_job_ids = await _cancel_runtime_jobs_for_opt_out(
                 session,
                 tenant_id,
@@ -553,37 +606,8 @@ async def _handle_messages(
                 .all()
             )
             if blocking_jobs:
-                active_reviewer_id = (
-                    await session.execute(
-                        select(User.id)
-                        .where(User.tenant_id == tenant_id, User.is_active.is_(True))
-                        .limit(1)
-                    )
-                ).scalar_one_or_none()
-                if active_reviewer_id is not None:
-                    logger.info(
-                        "agent_runtime_paused_for_human",
-                        conversation_id=str(conv.id),
-                        blocking_job_id=str(blocking_jobs[0].id),
-                    )
-                    continue
-
-                resolved_at = datetime.now(UTC)
-                for blocking_job in blocking_jobs:
-                    blocking_job.status = AgentRuntimeJobStatus.RESOLVED.value
-                    blocking_job.completed_at = blocking_job.completed_at or resolved_at
-                    blocking_job.audit = {
-                        **(blocking_job.audit or {}),
-                        "manual_review_required": False,
-                        "auto_resolved_without_human_reviewer": True,
-                        "auto_resolved_at": resolved_at.isoformat(),
-                        "auto_resolution_reason": "new inbound received without active reviewer",
-                    }
-                logger.info(
-                    "agent_runtime_auto_resumed_without_human_reviewer",
-                    conversation_id=str(conv.id),
-                    resolved_job_ids=[str(job.id) for job in blocking_jobs],
-                )
+                logger.info("agent_runtime_paused_for_human", conversation_id=str(conv.id))
+                continue
             runtime_job = AgentRuntimeJob(
                 tenant_id=tenant_id,
                 inbound_message_id=inbound.id,
@@ -618,10 +642,22 @@ def _message_body(message: dict[str, Any]) -> str | None:
         body = button.get("text") or button.get("payload")
     elif msg_type == "interactive":
         interactive = message.get("interactive") or {}
-        reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
-        title = reply.get("title")
-        reply_id = reply.get("id")
-        body = f"{title} [{reply_id}]" if title and reply_id else title or reply_id
+        nfm_reply = interactive.get("nfm_reply") or {}
+        response_json = nfm_reply.get("response_json")
+        if isinstance(response_json, str):
+            try:
+                response_data = json.loads(response_json)
+            except json.JSONDecodeError:
+                response_data = None
+            if isinstance(response_data, dict):
+                # Full signed form data stays in Message.raw. Only this opaque
+                # marker becomes customer text or model-visible history.
+                body = "[flow_response]"
+        else:
+            reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
+            title = reply.get("title")
+            reply_id = reply.get("id")
+            body = f"{title} [{reply_id}]" if title and reply_id else title or reply_id
     elif msg_type in {"image", "document", "video"}:
         body = (message.get(msg_type) or {}).get("caption")
     if not isinstance(body, str):

@@ -114,9 +114,13 @@ def _config_with_handoff_contact() -> CompanyAgentConfig:
     return CompanyAgentConfig.model_validate(config_data)
 
 
-def _arti_kasnak_production_config() -> CompanyAgentConfig:
+def _arti_kasnak_production_config(*, presentation: bool = False) -> CompanyAgentConfig:
     path = Path(__file__).resolve().parents[1] / "config" / "arti_kasnak.production.json"
-    return CompanyAgentConfig.model_validate_json(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not presentation:
+        data["whatsapp_presentation"] = None
+    data["agent"]["semantic_dialogue"] = None
+    return CompanyAgentConfig.model_validate(data)
 
 
 def test_prompt_projects_only_customer_visible_facts() -> None:
@@ -894,7 +898,7 @@ async def test_product_detail_button_returns_an_approved_product_link_cta() -> N
 
 @pytest.mark.asyncio
 async def test_product_detail_attaches_its_approved_session_image() -> None:
-    config = _arti_kasnak_production_config()
+    config = _arti_kasnak_production_config(presentation=True)
     turn = await CompanyAgentRuntime(config, _UnavailableLocalLLM()).reply(
         "Captormal detayı [product_detail:plastic_elevator_pulley]"
     )
@@ -913,7 +917,7 @@ async def test_product_detail_attaches_its_approved_session_image() -> None:
 
 @pytest.mark.asyncio
 async def test_product_family_menu_attaches_its_approved_session_image() -> None:
-    config = _arti_kasnak_production_config()
+    config = _arti_kasnak_production_config(presentation=True)
     turn = await CompanyAgentRuntime(config, _UnavailableLocalLLM()).reply(
         "Döküm detayı [product_detail:cast_elevator_pulley]"
     )

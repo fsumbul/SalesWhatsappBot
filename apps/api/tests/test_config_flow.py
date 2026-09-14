@@ -10,7 +10,6 @@ from src.modules.agents.company_config import CompanyAgentConfig, DomainModule
 from src.modules.agents.config_flow import (
     CORE_EDITABLE_PATHS,
     CORE_FLOW_SPECS,
-    ConfigurationFlowRegistry,
     FlowCompilationError,
     FlowGoal,
     FlowKind,
