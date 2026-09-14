@@ -62,7 +62,22 @@ async def get_current_claims(
             raise UnauthorizedError("Invalid tenant claim") from e
         request.state.tenant_id = tenant_uuid
         set_current_tenant(tenant_uuid)
-    request.state.user_id = UUID(claims["sub"])
+    from src.modules.auth.models import Tenant, TenantStatus, User
+
+    try:
+        user_id = UUID(claims["sub"])
+        tenant_id = UUID(claims["tid"])
+    except (KeyError, ValueError, TypeError) as exc:
+        raise UnauthorizedError("Invalid identity") from exc
+    async with get_sessionmaker()() as identity_session:
+        await set_tenant_context(identity_session, tenant_id)
+        user = await identity_session.get(User, user_id)
+        tenant = await identity_session.get(Tenant, tenant_id)
+        if (user is None or user.tenant_id != tenant_id or not user.is_active
+                or tenant is None or tenant.status != TenantStatus.ACTIVE):
+            raise UnauthorizedError("Account is not active")
+        claims["role"] = user.role.value
+    request.state.user_id = user_id
     request.state.role = claims.get("role")
     return claims
 

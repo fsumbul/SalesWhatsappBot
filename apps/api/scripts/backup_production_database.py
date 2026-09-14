@@ -14,7 +14,7 @@ from sqlalchemy.engine import make_url
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.core.config import get_settings  # noqa: E402
+from src.core.config import get_settings
 
 
 def main() -> None:
@@ -48,7 +48,7 @@ def main() -> None:
         "--file",
         str(output),
     ]
-    subprocess.run(command, env=env, check=True, capture_output=True)
+    subprocess.run(command, env=env, check=True, capture_output=True)  # noqa: S603 - server-owned executable and settings
     print(f"backup: {output}")
     print(f"bytes: {output.stat().st_size}")
 

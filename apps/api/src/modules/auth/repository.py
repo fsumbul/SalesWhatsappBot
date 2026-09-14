@@ -78,7 +78,7 @@ class RefreshTokenRepo:
         stmt = select(RefreshToken).where(
             RefreshToken.token_hash == token_hash,
             RefreshToken.revoked_at.is_(None),
-        )
+        ).with_for_update()
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def create(self, rt: RefreshToken) -> RefreshToken:

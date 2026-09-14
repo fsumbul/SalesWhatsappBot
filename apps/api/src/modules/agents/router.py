@@ -18,7 +18,6 @@ from .schemas import (
     AgentVersionOut,
     AgentVersionPatchIn,
     BuilderMessageIn,
-    BuilderReplyOut,
     BuilderSessionOut,
 )
 from .service import AgentService
@@ -157,19 +156,8 @@ async def start_builder_session(
     return BuilderSessionOut.model_validate(builder_session)
 
 
-@router.post(
-    "/{agent_id}/builder/sessions/{session_id}/messages", response_model=BuilderReplyOut
-)
-async def send_builder_message(
-    agent_id: UUID,
-    session_id: UUID,
-    payload: BuilderMessageIn,
-    db: DBSessionDep,
-    claims: RequireManager,
-) -> BuilderReplyOut:
-    reply = await AgentBuilderService(db).send_message(
-        _tid(claims), agent_id, session_id, payload.text, actor_id=_uid(claims)
-    )
-    return BuilderReplyOut(
-        reply=reply.reply, draft_patch=reply.draft_patch, ready_to_promote=reply.ready_to_promote
-    )
+@router.post("/{agent_id}/builder/sessions/{session_id}/messages")
+async def send_builder_message(agent_id: UUID, session_id: UUID, payload: BuilderMessageIn,
+                               db: DBSessionDep, claims: RequireManager) -> dict[str, Any]:
+    from .workspace import builder_turn
+    return await builder_turn(db, _tid(claims), agent_id, session_id, payload.text)

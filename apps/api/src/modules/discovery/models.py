@@ -116,6 +116,7 @@ class Lead(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
         nullable=True,
         index=True,
     )
+    person_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     company_name: Mapped[str] = mapped_column(String(255), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     website: Mapped[str | None] = mapped_column(String(500), nullable=True)

@@ -1,0 +1,198 @@
+.card {
+  --wf-border: var(--line, #e2e5e9);
+  --wf-muted: var(--muted, #626975);
+  --wf-accent: var(--accent, #23282e);
+  border: 1px solid var(--wf-border);
+  border-radius: 16px;
+  padding: 20px;
+  margin: 16px 0;
+  background: white;
+  color: #20252a;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.card header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.card h3 {
+  font-size: 16px;
+  margin: 0;
+  font-weight: 600;
+}
+.card header span,
+.steps {
+  color: var(--wf-muted);
+  font-size: 12px;
+}
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  list-style: none;
+  padding: 0;
+  margin: 18px 0;
+}
+.steps [aria-current] {
+  color: var(--wf-accent);
+  font-weight: 700;
+}
+.card .fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.card .fields label {
+  display: block;
+  margin-bottom: 6px;
+}
+.card .fields input,
+.card .fields select {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--wf-border);
+  border-radius: 8px;
+  background: white;
+  color: inherit;
+  font: inherit;
+}
+.card .fields :disabled {
+  opacity: 1;
+  background: #f8f9fa;
+}
+.card .fields small {
+  display: block;
+  margin-top: 5px;
+  color: #a82b32;
+}
+.card :focus-visible {
+  outline: 2px solid #386ad6;
+  outline-offset: 3px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+.card button {
+  border: 1px solid var(--wf-border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: white;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.card .actions button:first-child {
+  background: var(--wf-accent);
+  color: white;
+}
+.card button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.feedback {
+  color: var(--wf-muted);
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+.card dl > div {
+  margin: 10px 0;
+}
+.card dt {
+  color: var(--wf-muted);
+}
+.card dd {
+  margin: 4px 0;
+}
+@media (max-width: 480px) {
+  .card {
+    padding: 16px;
+  }
+  .card .actions button {
+    min-height: 44px;
+  }
+}
+
+.openDetails > summary {
+  display: none;
+}
+.pausedDetails > summary {
+  cursor: pointer;
+  color: var(--wf-muted);
+  margin: 12px 0;
+}
+.card .actions button:not(:first-child) {
+  background: white;
+  color: var(--wf-accent);
+  font-weight: 400;
+}
+.card .fields textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--wf-border);
+  border-radius: 8px;
+  background: white;
+  color: inherit;
+  font: inherit;
+}
+.card .fileUpload {
+  display: block;
+  padding: 12px 0;
+}
+.card .changes {
+  margin: 16px 0;
+}
+.card .changes dd,
+.card .output p {
+  white-space: pre-wrap;
+}
+.card .changes details {
+  border-top: 1px solid var(--wf-border);
+  padding: 10px 0;
+}
+.card .changes summary {
+  cursor: pointer;
+}
+.card .records ul {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+}
+.card .records li {
+  border-top: 1px solid var(--wf-border);
+  padding: 12px 0;
+}
+.card .records summary {
+  cursor: pointer;
+}
+.card .records summary span {
+  display: block;
+  color: var(--wf-muted);
+  margin: 4px 0;
+  font-size: 12px;
+}
+.card .records button {
+  background: white;
+  color: var(--wf-accent);
+  font-weight: 400;
+  margin: 4px 6px 4px 0;
+}
+.card .records nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

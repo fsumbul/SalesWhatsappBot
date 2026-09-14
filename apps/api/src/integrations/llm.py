@@ -283,7 +283,7 @@ def _coerce(field: str, answer: str) -> object:
         topics = [
             p.strip()
             for p in re.split(r"[,;\n]", answer)
-            if p.strip() and p.strip().lower() not in {"yok", "hayir", "hayır", "-"}  # noqa: RUF001
+            if p.strip() and p.strip().lower() not in {"yok", "hayir", "hayır", "-"}
         ]
         return {
             "forbidden_topics": topics,

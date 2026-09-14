@@ -9,10 +9,10 @@ from unittest.mock import patch
 import pytest
 
 from src.integrations.llm import (
+    ChatCompletionsLLMClient,
     LLMMessage,
     LLMNotConfiguredError,
     NullLLMClient,
-    ChatCompletionsLLMClient,
     get_llm_client,
 )
 

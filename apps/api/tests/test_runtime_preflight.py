@@ -19,7 +19,7 @@ def _healthy_result() -> dict[str, object]:
             "tenant_found": True,
             "tenant_status": "active",
             "tenant_waba_bound": True,
-            "alembic_revision": "c4f9128ab6d0",
+            "alembic_revision": "f67fa89bc01d",
             "runtime_table_present": True,
             "runtime_role_superuser": False,
             "runtime_role_bypassrls": False,
@@ -94,3 +94,23 @@ def test_ollama_is_optional_only_for_the_safe_contact_fallback_mode() -> None:
 
     assert _failed(result, require_ollama=False) is False
     assert _failed(result, require_ollama=True) is True
+
+
+def test_selection_requires_an_active_human_reviewer():
+    result = _healthy_result()
+    result["database"]["selection_enabled"] = True
+    assert _failed(result, require_llm=True)
+    result["database"]["active_human_reviewers"] = 1
+    assert not _failed(result, require_llm=True)
+
+
+def test_preflight_revision_matches_current_migration_head() -> None:
+    from pathlib import Path
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    from scripts.runtime_preflight import _EXPECTED_ALEMBIC_REVISION
+
+    api = Path(__file__).resolve().parents[1]
+    config = Config(str(api / "alembic.ini"))
+    config.set_main_option("script_location", str(api / "alembic"))
+    assert ScriptDirectory.from_config(config).get_heads() == [_EXPECTED_ALEMBIC_REVISION]

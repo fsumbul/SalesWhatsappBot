@@ -74,7 +74,7 @@ class AuthService:
         tenant = await self.tenants.get_by_slug(data.tenant_slug)
         if tenant is None:
             raise UnauthorizedError("Invalid credentials")
-        if tenant.status == TenantStatus.SUSPENDED:
+        if tenant.status != TenantStatus.ACTIVE:
             raise UnauthorizedError("Tenant suspended")
 
         await set_tenant_context(self.session, tenant.id)
@@ -106,6 +106,9 @@ class AuthService:
         if user is None or not user.is_active:
             raise UnauthorizedError("User inactive")
 
+        tenant = await self.tenants.get_by_id(rt.tenant_id)
+        if tenant is None or tenant.status != TenantStatus.ACTIVE:
+            raise UnauthorizedError("Tenant is not active")
         rt.revoked_at = datetime.now(UTC)
         tokens = await self._issue_tokens(
             user, user_agent=user_agent, ip=ip, previous_id=rt.id
@@ -159,6 +162,8 @@ class AuthService:
     async def create_invitation(
         self, tenant_id: UUID, inviter_id: UUID, data: InviteIn
     ) -> Invitation:
+        if data.role == UserRole.SUPER_ADMIN:
+            raise ValidationError("Platform administrator cannot be invited by a tenant")
         existing = await self.users.get_by_email(tenant_id, data.email)
         if existing is not None:
             raise ConflictError("User with this email already exists")
@@ -175,7 +180,9 @@ class AuthService:
         return inv
 
     async def accept_invitation(self, data: AcceptInviteIn) -> User:
-        inv = await self.invitations.get_by_token(data.token)
+        from sqlalchemy import select
+        inv = (await self.session.execute(select(Invitation).where(
+            Invitation.token == data.token).with_for_update())).scalar_one_or_none()
         if inv is None:
             raise NotFoundError("Invitation")
         if inv.accepted_at is not None:
@@ -183,6 +190,9 @@ class AuthService:
         if inv.expires_at < datetime.now(UTC):
             raise ValidationError("Invitation expired")
 
+        tenant = await self.tenants.get_by_id(inv.tenant_id)
+        if tenant is None or tenant.status != TenantStatus.ACTIVE:
+            raise UnauthorizedError("Tenant is not active")
         await set_tenant_context(self.session, inv.tenant_id)
         existing = await self.users.get_by_email(inv.tenant_id, inv.email)
         if existing is not None:

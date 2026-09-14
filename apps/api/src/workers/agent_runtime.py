@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from time import perf_counter
 from typing import Any
 from uuid import UUID
 
@@ -23,6 +26,7 @@ from src.modules.agents.company_runtime import (
     CustomerReplyAction,
     RuntimeInteractionKind,
     RuntimeTurn,
+    RuntimeWhatsAppCapabilities,
 )
 from src.modules.agents.models import Agent, AgentVersion, AgentVersionStatus
 from src.modules.agents.runtime_models import AgentRuntimeJob, AgentRuntimeJobStatus
@@ -36,6 +40,7 @@ from src.modules.outreach.models import (
     MessageDirection,
     MessageType,
 )
+from src.modules.selection import service as selection_service
 
 from ._asyncrun import run_async
 
@@ -47,6 +52,47 @@ _HISTORY_CHARACTER_LIMIT = 3000
 _HISTORY_MESSAGE_CHARACTER_LIMIT = 1500
 
 
+def _tenant_whatsapp_capabilities(tenant_id: UUID) -> RuntimeWhatsAppCapabilities | None:
+    """Load one tenant's private Flow binding, failing closed if malformed."""
+
+    raw = get_settings().whatsapp_tenant_capabilities_json.strip()
+    if not raw:
+        return None
+    try:
+        document = json.loads(raw)
+        item = document[str(tenant_id)]
+        enabled_values = item.get("enabled", [])
+        flow_ids = item.get("flow_ids", {})
+        flow_tokens = item.get("flow_tokens", {})
+        if (
+            not isinstance(item, dict)
+            or not isinstance(enabled_values, list)
+            or not isinstance(flow_ids, dict)
+            or not isinstance(flow_tokens, dict)
+            or not all(
+                isinstance(key, str) and isinstance(value, str) and value
+                for key, value in flow_ids.items()
+            )
+            or not all(
+                isinstance(key, str) and isinstance(value, str) and value
+                for key, value in flow_tokens.items()
+            )
+        ):
+            return None
+        enabled = frozenset(
+            RuntimeInteractionKind(value)
+            for value in enabled_values
+            if isinstance(value, str) and value in RuntimeInteractionKind._value2member_map_
+        )
+        return RuntimeWhatsAppCapabilities(
+            flow_ids=flow_ids,
+            flow_tokens=flow_tokens,
+            enabled=enabled,
+        )
+    except (AttributeError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
 def _interaction_audit(turn: RuntimeTurn) -> dict[str, Any] | None:
     interaction = turn.interaction
     if interaction is None:
@@ -55,6 +101,8 @@ def _interaction_audit(turn: RuntimeTurn) -> dict[str, Any] | None:
         "kind": interaction.kind.value,
         "button_text": interaction.button_text,
         "url": interaction.url,
+        "flow_id_present": interaction.flow_id is not None,
+        "flow_token_present": interaction.flow_token is not None,
         "header_media_id": (
             interaction.header_media.id if interaction.header_media is not None else None
         ),
@@ -65,6 +113,15 @@ def _interaction_audit(turn: RuntimeTurn) -> dict[str, Any] | None:
                 "description": option.description,
             }
             for option in interaction.options
+        ],
+        "carousel_cards": [
+            {
+                "offering_id": card.offering_id,
+                "button_text": card.button_text,
+                "url": card.url,
+                "header_media_id": card.header_media.id,
+            }
+            for card in interaction.carousel_cards
         ],
     }
 
@@ -93,16 +150,10 @@ async def _send_runtime_turn_once(to: str, turn: RuntimeTurn) -> tuple[dict[str,
         response = await client.send_reply_buttons_once(
             to,
             turn.reply,
-            [
-                {"id": option.id, "title": option.title}
-                for option in interaction.options
-            ],
+            [{"id": option.id, "title": option.title} for option in interaction.options],
             **button_kwargs,
         )
     elif interaction.kind == RuntimeInteractionKind.LIST:
-        list_kwargs: dict[str, Any] = {}
-        if header_media is not None:
-            list_kwargs["header_media"] = header_media
         response = await client.send_list_once(
             to,
             turn.reply,
@@ -120,7 +171,25 @@ async def _send_runtime_turn_once(to: str, turn: RuntimeTurn) -> tuple[dict[str,
                 }
                 for option in interaction.options
             ],
-            **list_kwargs,
+        )
+    elif interaction.kind == RuntimeInteractionKind.CAROUSEL:
+        response = await client.send_carousel_once(
+            to,
+            turn.reply,
+            cards=[
+                {
+                    "body_text": card.body_text,
+                    "button_text": card.button_text,
+                    "url": card.url,
+                    "header_media": {
+                        "kind": card.header_media.kind.value,
+                        "link": card.header_media.url,
+                        "mime_type": card.header_media.mime_type,
+                        "size_bytes": str(card.header_media.size_bytes),
+                    },
+                }
+                for card in interaction.carousel_cards
+            ],
         )
     elif interaction.kind == RuntimeInteractionKind.CTA_URL and interaction.url is not None:
         cta_kwargs: dict[str, Any] = {
@@ -133,6 +202,18 @@ async def _send_runtime_turn_once(to: str, turn: RuntimeTurn) -> tuple[dict[str,
             to,
             turn.reply,
             **cta_kwargs,
+        )
+    elif (
+        interaction.kind == RuntimeInteractionKind.FLOW
+        and interaction.flow_id is not None
+        and interaction.flow_token is not None
+    ):
+        response = await client.send_flow_once(
+            to,
+            turn.reply,
+            button_text=interaction.button_text,
+            flow_id=interaction.flow_id,
+            flow_token=interaction.flow_token,
         )
     else:  # pragma: no cover - planner constructs only complete interactions
         raise ValueError("invalid runtime interaction")
@@ -264,6 +345,13 @@ async def _dispatch_pending_runtime_jobs() -> dict[str, int]:
                     job_id=str(ready_job_id),
                     error_type=type(exc).__name__,
                 )
+    # The existing recovery schedule drains durable operator sends too (including Windows).
+    from src.workers.chat_outbound import dispatch as dispatch_chat_outbound
+    for tenant_id in tenants:
+        try:
+            await dispatch_chat_outbound(tenant_id)
+        except Exception as exc:
+            logger.warning("chat_outbound_recovery_failed", error_type=type(exc).__name__)
     return {"queued": queued}
 
 
@@ -351,6 +439,8 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             or tenant.wa_business_account_id != settings.whatsapp_business_account_id
         ):
             raise RuntimeError("tenant or WhatsApp sender binding is inactive")
+        from src.modules.outreach.channel import resolve_channel
+        sender = await resolve_channel(session, tenant_id)
         job = await session.get(AgentRuntimeJob, job_id)
         if job is None:
             return {"status": "missing"}
@@ -391,6 +481,14 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             await session.commit()
             return {"status": job.status}
 
+        version = await _resolve_live_version(session, tenant_id)
+        if version is None:
+            raise RuntimeError("no active live WhatsApp agent version")
+        config = CompanyAgentConfig.model_validate(version.company_config)
+        selection_active = await selection_service.applicable(
+            session, config, conversation, inbound
+        )
+
         newer_job_id = await _ordered_conversation_job(
             session,
             job,
@@ -401,7 +499,7 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 AgentRuntimeJobStatus.SENDING.value,
             },
         )
-        if newer_job_id is not None:
+        if newer_job_id is not None and not selection_active:
             job.status = AgentRuntimeJobStatus.SKIPPED.value
             job.completed_at = datetime.now(UTC)
             job.error = "coalesced into a newer inbound turn"
@@ -423,17 +521,13 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 )
             )
         ).scalar_one_or_none()
-        if contact.consent_status == ConsentStatus.OPT_OUT or opted_out is not None:
+        if str(contact.consent_status) == ConsentStatus.OPT_OUT.value or opted_out is not None:
             job.status = AgentRuntimeJobStatus.SKIPPED.value
             job.completed_at = datetime.now(UTC)
             job.error = "contact opted out"
             await session.commit()
             return {"status": job.status}
 
-        version = await _resolve_live_version(session, tenant_id)
-        if version is None:
-            raise RuntimeError("no active live WhatsApp agent version")
-        config = CompanyAgentConfig.model_validate(version.company_config)
         history, context_fact_ids = await _conversation_history_with_context(
             session,
             conversation.id,
@@ -450,11 +544,44 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 _refresh_typing_indicator(inbound.wa_message_id, typing_stats)
             )
         try:
-            turn = await CompanyAgentRuntime(config, get_llm_client()).reply(
-                inbound.body,
-                history=history,
-                context_fact_ids=context_fact_ids,
-            )
+            selection_request = None
+            selection_confirmed = False
+            turn = None
+            resume_prompt = None
+            selection_side_handoff = False
+            selection_processing_ms = None
+            if selection_active:
+                selection_started = perf_counter()
+                (
+                    turn,
+                    resume_prompt,
+                    selection_request,
+                    selection_confirmed,
+                ) = await selection_service.handle(session, config, conversation, inbound)
+                selection_processing_ms = round((perf_counter() - selection_started) * 1000, 2)
+            selection_deterministic = turn is not None
+            if turn is None:
+                turn = await CompanyAgentRuntime(
+                    config,
+                    get_llm_client(),
+                    whatsapp_capabilities=_tenant_whatsapp_capabilities(tenant_id),
+                ).reply(inbound.body, history=history, context_fact_ids=context_fact_ids)
+                if resume_prompt is not None and turn.action in {
+                    CustomerReplyAction.REPLY,
+                    CustomerReplyAction.ASK_CLARIFICATION,
+                    CustomerReplyAction.HANDOFF,
+                    CustomerReplyAction.DECLINE,
+                }:
+                    selection_side_handoff = turn.action == CustomerReplyAction.HANDOFF
+                    suffix = selection_service.as_turn(resume_prompt)
+                    combined = turn.reply + "\n\n" + suffix.reply
+                    turn = replace(
+                        turn,
+                        action=CustomerReplyAction.REPLY,
+                        reply=combined,
+                        interaction=suffix.interaction if len(combined) <= 1024 else None,
+                    )
+
         finally:
             if typing_refresh_task is not None:
                 typing_refresh_task.cancel()
@@ -474,7 +601,7 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 AgentRuntimeJobStatus.SENDING.value,
             },
         )
-        if newer_job_id is not None:
+        if newer_job_id is not None and not selection_active:
             job.status = AgentRuntimeJobStatus.SKIPPED.value
             job.completed_at = datetime.now(UTC)
             job.error = "coalesced into a newer inbound turn"
@@ -505,9 +632,28 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             await session.refresh(tenant)
             await session.refresh(contact)
             if job.status != AgentRuntimeJobStatus.PROCESSING.value:
-                return {"status": job.status}
+                result_status = job.status
+                if selection_request is not None and (job.audit or {}).get("cancelled_by_opt_out"):
+                    request_id = selection_request.id
+                    # STOP skips locked drafts to avoid a lock inversion with this
+                    # send guard. Discard the uncommitted answer before cancelling.
+                    await session.rollback()
+                    from src.modules.selection.models import SelectionRequest
+
+                    draft = await session.get(SelectionRequest, request_id)
+                    if draft is not None and draft.status == "draft":
+                        draft.status = "cancelled"
+                        draft.revision += 1
+                        await session.commit()
+                return {"status": result_status}
+            try:
+                boundary_sender = await resolve_channel(session, tenant_id)
+                binding_changed = boundary_sender.id != sender.id or boundary_sender.agent_id != version.agent_id
+            except Exception:
+                binding_changed = True
+
             if (
-                tenant.status != TenantStatus.ACTIVE
+                binding_changed or tenant.status != TenantStatus.ACTIVE
                 or tenant.wa_business_account_id != settings.whatsapp_business_account_id
             ):
                 job.status = AgentRuntimeJobStatus.SKIPPED.value
@@ -525,7 +671,7 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                     )
                 )
             ).scalar_one_or_none()
-            if contact.consent_status == ConsentStatus.OPT_OUT or boundary_opted_out is not None:
+            if str(contact.consent_status) == ConsentStatus.OPT_OUT.value or boundary_opted_out is not None:
                 job.status = AgentRuntimeJobStatus.SKIPPED.value
                 job.completed_at = datetime.now(UTC)
                 job.error = "contact opted out before outbound send"
@@ -546,8 +692,15 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             job.used_fallback = turn.used_fallback
             job.status = AgentRuntimeJobStatus.SENDING.value
             job.audit = {
-                "model": settings.llm_model,
+                "model": "deterministic_selection"
+                if selection_deterministic
+                else settings.llm_model,
+                "selection_request_id": str(selection_request.id) if selection_request else None,
+                "selection_confirmed": selection_confirmed,
+                "selection_processing_ms": selection_processing_ms,
                 "provider": settings.llm_provider,
+                "response_source": turn.response_source,
+                "fallback_reason": turn.fallback_reason,
                 "history_messages": len(history),
                 "context_fact_ids": list(context_fact_ids),
                 "typing_indicator_sent": typing_stats["successes"] > 0,
@@ -555,9 +708,27 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 "typing_indicator_refreshes": typing_stats["refreshes"],
                 "planned_reply": turn.reply,
                 "planned_interaction": _interaction_audit(turn),
+                "request_resolutions": list(turn.request_resolutions),
                 "send_started_at": datetime.now(UTC).isoformat(),
                 "external_send_attempts": 1,
             }
+            if selection_side_handoff:
+                await _queue_human_review(
+                    session,
+                    tenant_id,
+                    job,
+                    conversation,
+                    "Seçim sırasında gelen ek soru teknik ekip yanıtı bekliyor.",
+                )
+            if selection_confirmed and selection_request is not None:
+                await _queue_human_review(
+                    session,
+                    tenant_id,
+                    job,
+                    conversation,
+                    "Müşteri seçim özetini onayladı; teknik/satış incelemesi bekliyor.",
+                )
+                selection_request.assigned_to = conversation.assigned_to
             await session.commit()
 
             response, transport_type = await _send_runtime_turn_once(
@@ -585,8 +756,10 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                     "action": turn.action.value,
                     "fact_ids": list(turn.fact_ids),
                     "used_fallback": turn.used_fallback,
+                    "response_source": turn.response_source,
                     "transport_type": transport_type,
                     "interaction": _interaction_audit(turn),
+                    "request_resolutions": list(turn.request_resolutions),
                 },
             )
             session.add(outbound)
@@ -694,7 +867,7 @@ async def _ordered_conversation_job(
     else:  # pragma: no cover - private helper has two fixed callers
         raise ValueError("direction must be 'earlier' or 'newer'")
 
-    return (
+    result: UUID | None = (
         await session.execute(
             select(AgentRuntimeJob.id)
             .where(
@@ -708,6 +881,7 @@ async def _ordered_conversation_job(
             .limit(1)
         )
     ).scalar_one_or_none()
+    return result
 
 
 async def _resolve_live_version(session: Any, tenant_id: UUID) -> AgentVersion | None:
@@ -722,10 +896,11 @@ async def _resolve_live_version(session: Any, tenant_id: UUID) -> AgentVersion |
         )
         .order_by(AgentVersion.version.desc())
     )
-    slug = get_settings().whatsapp_agent_slug.strip()
-    if slug:
-        stmt = stmt.where(Agent.slug == slug)
-    return (await session.execute(stmt)).scalars().first()
+    from src.modules.outreach.channel import resolve_channel
+    sender = await resolve_channel(session, tenant_id)
+    stmt = stmt.where(Agent.id == sender.agent_id)
+    result: AgentVersion | None = (await session.execute(stmt)).scalars().first()
+    return result
 
 
 async def _conversation_history(
@@ -761,7 +936,7 @@ def _trusted_runtime_context_fact_ids(
         or raw.get("agent_version_id") != str(agent_version_id)
         or raw.get("action") != CustomerReplyAction.REPLY.value
         or not isinstance(fact_ids, list)
-        or not 1 <= len(fact_ids) <= 2
+        or not 1 <= len(fact_ids) <= 9
         or any(not isinstance(fact_id, str) for fact_id in fact_ids)
         or len(set(fact_ids)) != len(fact_ids)
     ):
@@ -804,8 +979,7 @@ async def _conversation_history_with_context(
     quoted_context = current_raw.get("context")
     quoted_wa_message_id = (
         quoted_context.get("id")
-        if isinstance(quoted_context, dict)
-        and isinstance(quoted_context.get("id"), str)
+        if isinstance(quoted_context, dict) and isinstance(quoted_context.get("id"), str)
         else None
     )
     context_message: Message | None
@@ -848,6 +1022,10 @@ async def _conversation_history_with_context(
     remaining_characters = _HISTORY_CHARACTER_LIMIT
     history_desc: list[LLMMessage] = []
     for item in rows:
+        if (agent_version_id is not None and item.direction == MessageDirection.OUTBOUND
+                and isinstance(item.raw, dict) and item.raw.get("runtime_job_id")
+                and item.raw.get("agent_version_id") != str(agent_version_id)):
+            break
         content = (item.body or "")[:_HISTORY_MESSAGE_CHARACTER_LIMIT]
         if not content or remaining_characters <= 0:
             continue

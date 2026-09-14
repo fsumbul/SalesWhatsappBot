@@ -19,13 +19,17 @@ from src.core.errors import DomainError
 from src.core.logging import configure_logging
 from src.core.security import JWTError, decode_token
 from src.integrations.llm import LLMMessage, LLMNotConfiguredError, get_llm_client
+from src.modules.admin_chat.router import router as admin_chat_router
 from src.modules.agents.router import router as agents_router
+from src.modules.agents.workspace import router as workspace_router
+from src.modules.auth.platform import router as platform_router
 from src.modules.auth.router import router as auth_router
 from src.modules.auth.router import users_router
 from src.modules.compliance.router import opt_outs_router
 from src.modules.compliance.router import router as compliance_router
 from src.modules.discovery.router import campaigns_router, leads_router
 from src.modules.legal.router import router as legal_router
+from src.modules.outreach.inbox_control import router as inbox_control_router
 from src.modules.outreach.router import (
     conversations_router,
     outreach_router,
@@ -35,6 +39,8 @@ from src.modules.outreach.router import (
 from src.modules.outreach.webhooks import router as whatsapp_webhook_router
 from src.modules.reports.router import router as reports_router
 from src.modules.sectors.router import router as sectors_router
+from src.modules.selection.router import router as selection_router
+from src.modules.selection.customer_form import router as customer_form_router
 
 
 @asynccontextmanager
@@ -107,18 +113,10 @@ def create_app() -> FastAPI:
     # --- Global domain-error handler ---
     @app.exception_handler(DomainError)
     async def _domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:
-        status_map = {
-            "NotFoundError": 404,
-            "ConflictError": 409,
-            "ForbiddenError": 403,
-            "UnauthorizedError": 401,
-            "ValidationError": 422,
-            "ComplianceBlockError": 451,
-        }
-        status_code = status_map.get(exc.__class__.__name__, 400)
+        status_code = exc.status_code
         return JSONResponse(
             status_code=status_code,
-            content={"error": exc.__class__.__name__, "detail": str(exc)},
+            content={"error": exc.__class__.__name__, "detail": exc.detail},
         )
 
     @app.exception_handler(HTTPException)
@@ -160,7 +158,7 @@ def create_app() -> FastAPI:
         try:
             reply = await get_llm_client().complete(
                 llm_messages,
-                system=("Sen bir WhatsApp satış asistanısın. Türkçe, kısa ve doğal cevaplar ver."),  # noqa: RUF001
+                system=("Sen bir WhatsApp satış asistanısın. Türkçe, kısa ve doğal cevaplar ver."),
             )
         except LLMNotConfiguredError as e:
             raise HTTPException(status_code=503, detail=str(e)) from e
@@ -168,15 +166,21 @@ def create_app() -> FastAPI:
 
     # --- API v1 routers ---
     api_prefix = "/api/v1"
+    app.include_router(selection_router, prefix=api_prefix)
+    app.include_router(customer_form_router, prefix=api_prefix)
+    app.include_router(admin_chat_router, prefix=api_prefix)
     app.include_router(auth_router, prefix=api_prefix)
+    app.include_router(workspace_router, prefix=api_prefix)
     app.include_router(agents_router, prefix=api_prefix)
     app.include_router(users_router, prefix=api_prefix)
+    app.include_router(platform_router, prefix=api_prefix)
     app.include_router(sectors_router, prefix=api_prefix)
     app.include_router(campaigns_router, prefix=api_prefix)
     app.include_router(leads_router, prefix=api_prefix)
     app.include_router(opt_outs_router, prefix=api_prefix)
     app.include_router(compliance_router, prefix=api_prefix)
     app.include_router(templates_router, prefix=api_prefix)
+    app.include_router(inbox_control_router, prefix=api_prefix)
     app.include_router(senders_router, prefix=api_prefix)
     app.include_router(outreach_router, prefix=api_prefix)
     app.include_router(conversations_router, prefix=api_prefix)

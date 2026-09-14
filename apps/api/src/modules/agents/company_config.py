@@ -19,8 +19,10 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
+from src.modules.selection.schema import SelectionFlow
+
 LEGACY_COMPANY_CONFIG_SCHEMA_VERSION = "company-agent-config/1.0"
-COMPANY_CONFIG_SCHEMA_VERSION = "company-agent-config/1.2"
+COMPANY_CONFIG_SCHEMA_VERSION: Literal["company-agent-config/1.2"] = "company-agent-config/1.2"
 
 _IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")
 _LOCALE_RE = re.compile(r"^[a-z]{2,3}(?:-[A-Z][a-z]{3}|-[A-Z]{2})?$")
@@ -165,18 +167,54 @@ class MediaAsset(StrictModel):
         return self
 
 
+class FlowRef(StrictModel):
+    """Logical Flow metadata; tenant-specific Meta IDs remain deployment data."""
+
+    id: Identifier
+    flow_ref: Identifier
+    locale: Locale
+    button_text: StarterInteractionLabel
+    completion_fact_id: Identifier
+
+
+class MediaCarouselRef(StrictModel):
+    """Approved ordering for a session media carousel derived from offerings."""
+
+    id: Identifier
+    trigger_fact_id: Identifier
+    offering_ids: list[Identifier] = Field(min_length=2, max_length=10)
+    button_text: StarterInteractionLabel
+
+    @model_validator(mode="after")
+    def _offering_ids_are_unique(self) -> MediaCarouselRef:
+        _assert_unique(self.offering_ids, "media carousel offering ids")
+        return self
+
+
 class WhatsAppPresentation(StrictModel):
-    """Approved session-message assets, separate from tenant credentials."""
+    """Reviewed WhatsApp-native presentation intent for this company."""
 
     assets: list[MediaAsset] = Field(default_factory=list, max_length=500)
     offering_media: dict[Identifier, Identifier] = Field(
         default_factory=dict,
         max_length=10_000,
     )
+    carousels: list[MediaCarouselRef] = Field(default_factory=list, max_length=100)
+    flows: list[FlowRef] = Field(default_factory=list, max_length=100)
+    offer_intake_choice: bool = False
+    intake_form_url: str | None = Field(default=None, pattern=r"^https://", max_length=500)
+    intake_start_phrases: list[str] = Field(default_factory=list, max_length=30)
 
     @model_validator(mode="after")
-    def _media_references_are_valid(self) -> WhatsAppPresentation:
+    def _presentation_references_are_valid(self) -> WhatsAppPresentation:
         _assert_unique((asset.id for asset in self.assets), "media asset ids")
+        _assert_unique((carousel.id for carousel in self.carousels), "media carousel ids")
+        _assert_unique(
+            (carousel.trigger_fact_id for carousel in self.carousels),
+            "media carousel trigger fact ids",
+        )
+        _assert_unique((flow.id for flow in self.flows), "flow reference ids")
+        _assert_unique((flow.flow_ref for flow in self.flows), "flow logical references")
         asset_ids = {asset.id for asset in self.assets}
         if any(asset_id not in asset_ids for asset_id in self.offering_media.values()):
             raise ValueError("offering media must refer to a known media asset")
@@ -343,6 +381,21 @@ class PolicyRule(StrictModel):
         return self
 
 
+class SemanticDialoguePolicy(StrictModel):
+    """Company-owned language for unresolved parts of a composed request."""
+
+    unavailable_messages: dict[str, LocalizedText]
+    clarification_text: LocalizedText
+    next_step_fact_id: Identifier | None = None
+    next_step_by_topic: dict[str, Identifier] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _requires_generic_boundary(self) -> SemanticDialoguePolicy:
+        if "other" not in self.unavailable_messages:
+            raise ValueError("semantic dialogue requires an other boundary message")
+        return self
+
+
 class AgentReplyPolicy(StrictModel):
     response_mode: ResponseMode = ResponseMode.GROUNDED
     purposes: list[ConversationPurpose] = Field(min_length=1, max_length=7)
@@ -351,7 +404,9 @@ class AgentReplyPolicy(StrictModel):
     max_characters: int = Field(default=450, ge=1, le=4000)
     require_fact_ids_for_claims: bool = True
     unknown_fact_action: UnknownFactAction = UnknownFactAction.HANDOFF
+    menu_fact_id: Identifier | None = None
     handoff_fact_id: Identifier | None = None
+    semantic_dialogue: SemanticDialoguePolicy | None = None
     semantic_fallback_fact_ids: list[Identifier] = Field(
         default_factory=list,
         max_length=24,
@@ -417,6 +472,7 @@ class CompanyAgentConfig(StrictModel):
     relationships: list[Relationship] = Field(default_factory=list, max_length=50_000)
     facts: list[Fact] = Field(default_factory=list, max_length=50_000)
     customer_profiles: list[CustomerProfileDefinition] = Field(default_factory=list, max_length=100)
+    selection_flow: SelectionFlow | None = None
     processes: list[BusinessProcess] = Field(default_factory=list, max_length=100)
     policies: list[PolicyRule] = Field(default_factory=list, max_length=1_000)
     agent: AgentReplyPolicy | None = None
@@ -425,13 +481,6 @@ class CompanyAgentConfig(StrictModel):
 
     @model_validator(mode="after")
     def _validate_company_graph(self) -> CompanyAgentConfig:
-        if (
-            self.whatsapp_presentation is not None
-            and self.schema_version != COMPANY_CONFIG_SCHEMA_VERSION
-        ):
-            raise ValueError(
-                "WhatsApp presentation requires company-agent-config/1.2"
-            )
         if self.schema_version == LEGACY_COMPANY_CONFIG_SCHEMA_VERSION:
             uses_conversation_facts = any(
                 fact.category == FactCategory.SOCIAL or fact.selection_guidance is not None
@@ -447,6 +496,10 @@ class CompanyAgentConfig(StrictModel):
                     "company-agent-config/1.0 does not support conversation fields; "
                     "use company-agent-config/1.1"
                 )
+        if self.whatsapp_presentation is not None and self.schema_version != COMPANY_CONFIG_SCHEMA_VERSION:
+            raise ValueError(
+                "WhatsApp presentation requires company-agent-config/1.2"
+            )
 
         if self.lifecycle != ConfigurationLifecycle.DRAFT:
             if self.organization is None:
@@ -494,13 +547,6 @@ class CompanyAgentConfig(StrictModel):
                         raise ValueError(
                             f"offering '{offering.id}' overview fact must be customer-visible"
                         )
-            if self.whatsapp_presentation is not None:
-                offering_ids = {offering.id for offering in self.offerings}
-                if any(
-                    offering_id not in offering_ids
-                    for offering_id in self.whatsapp_presentation.offering_media
-                ):
-                    raise ValueError("offering media must refer to a known offering")
             for relationship in self.relationships:
                 if (
                     relationship.subject_id not in entity_id_set
@@ -510,6 +556,51 @@ class CompanyAgentConfig(StrictModel):
             for fact in self.facts:
                 if fact.subject_id not in entity_id_set:
                     raise ValueError(f"fact '{fact.id}' has unknown subject_id")
+            if self.whatsapp_presentation is not None:
+                offering_by_id = {offering.id: offering for offering in self.offerings}
+                offering_ids = set(offering_by_id)
+                if any(
+                    offering_id not in offering_ids
+                    for offering_id in self.whatsapp_presentation.offering_media
+                ):
+                    raise ValueError("offering media must refer to a known offering")
+                visible_fact_ids = {
+                    fact.id
+                    for fact in self.facts
+                    if fact.customer_visible and fact.customer_text
+                }
+                for carousel in self.whatsapp_presentation.carousels:
+                    if carousel.trigger_fact_id not in visible_fact_ids:
+                        raise ValueError(
+                            "media carousel trigger must refer to a customer-visible fact"
+                        )
+                    for offering_id in carousel.offering_ids:
+                        carousel_offering = offering_by_id.get(offering_id)
+                        if carousel_offering is None or not carousel_offering.active:
+                            raise ValueError(
+                                "media carousel must refer to active known offerings"
+                            )
+                        if offering_id not in self.whatsapp_presentation.offering_media:
+                            raise ValueError(
+                                "media carousel offerings must have approved media"
+                            )
+                        if not any(
+                            link.kind in {
+                                CustomerLinkKind.PRODUCT_PAGE,
+                                CustomerLinkKind.CATALOG,
+                            }
+                            for link in carousel_offering.customer_links
+                        ):
+                            raise ValueError(
+                                "media carousel offerings need a product or catalog link"
+                            )
+                for flow in self.whatsapp_presentation.flows:
+                    if self.agent is None or flow.locale not in self.agent.supported_locales:
+                        raise ValueError("flow locale must be supported by the agent")
+                    if flow.completion_fact_id not in visible_fact_ids:
+                        raise ValueError(
+                            "flow completion fact must refer to a customer-visible fact"
+                        )
             if self.agent is not None:
                 visible_fact_by_id = {
                     fact.id: fact
@@ -580,6 +671,24 @@ class CompanyAgentConfig(StrictModel):
 
         if not self.agent.require_fact_ids_for_claims:
             errors.append("agent must require fact ids for customer claims")
+        if self.agent.semantic_dialogue is not None:
+            dialogue = self.agent.semantic_dialogue
+            for next_id in [dialogue.next_step_fact_id, *dialogue.next_step_by_topic.values()]:
+                if next_id is not None and not any(
+                    fact.id == next_id and fact.customer_visible and fact.customer_text
+                    for fact in self.facts
+                ):
+                    errors.append("semantic next_step_fact_id must be customer-visible text")
+            for texts in [dialogue.clarification_text, *dialogue.unavailable_messages.values()]:
+                if self.agent.default_locale not in texts:
+                    errors.append("semantic dialogue text requires the default locale")
+                elif len(texts[self.agent.default_locale]) > self.agent.max_characters:
+                    errors.append("semantic dialogue text exceeds max_characters")
+        if self.agent.menu_fact_id is not None and not any(
+            f.id == self.agent.menu_fact_id and f.customer_visible and f.customer_text
+            for f in self.facts
+        ):
+            errors.append("agent menu_fact_id must refer to customer-visible text")
         if self.agent.handoff_fact_id is not None:
             handoff_fact = next(
                 (fact for fact in self.facts if fact.id == self.agent.handoff_fact_id),

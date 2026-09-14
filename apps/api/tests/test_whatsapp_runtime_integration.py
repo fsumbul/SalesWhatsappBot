@@ -29,7 +29,7 @@ from starlette.requests import Request
 
 from scripts.bootstrap_arti_kasnak_agent import _reconcile
 from src.core.config import get_settings
-from src.core.db import dispose_engine, get_sessionmaker, session_scope
+from src.core.db import dispose_engine, get_sessionmaker, session_scope, set_tenant_context
 from src.integrations.whatsapp import WhatsAppClient
 from src.modules.agents.company_config import CompanyAgentConfig, MediaAsset
 from src.modules.agents.company_runtime import (
@@ -264,6 +264,7 @@ async def runtime_database(
 
     monkeypatch.setenv("DATABASE_URL", TEST_DATABASE_URL)
     monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("APP_DEBUG", "false")
     monkeypatch.setenv("WHATSAPP_APP_SECRET", _APP_SECRET)
     monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "runtime-integration-access-token")
     monkeypatch.setenv("WHATSAPP_VERIFY_TOKEN", "runtime-integration-verify-token")
@@ -288,6 +289,12 @@ async def runtime_database(
         # partial unique index allows only one active tenant for that sender,
         # so remove this test's fully-cascading tenant before the next case.
         async with session_scope() as session:
+            from src.modules.outreach.models import SenderProfile
+            tenant_ids = (await session.execute(select(Tenant.id).where(Tenant.slug.like("runtime-integration-%")))).scalars().all()
+            for tid in tenant_ids:
+                await set_tenant_context(session, tid)
+                await session.execute(delete(SenderProfile).where(SenderProfile.tenant_id == tid))
+            await set_tenant_context(session, None)
             await session.execute(delete(Tenant).where(Tenant.slug.like("runtime-integration-%")))
             await session.commit()
         await dispose_engine()
@@ -345,6 +352,10 @@ async def _seed_runtime_tenant(*, with_agent: bool = False) -> tuple[UUID, UUID 
             )
             session.add_all([owner, agent])
             await session.flush()
+            from src.modules.outreach.models import SenderProfile
+            session.add(SenderProfile(tenant_id=tenant_id, agent_id=agent.id,
+                display_name="Runtime sender", phone_number_id=_PHONE_NUMBER_ID,
+                business_account_id=_WABA_ID, is_active=True))
             session.add(
                 AgentVersion(
                     tenant_id=tenant_id,
@@ -763,7 +774,7 @@ async def test_signed_duplicate_webhook_is_idempotent_and_enforces_sender_bindin
     runtime_database: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tenant_id, _ = await _seed_runtime_tenant()
+    tenant_id, _ = await _seed_runtime_tenant(with_agent=True)
     tenant_slug = f"runtime-integration-{tenant_id.hex}"
     queued: list[tuple[str, str]] = []
     monkeypatch.setattr(
@@ -1059,6 +1070,12 @@ async def test_handoff_pauses_new_jobs_until_manual_inbox_reply_resolves_it(
         )
 
     async with session_scope(tenant_id) as session:
+        still_paused = await session.get(AgentRuntimeJob, job_id)
+        assert still_paused.status == AgentRuntimeJobStatus.HANDOFF.value
+        from src.modules.outreach.inbox_control import resume
+        await resume(conversation_id, session, {"tid": str(tenant_id), "sub": str(owner_id)})
+
+    async with session_scope(tenant_id) as session:
         resolved = await session.get(AgentRuntimeJob, job_id)
         assert resolved is not None
         assert resolved.status == AgentRuntimeJobStatus.RESOLVED.value
@@ -1080,7 +1097,7 @@ async def test_handoff_pauses_new_jobs_until_manual_inbox_reply_resolves_it(
     assert len(resumed_job_ids) == 1
 
 
-async def test_new_inbound_auto_resolves_handoff_when_no_active_reviewer(
+async def test_new_inbound_preserves_handoff_without_active_reviewer(
     runtime_database: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1123,20 +1140,11 @@ async def test_new_inbound_auto_resolves_handoff_when_no_active_reviewer(
             ],
         )
         await session.commit()
-    assert len(resumed_job_ids) == 1
-
+    assert resumed_job_ids == []
     async with session_scope(tenant_id) as session:
-        resolved = await session.get(AgentRuntimeJob, job_id)
-        resumed = await session.get(AgentRuntimeJob, resumed_job_ids[0])
-        assert resolved is not None
-        assert resolved.status == AgentRuntimeJobStatus.RESOLVED.value
-        assert resolved.audit["manual_review_required"] is False
-        assert resolved.audit["auto_resolved_without_human_reviewer"] is True
-        assert resolved.audit["auto_resolution_reason"] == (
-            "new inbound received without active reviewer"
-        )
-        assert resumed is not None
-        assert resumed.status == AgentRuntimeJobStatus.PENDING.value
+        paused = await session.get(AgentRuntimeJob, job_id)
+        assert paused is not None
+        assert paused.status == AgentRuntimeJobStatus.HANDOFF.value
 
 
 async def test_typing_indicator_failure_is_best_effort(
@@ -1372,10 +1380,11 @@ async def test_product_specific_disinterest_does_not_create_a_global_opt_out(
             )
         )
         job = await session.get(AgentRuntimeJob, job_ids[0])
+        assert job is not None
+        job_status = job.status
 
     assert opt_outs == 0
-    assert job is not None
-    assert job.status == AgentRuntimeJobStatus.PENDING.value
+    assert job_status == AgentRuntimeJobStatus.PENDING.value
 
 
 async def test_rapid_inbound_turns_are_ordered_and_coalesced_to_one_reply(

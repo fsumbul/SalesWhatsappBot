@@ -74,6 +74,8 @@ class AgentVersion(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
         index=True,
     )
 
+    revision: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     # --- Configuration (roadmap E1: persona/tone, product knowledge,
     # languages, qualification questions, guardrails, reply policies) ---
     persona: Mapped[str] = mapped_column(Text, default="", nullable=False)

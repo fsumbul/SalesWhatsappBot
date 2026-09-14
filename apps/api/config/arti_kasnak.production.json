@@ -945,7 +945,7 @@
       ],
       "customer_visible": true,
       "customer_text": {
-        "tr": "Artı Kasnak'ın ürün grupları; MC Nylon 6 ve döküm asansör kasnakları, palanga, saptırma, hidrolik ve motor kasnakları, çekiş kasnakları, çelik/plastik kayış kasnakları, mil ve akslar, yan destekler, yataklı rulmanlar ve rulmanlardır."
+        "tr": "Artı Kasnak'ın ürün grupları; MC Nylon 6 ve döküm asansör kasnakları, palanga, saptırma, hidrolik ve motor kasnakları, çekiş kasnakları, çelik/plastik kayış kasnakları, mil ve akslar, yan destekler, yataklı rulmanlar ve rulmanlardır. Görsel ve detay için aşağıdan bir ürün grubu seçebilirsiniz."
       },
       "search_terms": [
         "hangi ürünleri üretiyorsunuz",
@@ -1696,6 +1696,17 @@
       "source": "Artı Kasnak production policy: quote-intake/1.0"
     },
     {
+      "id": "quote_review_next_step",
+      "subject_id": "company",
+      "category": "commercial_rule",
+      "value": "Eksik ticari bilgiler teklif aşamasında ekip tarafından doğrulanır",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "İsterseniz ölçü veya çizim, ihtiyaç adedi ve teslimat konumuyla teklif ön hazırlığına geçebiliriz."
+      },
+      "source": "Artı Kasnak production policy: partial-answer/1.0"
+    },
+    {
       "id": "technical_selection_handoff",
       "subject_id": "company",
       "category": "eligibility",
@@ -1705,6 +1716,17 @@
         "tr": "Nihai ürün uygunluğu ve teknik seçim, paylaştığınız bilgiler üzerinden Artı Kasnak teknik ekibi tarafından doğrulanır; bot kesin ürün seçimi yapmaz."
       },
       "source": "Artı Kasnak production policy: technical-review/1.0"
+    },
+    {
+      "id": "flow_submission_received",
+      "subject_id": "company",
+      "category": "support",
+      "value": "Teklif ön hazırlık formu verileri teslim alındı ve insan incelemesine yönlendirildi",
+      "customer_visible": true,
+      "customer_text": {
+        "tr": "Teklif formu bilgileriniz alındı. Artı Kasnak ekibi paylaştığınız bilgileri inceleyecektir."
+      },
+      "source": "Artı Kasnak production policy: quote-intake/1.1"
     }
   ],
   "customer_profiles": [
@@ -1890,6 +1912,47 @@
     "require_fact_ids_for_claims": true,
     "unknown_fact_action": "handoff",
     "handoff_fact_id": "contact_information",
+    "semantic_dialogue": {
+      "unavailable_messages": {
+        "price": {
+          "tr": "Fiyat kısmında güncel, doğrulanmış bir tutar paylaşamıyorum; satış ekibinin teklif hazırlaması gerekiyor."
+        },
+        "stock": {
+          "tr": "Güncel stok durumunu doğrulayamıyorum; satış ekibinden teyit edilmesi gerekiyor."
+        },
+        "delivery": {
+          "tr": "Kesin teslimat tarihini doğrulayamıyorum; sipariş koşullarına göre satış ekibi teyit etmelidir."
+        },
+        "suitability": {
+          "tr": "Sisteminize kesin uygunluğu ben onaylayamam; ölçü ve çalışma koşulları teknik ekipçe değerlendirilmelidir."
+        },
+        "warranty": {
+          "tr": "İstediğiniz garanti koşulunu elimdeki bilgilerle doğrulayamıyorum; ekipten teyit edilmelidir."
+        },
+        "certification": {
+          "tr": "İstediğiniz belge veya sertifika kapsamını doğrulayamıyorum; teknik ekipten teyit edilmelidir."
+        },
+        "visuals": {
+          "tr": "Bu ürün için doğrulanmış bir görsel sunamıyorum; ekipten talep edebilirsiniz."
+        },
+        "remaining": {
+          "tr": "Mesajı uzatmamak için kalan detayları sonraki adımda ele alabiliriz."
+        },
+        "other": {
+          "tr": "Talebinizin kalan kısmını elimdeki doğrulanmış bilgilerle tamamlayamıyorum; ilgili ekibin desteği gerekiyor."
+        }
+      },
+      "clarification_text": {
+        "tr": "Diğer talebiniz için hangi ürünü veya özelliği kastettiğinizi netleştirebilir misiniz?"
+      },
+      "next_step_fact_id": "contact_information",
+      "next_step_by_topic": {
+        "price": "quote_review_next_step",
+        "stock": "quote_review_next_step",
+        "delivery": "quote_review_next_step",
+        "suitability": "quote_review_next_step"
+      }
+    },
     "semantic_fallback_fact_ids": [
       "conversation_greeting",
       "conversation_wellbeing",
@@ -1941,8 +2004,10 @@
           "tr": "Teklif al"
         }
       }
-    ]
+    ],
+    "menu_fact_id": "all_product_groups"
   },
+  "modules": [],
   "whatsapp_presentation": {
     "assets": [
       {
@@ -1987,12 +2052,822 @@
       }
     ],
     "offering_media": {
+      "product_catalog": "captormal-elevator-image",
+      "elevator_pulley": "captormal-elevator-image",
+      "belt_pulley": "captormal-belt-image",
       "plastic_elevator_pulley": "captormal-elevator-image",
       "cast_elevator_pulley": "cast-elevator-image",
       "plastic_belt_pulley": "captormal-belt-image",
       "steel_belt_pulley": "steel-belt-image",
       "hydraulic_pulley": "hydraulic-image"
-    }
+    },
+    "carousels": [
+      {
+        "id": "product-showcase",
+        "trigger_fact_id": "all_product_groups",
+        "offering_ids": [
+          "plastic_elevator_pulley",
+          "cast_elevator_pulley",
+          "plastic_belt_pulley",
+          "steel_belt_pulley",
+          "hydraulic_pulley"
+        ],
+        "button_text": {
+          "tr": "Ürünü incele"
+        }
+      }
+    ],
+    "flows": [
+      {
+        "id": "quote-flow",
+        "flow_ref": "quote_flow_v1",
+        "locale": "tr",
+        "button_text": {
+          "tr": "Teklif bilgileri"
+        },
+        "completion_fact_id": "flow_submission_received"
+      }
+    ],
+    "offer_intake_choice": true,
+    "intake_start_phrases": [
+      "teklif olusturmak istiyorum",
+      "teklif olustur",
+      "telif olusturmak istiyorum"
+    ],
+    "intake_form_url": "https://api.ashiraai.com/tr/forms/selection"
   },
-  "modules": []
+  "selection_flow": {
+    "id": "pulley_selection",
+    "version": 1,
+    "title": "Kasnak seçim talebi",
+    "start_phrases": [
+      "teklif al",
+      "teklif almak istiyorum",
+      "yeni kasnak",
+      "yeni kasnak sec",
+      "yeni kasnak secmek istiyorum",
+      "kasnak secmek istiyorum",
+      "mevcut kasnagi yenile",
+      "teknik olculerim hazir",
+      "hangi kasnak gerekli bilmiyorum"
+    ],
+    "greeting_phrases": [
+      "merhaba",
+      "selam",
+      "selamlar",
+      "iyi gunler"
+    ],
+    "steps": [
+      {
+        "id": "contact_name",
+        "label": "İsim",
+        "question": "Merhaba, Artı Kasnak’a hoş geldiniz. Size hitap edebilmek için isminizi öğrenebilir miyim?",
+        "kind": "text",
+        "options": []
+      },
+      {
+        "id": "intent",
+        "label": "Seçim yolu",
+        "question": "Size uygun kasnağı birlikte belirleyelim. Nasıl devam etmek istersiniz?",
+        "kind": "choice",
+        "options": [
+          {
+            "value": "new",
+            "label": "Yeni kasnak seç"
+          },
+          {
+            "value": "replace",
+            "label": "Mevcut kasnağı yenile"
+          },
+          {
+            "value": "ready",
+            "label": "Teknik ölçülerim hazır"
+          },
+          {
+            "value": "unknown",
+            "label": "Hangi kasnak? Bilmiyorum"
+          }
+        ]
+      },
+      {
+        "id": "drawing",
+        "label": "Fotoğraf / çizim",
+        "question": "Mevcut kasnağın fotoğrafını veya teknik çiziminizi PDF/JPEG/PNG olarak gönderebilirsiniz (en fazla 5 MB). Birden fazla dosya gönderdikten sonra “Dosyalar tamam” seçin.",
+        "kind": "attachment",
+        "options": [
+          {
+            "value": "done",
+            "label": "Dosyalar tamam"
+          },
+          {
+            "value": "manual",
+            "label": "Manuel devam"
+          }
+        ],
+        "skip_if": {
+          "intent": [
+            "new",
+            "unknown"
+          ]
+        }
+      },
+      {
+        "id": "pulley_type",
+        "label": "Kasnak türü",
+        "question": "Hangi tür kasnağa ihtiyacınız var?",
+        "kind": "choice",
+        "options": [
+          {
+            "value": "deflection",
+            "label": "Saptırma kasnağı"
+          },
+          {
+            "value": "hoisting",
+            "label": "Palanga kasnağı"
+          },
+          {
+            "value": "motor",
+            "label": "Makine / tahrik kasnağı"
+          },
+          {
+            "value": "hydraulic",
+            "label": "Hidrolik asansör kasnağı"
+          }
+        ],
+        "allow_unknown": true
+      },
+      {
+        "id": "pulley_diameter",
+        "label": "Kasnak çapı",
+        "question": "Kasnak çapı nedir? (mm)",
+        "kind": "number",
+        "options": [
+          {
+            "value": "210",
+            "label": "210"
+          },
+          {
+            "value": "240",
+            "label": "240"
+          },
+          {
+            "value": "320",
+            "label": "320"
+          },
+          {
+            "value": "400",
+            "label": "400"
+          },
+          {
+            "value": "450",
+            "label": "450"
+          },
+          {
+            "value": "480",
+            "label": "480"
+          },
+          {
+            "value": "520",
+            "label": "520"
+          }
+        ],
+        "unit": "mm",
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true
+      },
+      {
+        "id": "pulley_width",
+        "label": "Kasnak eni",
+        "question": "Kasnak eni nedir? (mm)",
+        "kind": "number",
+        "options": [
+          {
+            "value": "40",
+            "label": "40"
+          },
+          {
+            "value": "50",
+            "label": "50"
+          },
+          {
+            "value": "60",
+            "label": "60"
+          },
+          {
+            "value": "70",
+            "label": "70"
+          },
+          {
+            "value": "80",
+            "label": "80"
+          },
+          {
+            "value": "90",
+            "label": "90"
+          },
+          {
+            "value": "100",
+            "label": "100"
+          }
+        ],
+        "unit": "mm",
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true
+      },
+      {
+        "id": "rope_diameter",
+        "label": "Halat çapı",
+        "question": "Halat çapı nedir? (mm)",
+        "kind": "number",
+        "options": [
+          {
+            "value": "6.5",
+            "label": "6.5"
+          },
+          {
+            "value": "8",
+            "label": "8"
+          },
+          {
+            "value": "10",
+            "label": "10"
+          },
+          {
+            "value": "12",
+            "label": "12"
+          },
+          {
+            "value": "13",
+            "label": "13"
+          }
+        ],
+        "unit": "mm",
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true
+      },
+      {
+        "id": "rope_count",
+        "label": "Halat adedi",
+        "question": "Kasnak üzerinde kaç adet halat çalışacak?",
+        "kind": "number",
+        "options": [
+          {
+            "value": "1",
+            "label": "1"
+          },
+          {
+            "value": "2",
+            "label": "2"
+          },
+          {
+            "value": "3",
+            "label": "3"
+          },
+          {
+            "value": "4",
+            "label": "4"
+          },
+          {
+            "value": "5",
+            "label": "5"
+          },
+          {
+            "value": "6",
+            "label": "6"
+          },
+          {
+            "value": "7",
+            "label": "7"
+          },
+          {
+            "value": "8",
+            "label": "8"
+          },
+          {
+            "value": "9",
+            "label": "9"
+          },
+          {
+            "value": "10",
+            "label": "10"
+          },
+          {
+            "value": "11",
+            "label": "11"
+          },
+          {
+            "value": "12",
+            "label": "12"
+          }
+        ],
+        "unit": null,
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true,
+        "integer": true
+      },
+      {
+        "id": "bearing_brand",
+        "label": "Rulman markası",
+        "question": "Tercih ettiğiniz rulman markası nedir? Nihai seçim teknik incelemeye tabidir.",
+        "kind": "choice",
+        "options": [
+          {
+            "value": "SKF",
+            "label": "SKF"
+          },
+          {
+            "value": "ORS",
+            "label": "ORS"
+          },
+          {
+            "value": "ART",
+            "label": "ART"
+          },
+          {
+            "value": "BDR",
+            "label": "BDR"
+          }
+        ],
+        "allow_unknown": true,
+        "allow_drawing": true
+      },
+      {
+        "id": "bearing_code",
+        "label": "Rulman kodu",
+        "question": "Rulman kodunu seçin veya farklı kodu yazın.",
+        "kind": "choice",
+        "options": [
+          {
+            "value": "3206",
+            "label": "3206"
+          },
+          {
+            "value": "3210",
+            "label": "3210"
+          },
+          {
+            "value": "3211",
+            "label": "3211"
+          },
+          {
+            "value": "3214",
+            "label": "3214"
+          },
+          {
+            "value": "3305",
+            "label": "3305"
+          },
+          {
+            "value": "6003",
+            "label": "6003"
+          },
+          {
+            "value": "6004",
+            "label": "6004"
+          },
+          {
+            "value": "6006",
+            "label": "6006"
+          },
+          {
+            "value": "6008",
+            "label": "6008"
+          },
+          {
+            "value": "6010",
+            "label": "6010"
+          },
+          {
+            "value": "6011",
+            "label": "6011"
+          },
+          {
+            "value": "6012",
+            "label": "6012"
+          },
+          {
+            "value": "6013",
+            "label": "6013"
+          },
+          {
+            "value": "6014",
+            "label": "6014"
+          },
+          {
+            "value": "6016",
+            "label": "6016"
+          },
+          {
+            "value": "6202",
+            "label": "6202"
+          },
+          {
+            "value": "6205",
+            "label": "6205"
+          },
+          {
+            "value": "6206",
+            "label": "6206"
+          },
+          {
+            "value": "6207",
+            "label": "6207"
+          },
+          {
+            "value": "6208",
+            "label": "6208"
+          },
+          {
+            "value": "6209",
+            "label": "6209"
+          },
+          {
+            "value": "6210",
+            "label": "6210"
+          },
+          {
+            "value": "6211",
+            "label": "6211"
+          },
+          {
+            "value": "6213",
+            "label": "6213"
+          },
+          {
+            "value": "6214",
+            "label": "6214"
+          },
+          {
+            "value": "6215",
+            "label": "6215"
+          },
+          {
+            "value": "6216",
+            "label": "6216"
+          },
+          {
+            "value": "6218",
+            "label": "6218"
+          },
+          {
+            "value": "6305",
+            "label": "6305"
+          },
+          {
+            "value": "6308",
+            "label": "6308"
+          },
+          {
+            "value": "6310",
+            "label": "6310"
+          },
+          {
+            "value": "6311",
+            "label": "6311"
+          },
+          {
+            "value": "6312",
+            "label": "6312"
+          },
+          {
+            "value": "6313",
+            "label": "6313"
+          },
+          {
+            "value": "6314",
+            "label": "6314"
+          },
+          {
+            "value": "6315",
+            "label": "6315"
+          },
+          {
+            "value": "6316",
+            "label": "6316"
+          },
+          {
+            "value": "6412",
+            "label": "6412"
+          }
+        ],
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true,
+        "value_pattern": "(?=.*\\d)[A-Za-z0-9 /.-]{1,40}"
+      },
+      {
+        "id": "bearing_quantity",
+        "label": "Rulman adedi",
+        "question": "Kaç adet rulman istersiniz?",
+        "kind": "number",
+        "options": [],
+        "unit": null,
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true,
+        "integer": true
+      },
+      {
+        "id": "material",
+        "label": "Kasnak malzemesi",
+        "question": "Kasnağın hangi malzemeden üretilmesini istersiniz?",
+        "kind": "choice",
+        "options": [
+          {
+            "value": "nylon",
+            "label": "MC Nylon 6 / Plastik"
+          },
+          {
+            "value": "cast",
+            "label": "GG25 Döküm"
+          },
+          {
+            "value": "steel",
+            "label": "Çelik"
+          }
+        ],
+        "allow_drawing": true,
+        "allow_unknown": true
+      },
+      {
+        "id": "shaft_diameter",
+        "label": "Mil çapı",
+        "question": "Mil çapı nedir? Mil istemiyorsanız ilgili seçeneği seçin.",
+        "kind": "number",
+        "options": [
+          {
+            "value": "30",
+            "label": "30"
+          },
+          {
+            "value": "40",
+            "label": "40"
+          },
+          {
+            "value": "50",
+            "label": "50"
+          },
+          {
+            "value": "55",
+            "label": "55"
+          },
+          {
+            "value": "60",
+            "label": "60"
+          },
+          {
+            "value": "70",
+            "label": "70"
+          },
+          {
+            "value": "none",
+            "label": "Mil istemiyorum"
+          }
+        ],
+        "unit": "mm",
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true
+      },
+      {
+        "id": "shaft_length",
+        "label": "Mil uzunluğu",
+        "question": "Mil uzunluğu nedir? (mm)",
+        "kind": "number",
+        "options": [
+          {
+            "value": "75",
+            "label": "75"
+          },
+          {
+            "value": "100",
+            "label": "100"
+          },
+          {
+            "value": "150",
+            "label": "150"
+          },
+          {
+            "value": "200",
+            "label": "200"
+          },
+          {
+            "value": "250",
+            "label": "250"
+          },
+          {
+            "value": "300",
+            "label": "300"
+          },
+          {
+            "value": "350",
+            "label": "350"
+          }
+        ],
+        "unit": "mm",
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true,
+        "skip_if": {
+          "shaft_diameter": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "key_distance",
+        "label": "Kama arası mesafe",
+        "question": "Mildeki iki kama arası mesafe kaç mm olacaktır?",
+        "kind": "number",
+        "options": [],
+        "unit": "mm",
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true,
+        "skip_if": {
+          "shaft_diameter": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "key_diameter",
+        "label": "Mil kama çapı",
+        "question": "Mil kama çapı nedir? (mm)",
+        "kind": "number",
+        "options": [],
+        "unit": "mm",
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true,
+        "skip_if": {
+          "shaft_diameter": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "key_depth",
+        "label": "Mil kama derinliği",
+        "question": "Mil kama derinliği nedir? (mm)",
+        "kind": "number",
+        "options": [],
+        "unit": "mm",
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true,
+        "skip_if": {
+          "shaft_diameter": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "side_support",
+        "label": "Yan yatak",
+        "question": "Yan yatak eklemek ister misiniz?",
+        "kind": "choice",
+        "options": [
+          {
+            "value": "sheet50",
+            "label": "Sac 50 mm"
+          },
+          {
+            "value": "cast45",
+            "label": "Döküm 45 mm"
+          },
+          {
+            "value": "cast50",
+            "label": "Döküm 50 mm"
+          },
+          {
+            "value": "cast55",
+            "label": "Döküm 55 mm"
+          },
+          {
+            "value": "cast60",
+            "label": "Döküm 60 mm"
+          },
+          {
+            "value": "cast65",
+            "label": "Döküm 65 mm"
+          },
+          {
+            "value": "cast70",
+            "label": "Döküm 70 mm"
+          },
+          {
+            "value": "none",
+            "label": "İstemiyorum"
+          }
+        ],
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true
+      },
+      {
+        "id": "capacity",
+        "label": "Asansör kapasitesi",
+        "question": "Asansörünüzün taşıma kapasitesi nedir? (kg)",
+        "kind": "number",
+        "options": [
+          {
+            "value": "320",
+            "label": "320"
+          },
+          {
+            "value": "400",
+            "label": "400"
+          },
+          {
+            "value": "450",
+            "label": "450"
+          },
+          {
+            "value": "630",
+            "label": "630"
+          },
+          {
+            "value": "800",
+            "label": "800"
+          },
+          {
+            "value": "1000",
+            "label": "1000"
+          },
+          {
+            "value": "1250",
+            "label": "1250"
+          },
+          {
+            "value": "1600+",
+            "label": "1600 kg ve üzeri"
+          }
+        ],
+        "unit": "kg",
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true
+      },
+      {
+        "id": "speed",
+        "label": "Asansör hızı",
+        "question": "Asansörün nominal hızı nedir? (m/s)",
+        "kind": "number",
+        "options": [
+          {
+            "value": "0.50",
+            "label": "0.50"
+          },
+          {
+            "value": "0.63",
+            "label": "0.63"
+          },
+          {
+            "value": "1.00",
+            "label": "1.00"
+          },
+          {
+            "value": "1.60",
+            "label": "1.60"
+          },
+          {
+            "value": "2.00",
+            "label": "2.00"
+          },
+          {
+            "value": "2.50+",
+            "label": "2.50 m/s ve üzeri"
+          }
+        ],
+        "unit": "m/s",
+        "allow_custom": true,
+        "allow_unknown": true,
+        "allow_drawing": true
+      },
+      {
+        "id": "quantity",
+        "label": "İhtiyaç adedi",
+        "question": "Kaç adet kasnak için teklif hazırlayalım?",
+        "kind": "number",
+        "options": [],
+        "unit": null,
+        "allow_custom": true,
+        "allow_unknown": false,
+        "allow_drawing": false,
+        "integer": true
+      },
+      {
+        "id": "delivery_location",
+        "label": "Teslimat yeri",
+        "question": "Teslimat yapılacak şehir ve ülkeyi yazar mısınız?",
+        "kind": "text",
+        "options": []
+      }
+    ]
+  }
 }

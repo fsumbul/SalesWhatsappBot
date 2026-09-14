@@ -19,10 +19,10 @@ from __future__ import annotations
 from copy import deepcopy
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import ValidationError
 
 from src.core.errors import ConflictError, NotFoundError
 from src.modules.compliance.models import AuditLog
@@ -35,6 +35,12 @@ from .schemas import AgentIn, AgentVersionPatchIn
 class AgentService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def lock_agent(self, tenant_id: UUID, agent_id: UUID) -> None:
+        result = await self.session.execute(select(Agent).where(
+            Agent.tenant_id == tenant_id, Agent.id == agent_id).with_for_update())
+        if result.scalar_one_or_none() is None:
+            raise NotFoundError("Agent")
 
     # --- Agents ---
 
@@ -54,6 +60,12 @@ class AgentService:
     async def create_agent(
         self, tenant_id: UUID, data: AgentIn, *, actor_id: UUID | None = None
     ) -> Agent:
+        if data.sector_id is not None:
+            from src.modules.sectors.models import Sector
+            sector = await self.session.scalar(select(Sector).where(
+                Sector.id == data.sector_id, Sector.tenant_id == tenant_id))
+            if sector is None:
+                raise NotFoundError("Sector")
         agent = Agent(
             tenant_id=tenant_id,
             sector_id=data.sector_id,
@@ -122,7 +134,7 @@ class AgentService:
             AgentVersion.agent_id == agent_id,
             AgentVersion.status == status,
         )
-        return (await self.session.execute(stmt)).scalar_one_or_none()
+        return (await self.session.execute(stmt.execution_options(populate_existing=True))).scalar_one_or_none()
 
     async def get_draft(self, tenant_id: UUID, agent_id: UUID) -> AgentVersion | None:
         return await self._get_by_status(tenant_id, agent_id, AgentVersionStatus.DRAFT)
@@ -135,7 +147,7 @@ class AgentService:
         """Prevent a partial builder draft from becoming a customer-facing bot."""
 
         try:
-            config = CompanyAgentConfig.model_validate(version.company_config)
+            config = CompanyAgentConfig.model_validate({**version.company_config, "lifecycle": "approved"})
         except ValidationError as exc:
             raise ConflictError("Company configuration is invalid and cannot be published") from exc
 
@@ -148,7 +160,7 @@ class AgentService:
     ) -> AgentVersion:
         """Start a new draft by cloning the current live version's content
         (or the latest version of any status, if nothing is live yet)."""
-        await self.get_agent(tenant_id, agent_id)
+        await self.lock_agent(tenant_id, agent_id)
         if await self.get_draft(tenant_id, agent_id) is not None:
             raise ConflictError("A draft already exists for this agent")
 
@@ -157,7 +169,8 @@ class AgentService:
             versions = await self.list_versions(tenant_id, agent_id)
             base = versions[0] if versions else None
 
-        next_version = (base.version + 1) if base else 1
+        versions = await self.list_versions(tenant_id, agent_id)
+        next_version = versions[0].version + 1 if versions else 1
         draft = AgentVersion(
             tenant_id=tenant_id,
             agent_id=agent_id,
@@ -196,13 +209,17 @@ class AgentService:
         *,
         actor_id: UUID | None = None,
     ) -> AgentVersion:
+        await self.lock_agent(tenant_id, agent_id)
         draft = await self.get_draft(tenant_id, agent_id)
         if draft is None:
             raise ConflictError("No draft to edit — create one first")
 
         # mode="json" turns nested Pydantic models (notably
         # CompanyAgentConfig) into JSONB-safe dictionaries before assignment.
-        changes = data.model_dump(exclude_none=True, mode="json")
+        if data.expected_revision is not None and data.expected_revision != draft.revision:
+            raise ConflictError("Draft changed; reload before saving")
+        changes = data.model_dump(exclude_none=True, mode="json", exclude={"expected_revision"})
+        draft.revision += 1
         for field, value in changes.items():
             setattr(draft, field, value)
 
@@ -228,6 +245,7 @@ class AgentService:
     async def promote_to_testing(
         self, tenant_id: UUID, agent_id: UUID, version_id: UUID, *, actor_id: UUID | None = None
     ) -> AgentVersion:
+        await self.lock_agent(tenant_id, agent_id)
         version = await self.get_version(tenant_id, agent_id, version_id)
         if version.status != AgentVersionStatus.DRAFT:
             raise ConflictError(f"Only a draft can be promoted to testing (current: {version.status})")
@@ -249,6 +267,7 @@ class AgentService:
     async def promote_to_live(
         self, tenant_id: UUID, agent_id: UUID, version_id: UUID, *, actor_id: UUID | None = None
     ) -> AgentVersion:
+        await self.lock_agent(tenant_id, agent_id)
         version = await self.get_version(tenant_id, agent_id, version_id)
         if version.status not in (AgentVersionStatus.DRAFT, AgentVersionStatus.TESTING):
             raise ConflictError(
@@ -256,6 +275,7 @@ class AgentService:
             )
 
         self._require_publishable_company_config(version)
+        version.company_config = {**version.company_config, "lifecycle": "approved"}
 
         previous_live = await self.get_live(tenant_id, agent_id)
         if previous_live is not None:
@@ -292,6 +312,7 @@ class AgentService:
         and promoting that — never rewrites or resurrects the old row, so
         the full history (including the fact that a rollback happened) is
         still there afterward."""
+        await self.lock_agent(tenant_id, agent_id)
         target = await self.get_version(tenant_id, agent_id, target_version_id)
         self._require_publishable_company_config(target)
         versions = await self.list_versions(tenant_id, agent_id)

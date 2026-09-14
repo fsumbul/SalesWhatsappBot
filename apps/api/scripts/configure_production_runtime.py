@@ -7,6 +7,7 @@ import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
+
 def _updates(*, llm_provider: str, llm_model: str, llm_base_url: str) -> dict[str, str]:
     """Return non-secret selectors for an explicitly chosen model endpoint."""
 

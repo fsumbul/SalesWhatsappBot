@@ -24,11 +24,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src import models_registry  # noqa: F401
 from src.core.config import get_settings
 from src.core.db import session_scope, set_tenant_context
+from src.core.errors import ConflictError
 from src.modules.agents.models import Agent, AgentVersion, AgentVersionStatus
 from src.modules.agents.runtime_models import AgentRuntimeJob
 from src.modules.auth.models import Tenant, TenantStatus, User, UserRole
+from src.modules.outreach.channel import resolve_channel
 
-_EXPECTED_ALEMBIC_REVISION = "c4f9128ab6d0"
+_EXPECTED_ALEMBIC_REVISION = "f67fa89bc01d"
 _WORKER_NAME = "agent-runtime@ashiraai"
 _SCHEDULED_TASKS = ["AshiraaiApi", "AshiraaiAgentWorker", "AshiraaiAgentRecovery"]
 _CPU_AVERAGE_BLOCK_PERCENT = 90
@@ -296,10 +298,15 @@ async def inspect(tenant_slug: str) -> dict[str, Any]:
                     )
                 ).all()
             )
+            try:
+                sender = await resolve_channel(session, tenant.id)
+                sender_agent_id = sender.agent_id
+            except ConflictError:
+                sender_agent_id = None
             target_live = [
                 (agent, version)
                 for agent, version in agents
-                if agent.slug == settings.whatsapp_agent_slug
+                if agent.id == sender_agent_id
                 and agent.is_active
                 and version.status == AgentVersionStatus.LIVE
                 and (version.company_config or {}).get("lifecycle") == "approved"
@@ -331,6 +338,7 @@ async def inspect(tenant_slug: str) -> dict[str, Any]:
                         for role, is_active, count in role_counts
                     },
                     "target_agent_live_approved": len(target_live) == 1,
+                    "selection_enabled": bool(len(target_live) == 1 and target_live[0][1].company_config.get("selection_flow")),
                     "runtime_job_status_counts": dict(runtime_job_counts),
                     "agent_versions": [
                         {
@@ -510,6 +518,7 @@ def _failed(
             database.get("active_human_reviewers", 0) < 1
             and not database.get("customer_handoff_contact_configured")
         )
+        or (database.get("selection_enabled") and database.get("active_human_reviewers", 0) < 1)
         or not database.get("target_agent_live_approved")
         or not redis.get("reachable")
         or not host.get("reachable")

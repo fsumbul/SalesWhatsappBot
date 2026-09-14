@@ -37,6 +37,20 @@ class WhatsAppClient:
         self.app_secret = app_secret or s.whatsapp_app_secret
         self.graph_api_version = graph_api_version or s.whatsapp_graph_api_version
 
+    async def business_read(self, object_id: str, fields: str, *, edge: str = "", after: str | None = None) -> dict[str, Any]:
+        if not object_id.isdigit() or edge not in {"", "message_templates"}:
+            raise ValueError("Invalid Meta object")
+        params = {"fields": fields, "limit": "100"} if edge else {"fields": fields}
+        if after:
+            params["after"] = after
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(
+                f"{_GRAPH_ROOT}/{self.graph_api_version}/{object_id}" + (f"/{edge}" if edge else ""),
+                headers={"Authorization": f"Bearer {self.access_token}"}, params=params,
+            )
+            response.raise_for_status()
+            return cast(dict[str, Any], response.json())
+
     # --- Messages ---
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8))
@@ -46,6 +60,16 @@ class WhatsAppClient:
         template_name: str,
         language: str,
         components: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        return await self.send_template_once(to, template_name, language, components)
+
+    async def send_template_once(
+        self,
+        to: str,
+        template_name: str,
+        language: str,
+        components: list[dict[str, Any]] | None = None,
+        *, callback_data: str | None = None,
     ) -> dict[str, Any]:
         body = {
             "messaging_product": "whatsapp",
@@ -57,6 +81,8 @@ class WhatsAppClient:
                 "components": components or [],
             },
         }
+        if callback_data:
+            body["biz_opaque_callback_data"] = callback_data
         return await self._post_message(body)
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8))
@@ -64,7 +90,7 @@ class WhatsAppClient:
         return await self.send_text_once(to, body_text, preview_url)
 
     async def send_text_once(
-        self, to: str, body_text: str, preview_url: bool = False
+        self, to: str, body_text: str, preview_url: bool = False, *, callback_data: str | None = None
     ) -> dict[str, Any]:
         """Send one POST with no transport retry.
 
@@ -79,7 +105,55 @@ class WhatsAppClient:
             "type": "text",
             "text": {"body": body_text, "preview_url": preview_url},
         }
+        if callback_data is not None:
+            body["biz_opaque_callback_data"] = callback_data
         return await self._post_message(body)
+
+    async def send_flow_once(
+        self,
+        to: str,
+        body_text: str,
+        *,
+        button_text: str,
+        flow_id: str,
+        flow_token: str,
+        screen: str = "WELCOME_SCREEN",
+    ) -> dict[str, Any]:
+        """Send one tenant-bound Flow session message without transport retry."""
+
+        self._validate_interactive_body(body_text)
+        if not button_text or len(button_text) > 20:
+            raise ValueError("WhatsApp Flow CTA text must contain 1-20 characters")
+        if not flow_id or len(flow_id) > 256 or not flow_token or len(flow_token) > 1024:
+            raise ValueError("WhatsApp Flow requires a valid id and token")
+        if not screen or len(screen) > 200:
+            raise ValueError("WhatsApp Flow requires a valid initial screen")
+        return await self._post_message(
+            {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": to,
+                "type": "interactive",
+                "interactive": {
+                    "type": "flow",
+                    "body": {"text": body_text},
+                    "action": {
+                        "name": "flow",
+                        "parameters": {
+                            "flow_message_version": "3",
+                            "flow_token": flow_token,
+                            "flow_id": flow_id,
+                            "flow_cta": button_text,
+                            "flow_action": "navigate",
+                            # `data` is optional. Sending an empty object is rejected by
+                            # Meta when the target screen declares no input data model
+                            # (`#131009 ... must be of type dynamic_object`).
+                            "flow_action_payload": {"screen": screen},
+                        },
+                    },
+                },
+            }
+        )
 
     async def send_reply_buttons_once(
         self,
@@ -128,7 +202,6 @@ class WhatsAppClient:
         button_text: str,
         section_title: str,
         rows: list[dict[str, str]],
-        header_media: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Send one session list containing up to ten deterministic choices."""
 
@@ -153,7 +226,6 @@ class WhatsAppClient:
             "type": "interactive",
             "interactive": {
                 "type": "list",
-                **self._interactive_image_header(header_media),
                 "body": {"text": body_text},
                 "action": {
                     "button": button_text,
@@ -214,6 +286,63 @@ class WhatsAppClient:
             },
         }
         return await self._post_message(body)
+
+    async def send_carousel_once(
+        self,
+        to: str,
+        body_text: str,
+        *,
+        cards: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Send one open-session media carousel with two to ten URL cards."""
+
+        self._validate_interactive_body(body_text)
+        if not 2 <= len(cards) <= 10:
+            raise ValueError("WhatsApp carousels require two to ten cards")
+
+        payload_cards: list[dict[str, Any]] = []
+        for card_index, card in enumerate(cards):
+            card_body = card.get("body_text", "")
+            button_text = card.get("button_text", "")
+            url = card.get("url", "")
+            if not isinstance(card_body, str) or not 1 <= len(card_body) <= 160:
+                raise ValueError("WhatsApp carousel card bodies require 1-160 characters")
+            if not isinstance(button_text, str) or not 1 <= len(button_text) <= 20:
+                raise ValueError("WhatsApp carousel CTA text requires 1-20 characters")
+            if not isinstance(url, str) or not self._is_https_url(url) or len(url) > 2000:
+                raise ValueError("WhatsApp carousel CTA URLs must be HTTPS")
+            header = self._interactive_image_header(card.get("header_media")).get("header")
+            if header is None:
+                raise ValueError("WhatsApp carousel cards require approved image media")
+            payload_cards.append(
+                {
+                    "card_index": card_index,
+                    "type": "cta_url",
+                    "header": header,
+                    "body": {"text": card_body},
+                    "action": {
+                        "name": "cta_url",
+                        "parameters": {
+                            "display_text": button_text,
+                            "url": url,
+                        },
+                    },
+                }
+            )
+
+        return await self._post_message(
+            {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": to,
+                "type": "interactive",
+                "interactive": {
+                    "type": "carousel",
+                    "body": {"text": body_text},
+                    "action": {"cards": payload_cards},
+                },
+            }
+        )
 
     @staticmethod
     def _is_https_url(url: str) -> bool:

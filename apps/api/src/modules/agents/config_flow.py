@@ -108,7 +108,7 @@ class FlowSpec:
     requires_explicit_collection_close: bool = False
     requires_review_before_apply: bool = False
 
-    def question(self) -> "FlowQuestion":
+    def question(self) -> FlowQuestion:
         """Produce the channel-neutral question contract for this flow node."""
 
         actions: tuple[str, ...]
@@ -254,6 +254,8 @@ def _paths(prefix: str, model: type[BaseModel], *, exclude: frozenset[str] = fro
 CORE_EDITABLE_PATHS = frozenset(
     {
         "lifecycle",
+        "whatsapp_presentation",
+        "selection_flow",
         *_paths("organization", Organization),
         *_paths("parties[*]", Party),
         *_paths("offerings[*]", Offering),
@@ -290,6 +292,8 @@ def schema_manifest_errors() -> tuple[str, ...]:
     expected = frozenset(
         {
             "lifecycle",
+            "whatsapp_presentation",
+        "selection_flow",
             *_paths("organization", Organization),
             *_paths("parties[*]", Party),
             *_paths("offerings[*]", Offering),
@@ -327,6 +331,8 @@ def schema_manifest_errors() -> tuple[str, ...]:
         "policies",
         "agent",
         "modules",
+        "whatsapp_presentation",
+        "selection_flow",
     }
     if top_level_editable != expected_roots:
         errors.append(
@@ -508,6 +514,8 @@ CORE_FLOW_SPECS: tuple[FlowSpec, ...] = (
     ),
     _spec(
         "agent-policy",
+        "whatsapp_presentation",
+        "selection_flow",
         *_paths("agent", AgentReplyPolicy),
         kind=FlowKind.SINGLETON_FORM,
         goal=FlowGoal.COLLECT_VALUES,
