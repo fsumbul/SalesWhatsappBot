@@ -9,10 +9,9 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 from sqlalchemy import String, cast, func, or_, select
 
-from src.modules.agents.runtime_models import AgentRuntimeJob
 from src.modules.auth.models import User
 from src.modules.discovery.models import LeadContact
-from src.modules.outreach.models import Conversation, Message, OutreachJob
+from src.modules.outreach.models import Conversation, Message
 from src.modules.selection.engine import normalize
 from src.modules.selection.models import SelectionFile, SelectionRequest
 from src.modules.selection.review import ROLES, ReviewUpdate, apply_review
@@ -29,7 +28,13 @@ INITIAL_SUGGESTIONS = [
 
 def suggestions(context: Any, intent: Any = None) -> Any:
     """Server-known read-only capabilities, never model-proposed unvalidated actions."""
-    if intent and intent.tool == "workspace":
+    if intent and (
+        intent.tool == "workspace"
+        or (
+            intent.tool == "workflow"
+            and intent.workflow_kind in {"create_agent", "configure", "test", "publish"}
+        )
+    ):
         return [
             {"label": "Şirket bilgileri", "text": "Şirket bilgileri"},
             {"label": "Müşteri testi", "text": "Müşteri testi"},
@@ -99,7 +104,7 @@ def normalized(column: Any) -> Any:
     return func.lower(func.translate(column, "İIıŞşĞğÜüÖöÇç", "iiissgguuoocc"))
 
 
-async def find_requests(db: Any, user: Any, intent: Any) -> Any:
+def request_query(user: Any, intent: Any) -> Any:
     stmt = select(SelectionRequest).where(SelectionRequest.tenant_id == user.tenant_id)
     if intent.target:
         query = normalize(intent.target).strip()
@@ -134,6 +139,11 @@ async def find_requests(db: Any, user: Any, intent: Any) -> Any:
             SelectionRequest.created_at >= start,
             SelectionRequest.created_at < start + timedelta(days=1),
         )
+    return stmt
+
+
+async def find_requests(db: Any, user: Any, intent: Any) -> Any:
+    stmt = request_query(user, intent)
     return list(
         (
             await db.scalars(
@@ -384,22 +394,9 @@ async def execute(db: Any, claims: Any, user: Any, session: Any, intent: Any) ->
             )
         )
     if intent.tool == "missing":
-        answers = (row.confirmed_snapshot or {}).get("answers", row.answers)
-        missing = []
-        for step in row.definition.get("steps", []):
-            if any(
-                answers.get(key, {}).get("value") in values
-                for key, values in step.get("skip_if", {}).items()
-            ):
-                continue
-            value = answers.get(step["id"])
-            if not value or (
-                isinstance(value, dict)
-                and (
-                    value.get("status") in {"unknown", "drawing"} or value.get("value") == "unknown"
-                )
-            ):
-                missing.append(step["label"])
+        from .workflow_requests import missing_fields
+
+        missing = missing_fields(row)
         return result(
             "Eksik veya teknik ekipçe netleştirilecek bilgiler: " + ", ".join(missing)
             if missing
@@ -454,45 +451,9 @@ async def execute(db: Any, claims: Any, user: Any, session: Any, intent: Any) ->
         )
         return result("Müşteri konuşmasının son mesajları kartta.")
     if intent.tool == "delivery":
-        message = await db.scalar(
-            select(Message)
-            .where(
-                Message.tenant_id == user.tenant_id,
-                Message.conversation_id == row.conversation_id,
-                Message.direction == "outbound",
-            )
-            .order_by(Message.created_at.desc(), Message.id.desc())
-            .limit(1)
-        )
-        status = None
-        if message:
-            job = await db.scalar(
-                select(AgentRuntimeJob).where(
-                    AgentRuntimeJob.tenant_id == user.tenant_id,
-                    AgentRuntimeJob.outbound_message_id == message.id,
-                )
-            )
-            if job:
-                status = job.audit.get("delivery_status")
-            elif message.outreach_job_id:
-                outreach = await db.scalar(
-                    select(OutreachJob).where(
-                        OutreachJob.tenant_id == user.tenant_id,
-                        OutreachJob.id == message.outreach_job_id,
-                    )
-                )
-                status = str(outreach.status) if outreach else None
-        labels = {
-            "read": "Son mesaj okundu.",
-            "delivered": "Son mesaj teslim edildi.",
-            "sent": "Son mesaj gönderildi; teslim edildi bilgisi henüz yok.",
-            "failed": "Son mesaj için başarısız teslimat kaydı var.",
-        }
-        reply = (
-            labels.get(status or "", "Son mesaj için doğrulanmış teslimat bilgisi yok.")
-            if message
-            else "Bu konuşmada gönderilmiş mesaj yok."
-        )
+        from .workflow_inbox import delivery_summary
+
+        reply = await delivery_summary(db, user, row.conversation_id)
         cards.append({"type": "notice", "title": "Mesaj teslimatı", "summary": reply})
         return result(reply)
     return result("Bu araç desteklenmiyor.")

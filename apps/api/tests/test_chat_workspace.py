@@ -1,4 +1,9 @@
-"""Chat tools against real PostgreSQL/RLS; only the language model is a fixture."""
+"""Historical workspace protocol compatibility against PostgreSQL/RLS.
+
+seed_legacy_turn constructs pre-migration records through the old executor;
+current production routing is tested separately in test_workflow_intents.py.
+Ordinary turn() never bypasses routing.
+"""
 
 import json
 from uuid import uuid4
@@ -49,9 +54,19 @@ async def agent(client, headers, name="Acme"):
     return aid, versions[0]
 
 
+async def seed_legacy_turn(client, headers, monkeypatch, sid, message, mid=None):
+    # Only fixture construction bypasses new-intent translation, emulating a
+    # persisted turn created before progressive workflows were introduced.
+    from src.modules.admin_chat import workflow_intents
+
+    with monkeypatch.context() as seed:
+        seed.setattr(workflow_intents, "normalize", lambda intent: intent)
+        return await turn(client, headers, sid, message, mid)
+
+
 async def prepare(client, headers, monkeypatch, sid, operation, message, **kwargs):
     model(monkeypatch, {"tool": "workspace", "operation": operation, **kwargs})
-    r = await turn(client, headers, sid, message)
+    r = await seed_legacy_turn(client, headers, monkeypatch, sid, message)
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -108,7 +123,7 @@ async def test_chat_builder_accept_publish_and_stale_revision(client, monkeypatc
         {"tool": "workspace", "operation": "configure", "instruction": instruction},
         patch,
     )
-    r = await turn(client, headers, sid, instruction)
+    r = await seed_legacy_turn(client, headers, monkeypatch, sid, instruction)
     assert r.status_code == 200, r.text
     preview = r.json()["cards"][0]
     versions = (await client.get(f"/api/v1/agents/{aid}/versions", headers=headers)).json()
@@ -117,7 +132,10 @@ async def test_chat_builder_accept_publish_and_stale_revision(client, monkeypatc
         client, headers, sid, "action:workspace:confirm:" + preview["operation_id"]
     )
     assert applied.status_code == 200, applied.text
-    publication = await turn(client, headers, sid, "action:Taslağı yayınla")
+    # Exercise archived workspace-preview compatibility explicitly; new guided
+    # publication cards are covered by the progressive workflow acceptance suite.
+    model(monkeypatch, {"tool": "workspace", "operation": "publish"})
+    publication = await seed_legacy_turn(client, headers, monkeypatch, sid, "Taslağı yayınla")
     assert publication.status_code == 200, publication.text
     card = publication.json()["cards"][0]
     # Concurrent accepted edit must invalidate the pending publication.
@@ -134,9 +152,11 @@ async def test_chat_builder_accept_publish_and_stale_revision(client, monkeypatc
         )
     ).status_code == 200
     assert (
-        await turn(client, headers, sid, "action:workspace:confirm:" + card["operation_id"])
+        await seed_legacy_turn(
+            client, headers, monkeypatch, sid, "action:workspace:confirm:" + card["operation_id"]
+        )
     ).status_code == 409
-    refreshed = await turn(client, headers, sid, "action:Taslağı yayınla")
+    refreshed = await seed_legacy_turn(client, headers, monkeypatch, sid, "Taslağı yayınla")
     final = await turn(
         client,
         headers,
@@ -196,7 +216,7 @@ async def test_model_failure_rolls_back_builder_start_and_keeps_retryable_turn(c
             return "invalid json"
 
     monkeypatch.setattr(workspace, "get_llm_client", lambda: Broken())
-    r = await turn(client, headers, sid, instruction)
+    r = await seed_legacy_turn(client, headers, monkeypatch, sid, instruction)
     assert r.status_code == 502, r.text
     assert (
         await client.get(f"/api/v1/agents/{aid}/builder/sessions", headers=headers)
@@ -273,16 +293,18 @@ async def test_chat_customer_runtime_history_fallback_and_no_meta(client, monkey
 
     monkeypatch.setattr("src.integrations.whatsapp.WhatsAppClient.send_text_once", no_send)
     mid = uuid4()
-    r = await turn(client, headers, sid, question, mid)
+    r = await seed_legacy_turn(client, headers, monkeypatch, sid, question, mid)
     assert r.status_code == 200, r.text
     result = r.json()["cards"][0]["result"]
     assert result["reply"] == "Bakım hizmeti veriyoruz."
     assert result["response_source"] == "model"
     assert result["version_id"] == version["id"]
     assert len(calls) == 1
-    assert (await turn(client, headers, sid, question, mid)).json() == r.json()
+    assert (
+        await seed_legacy_turn(client, headers, monkeypatch, sid, question, mid)
+    ).json() == r.json()
     assert len(calls) == 1
-    r2 = await turn(client, headers, sid, question)
+    r2 = await seed_legacy_turn(client, headers, monkeypatch, sid, question)
     assert r2.status_code == 200, r2.text
     saved = (await client.get(f"/api/v1/agents/{aid}/test-sessions", headers=headers)).json()
     assert len(saved) == 1 and len(saved[0]["messages"]) == 4
@@ -292,7 +314,7 @@ async def test_chat_customer_runtime_history_fallback_and_no_meta(client, monkey
             return "invalid json"
 
     monkeypatch.setattr(workspace, "get_llm_client", lambda: Broken())
-    r3 = await turn(client, headers, sid, question)
+    r3 = await seed_legacy_turn(client, headers, monkeypatch, sid, question)
     assert r3.status_code == 200, r3.text
     assert r3.json()["cards"][0]["result"]["response_source"] == "fallback"
 

@@ -201,6 +201,9 @@ class WhatsAppPresentation(StrictModel):
     )
     carousels: list[MediaCarouselRef] = Field(default_factory=list, max_length=100)
     flows: list[FlowRef] = Field(default_factory=list, max_length=100)
+    offer_intake_choice: bool = False
+    intake_form_url: str | None = Field(default=None, pattern=r"^https://", max_length=500)
+    intake_start_phrases: list[str] = Field(default_factory=list, max_length=30)
 
     @model_validator(mode="after")
     def _presentation_references_are_valid(self) -> WhatsAppPresentation:

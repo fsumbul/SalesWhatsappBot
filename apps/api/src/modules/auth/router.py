@@ -141,7 +141,7 @@ async def patch_user(
             User.tenant_id == tenant_id, User.role == UserRole.TENANT_OWNER,
             User.is_active.is_(True)))).scalars().all()
         if len(owners) <= 1:
-            raise ConflictError("The last active owner must be retained")
+            raise ConflictError("Son etkin şirket sahibinin erişimi korunmalı.")
     if payload.role is not None:
         user.role = payload.role
     if payload.is_active is not None:

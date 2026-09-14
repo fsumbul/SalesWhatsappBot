@@ -64,15 +64,17 @@ export default function Workspace() {
           <span className={styles.eyebrow}>ASHIRA · ŞİRKET ÇALIŞMA ALANI</span>
           <h1>{invite ? "Ekibinize katılın" : "Tekrar hoş geldiniz"}</h1>
           <p>Şirket bilgilerinizi ve müşteri asistanınızı tek yerden yönetin.</p>
-          <label>
-            Şirket kodu
-            <input
-              required
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              autoComplete="organization"
-            />
-          </label>
+          {!invite && (
+            <label>
+              Şirket kodu
+              <input
+                required
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                autoComplete="organization"
+              />
+            </label>
+          )}
           {invite ? (
             <label>
               Ad soyad

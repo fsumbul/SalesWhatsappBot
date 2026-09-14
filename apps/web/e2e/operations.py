@@ -28,6 +28,7 @@ async def main():
                 value=r.request.post_data_json["text"]
                 messages.extend([{"role":"user","text":value}, {"role":"assistant","text":"İki numara için tanıtım önizlemesi hazır." if "tanıtım" in value else "WhatsApp kapasitesi", "response_source":"model", "cards":[batch] if "tanıtım" in value else [cap]}])
                 result={"reply":"Hazır"}
+            elif path.endswith("/workflows"): result=[]
             elif path.endswith("/messages"): result=messages
             elif path.endswith("/actions"):
                 payload=r.request.post_data_json

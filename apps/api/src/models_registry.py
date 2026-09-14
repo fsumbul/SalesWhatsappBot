@@ -7,6 +7,7 @@ before request handling.
 # ruff: noqa: F401  - imports are intentional
 from src.modules.admin_chat import models as _admin_chat_models
 from src.modules.admin_chat import outbound_models as _outbound_models
+from src.modules.admin_chat import workflow_models as _workflow_models
 from src.modules.agents import models as _agents_models
 from src.modules.agents import runtime_models as _agent_runtime_models
 from src.modules.agents import workspace_models as _workspace_models

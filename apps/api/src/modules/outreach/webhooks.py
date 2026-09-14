@@ -307,6 +307,20 @@ async def _handle_statuses(
                     outbound.reason = "Meta teslimatı başarısız bildirdi; otomatik tekrar yapılmaz."
                 else:
                     outbound.reason = None
+        manual_stmt = select(Message).where(Message.tenant_id == tenant_id, Message.direction == MessageDirection.OUTBOUND)
+        if isinstance(callback, str) and callback.startswith("workflow-manual:"):
+            try:
+                manual_stmt = manual_stmt.where(Message.id == UUID(callback.removeprefix("workflow-manual:")))
+            except ValueError:
+                manual_stmt = manual_stmt.where(Message.wa_message_id == wa_id)
+        else:
+            manual_stmt = manual_stmt.where(Message.wa_message_id == wa_id)
+        manual = await session.scalar(manual_stmt.with_for_update().execution_options(populate_existing=True))
+        if manual is not None and manual.raw.get("manual_send_state"):
+            effective = _next_delivery_status(manual.raw.get("delivery_status"), status_name)
+            if effective:
+                manual.wa_message_id = wa_id
+                manual.raw = {**manual.raw, "delivery_status": effective, "manual_send_state": "sent" if effective in {"sent", "delivered", "read"} else manual.raw["manual_send_state"]}
         callback_at, timestamp_source = _meta_callback_at(st)
         errors = _meta_errors(st)
         stmt = select(OutreachJob).where(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -179,7 +180,14 @@ class ConversationService:
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
-    async def send_free_form(self, tenant_id: UUID, conv_id: UUID, body: str) -> Message:
+    async def send_free_form(
+        self,
+        tenant_id: UUID,
+        conv_id: UUID,
+        body: str,
+        *,
+        prepared: Callable[[Message], Awaitable[None]] | None = None,
+    ) -> Message:
         """Send a session (24h window) message — used by agents in the inbox."""
         conv = await self.session.get(Conversation, conv_id)
         if conv is None or conv.tenant_id != tenant_id:
@@ -200,38 +208,86 @@ class ConversationService:
         from .channel import resolve_channel
 
         async with session_scope(tenant_id) as guard:
-            await guard.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:identity, 0))"),
-                                {"identity": f"{tenant_id}:{contact.normalized_value}"})
+            await guard.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:identity, 0))"),
+                {"identity": f"{tenant_id}:{contact.normalized_value}"},
+            )
             await resolve_channel(guard, tenant_id)
-            if (await guard.execute(select(OptOut.id).where(OptOut.tenant_id == tenant_id,
-                    OptOut.phone_e164 == contact.normalized_value))).first():
+            if (
+                await guard.execute(
+                    select(OptOut.id).where(
+                        OptOut.tenant_id == tenant_id, OptOut.phone_e164 == contact.normalized_value
+                    )
+                )
+            ).first():
                 raise ConflictError("Customer opted out")
-            ambiguous = (await guard.execute(select(Message.id).where(Message.tenant_id == tenant_id,
-                Message.conversation_id == conv_id,
-                Message.raw["manual_send_state"].astext.in_(["sending", "ambiguous"])))).first()
+            ambiguous = (
+                await guard.execute(
+                    select(Message.id).where(
+                        Message.tenant_id == tenant_id,
+                        Message.conversation_id == conv_id,
+                        Message.raw["manual_send_state"].astext.in_(["sending", "ambiguous"]),
+                    )
+                )
+            ).first()
             if ambiguous:
-                raise ConflictError("Previous manual delivery is ambiguous; review it before sending again")
-            last_inbound = await guard.scalar(select(Message.created_at).where(
-                Message.tenant_id == tenant_id, Message.conversation_id == conv_id,
-                Message.direction == MessageDirection.INBOUND).order_by(Message.created_at.desc()).limit(1))
+                raise ConflictError(
+                    "Previous manual delivery is ambiguous; review it before sending again"
+                )
+            last_inbound = await guard.scalar(
+                select(Message.created_at)
+                .where(
+                    Message.tenant_id == tenant_id,
+                    Message.conversation_id == conv_id,
+                    Message.direction == MessageDirection.INBOUND,
+                )
+                .order_by(Message.created_at.desc())
+                .limit(1)
+            )
             if last_inbound is None or last_inbound < datetime.now(UTC) - timedelta(hours=24):
                 raise ConflictError("The WhatsApp 24-hour response window has closed")
-            msg = Message(tenant_id=tenant_id, conversation_id=conv_id,
-                          direction=MessageDirection.OUTBOUND, message_type=MessageType.TEXT,
-                          body=body, raw={"manual_send_state": "sending"})
+            msg = Message(
+                tenant_id=tenant_id,
+                conversation_id=conv_id,
+                direction=MessageDirection.OUTBOUND,
+                message_type=MessageType.TEXT,
+                body=body,
+                raw={"manual_send_state": "sending"},
+            )
             self.session.add(msg)
+            if prepared is not None:
+                await self.session.flush()
+                await prepared(msg)
             await self.session.commit()
             try:
-                response = await WhatsAppClient().send_text_once(contact.normalized_value, body)
+                client = WhatsAppClient()
+                if prepared is not None:
+                    response = await client.send_text_once(
+                        contact.normalized_value,
+                        body,
+                        callback_data="workflow-manual:" + str(msg.id),
+                    )
+                else:
+                    response = await client.send_text_once(contact.normalized_value, body)
                 wa_id = response.get("messages", [{}])[0].get("id")
                 if not wa_id:
                     raise RuntimeError("Missing delivery id")
             except Exception as exc:
-                msg.raw = {"manual_send_state": "ambiguous"}
+                await self.session.refresh(msg, with_for_update=True)
+                confirmed = bool(
+                    msg.wa_message_id
+                    and msg.raw.get("delivery_status") in {"sent", "delivered", "read"}
+                )
+                msg.raw = {**msg.raw, "manual_send_state": "sent" if confirmed else "ambiguous"}
                 await self.session.commit()
-                raise ConflictError("Manual delivery could not be confirmed; do not resend before review") from exc
+                if confirmed:
+                    return msg
+                raise ConflictError(
+                    "Manual delivery could not be confirmed; do not resend before review"
+                ) from exc
+            await self.session.refresh(msg, with_for_update=True)
             msg.wa_message_id = wa_id
-            msg.raw = {"manual_send_state": "sent", "transport": response}
+            msg.raw = {**msg.raw, "manual_send_state": "sent", "transport": response}
             conv.last_message_at = datetime.now(UTC)
             await self.session.commit()
             await self.session.refresh(msg)

@@ -20,6 +20,8 @@ async def main():
             result = {}
             if path == "sessions":
                 result = [{"id":"fixture","title":"Şirket bilgileri"}] if r.request.method == "GET" else {"id":"fixture"}
+            elif path.endswith("/workflows"):
+                result = []
             elif path.endswith("/messages"):
                 result = messages
             elif path.endswith("/turns"):

@@ -70,6 +70,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public detail?: unknown,
   ) {
     super(message);
   }
@@ -87,6 +88,7 @@ export async function api<T>(path: string, method = "GET", body?: unknown): Prom
     throw new ApiError(
       typeof value.detail === "string" ? value.detail : JSON.stringify(value.detail ?? value),
       response.status,
+      value.detail,
     );
   return value as T;
 }

@@ -24,6 +24,7 @@ export default function AccountMenu({
         {[
           ...(me.user.role !== "viewer" ? [["ops", "Sohbet"]] : []),
           ["agents", "Asistanlar"],
+          ...(me.user.role !== "viewer" ? [["contacts", "Kişiler"]] : []),
           ["inbox", "Gelen kutusu"],
           ...(owner ? [["team", "Ekip ve yetkiler"]] : []),
           ...(me.user.role === "super_admin" ? [["platform", "Şirketler"]] : []),

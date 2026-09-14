@@ -14,7 +14,7 @@ from src.core.rbac import RequireAgent
 from src.integrations.llm import LLMCompletionError, LLMNotConfiguredError
 from src.modules.selection.review import authorize
 
-from . import outbound, planner, service
+from . import outbound, planner, service, workflow_requests
 from .models import AdminChatSession, AdminChatTurn
 
 router = APIRouter(prefix="/admin-chat", tags=["admin chat"])
@@ -104,6 +104,7 @@ async def messages(session_id: UUID, claims: ClaimsDep, db: DBSessionDep) -> Any
                     "display_text": row.response.get("user_display_text", row.text),
                     "cards": [],
                     "created_at": row.created_at,
+                    "sequence": row.sequence,
                 },
                 {
                     "id": str(row.id),
@@ -117,6 +118,7 @@ async def messages(session_id: UUID, claims: ClaimsDep, db: DBSessionDep) -> Any
                         "response_source", row.audit.get("planner")
                     ),
                     "created_at": row.created_at,
+                    "sequence": row.sequence,
                 },
             ]
         )
@@ -152,9 +154,15 @@ async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSe
         if previous.text != payload.text:
             raise HTTPException(409, "client_message_id already used for another message")
         return previous.response
+    current_views = await workflows.list_views(db, user, session)
     try:
         intent, source = await planner.plan(
             payload.text,
+            workflow_context=[
+                {k: v for k, v in w.items() if k in {"kind", "step", "status", "fields"}}
+                for w in current_views
+                if w["status"] not in workflows.TERMINAL
+            ],
             pending_operation=(
                 session.context.get("workspace", {}).get("pending_operation", {}).get("operation")
             ),
@@ -167,12 +175,34 @@ async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSe
         raise HTTPException(
             502, "Model intent failed validation; retry with the same client_message_id"
         ) from exc
+    intent = workflow_intents.normalize(intent)
+    audit: Any
     try:
-        reply, cards, action, audit = await service.execute(db, claims, user, session, intent)
+        intent, request_message = await workflow_requests.route_intent(db, user, session, intent)
+        if workflow_intents.ambiguous_approval(
+            payload.text,
+            bool(session.context.get("workspace", {}).get("pending_operation")),
+            current_views,
+            intent,
+        ):
+            reply, cards, action, audit = (
+                "Birden fazla onay hedefi var. Uygulamak istediğiniz kartın onay düğmesini kullanın.",
+                [],
+                None,
+                {"tool": "workflow", "status": "selection_required"},
+            )
+        elif intent.tool == "workflow":
+            reply, cards, action, audit = await workflows.execute_intent(
+                db, user, session, intent, payload.client_message_id
+            )
+        else:
+            reply, cards, action, audit = await service.execute(db, claims, user, session, intent)
     except (TimeoutError, LLMCompletionError, LLMNotConfiguredError) as exc:
         raise HTTPException(503, "Model kullanılamıyor; hiçbir gönderim başlatılmadı.") from exc
     except ValueError as exc:
         raise HTTPException(502, "Model araç seçimi doğrulanamadı; gönderim yapılmadı.") from exc
+    if request_message:
+        reply = request_message
     turn_id = uuid4()
     response = {
         "session_id": str(session.id),
@@ -180,6 +210,7 @@ async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSe
         "reply": reply,
         "response_source": source,
         "cards": cards,
+        "workflows": await workflows.list_views(db, user, session),
         "selected_request_id": session.context.get("selected_request_id"),
         "action_result": action,
         "suggestions": service.suggestions(session.context, intent),
@@ -299,3 +330,44 @@ async def outbound_action(
     card = await outbound.batch_card(db, batch)
     await db.commit()
     return card
+
+
+# Every workflow mutation shares the chat-turn session lock. Forms and language
+# tools therefore cannot race each other or create two foreground operations.
+from . import workflow_intents, workflows  # noqa: E402
+from .workflow_schema import WorkflowCommand, WorkflowStart  # noqa: E402
+
+
+@router.get("/sessions/{session_id}/workflows")
+async def workflow_list(session_id: UUID, claims: ClaimsDep, db: DBSessionDep) -> Any:
+    user = await account(db, claims)
+    session = await owned(db, user, session_id, lock=True)
+    result = await workflows.list_views(db, user, session)
+    await db.commit()
+    return result
+
+
+@router.post("/sessions/{session_id}/workflows")
+async def workflow_start(
+    session_id: UUID, payload: WorkflowStart, claims: ClaimsDep, db: DBSessionDep
+) -> Any:
+    user = await account(db, claims)
+    session = await owned(db, user, session_id, lock=True)
+    result = await workflows.start(db, user, session, payload)
+    await db.commit()
+    return result
+
+
+@router.post("/sessions/{session_id}/workflows/{workflow_id}/actions")
+async def workflow_action(
+    session_id: UUID,
+    workflow_id: UUID,
+    payload: WorkflowCommand,
+    claims: ClaimsDep,
+    db: DBSessionDep,
+) -> Any:
+    user = await account(db, claims)
+    session = await owned(db, user, session_id, lock=True)
+    result = await workflows.act(db, user, session, workflow_id, payload)
+    await db.commit()
+    return result

@@ -47,8 +47,8 @@ class SelectionFile(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     request_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("selection_requests.id", ondelete="CASCADE"), index=True
     )
-    inbound_message_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), unique=True
+    inbound_message_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), unique=True, nullable=True
     )
     filename: Mapped[str] = mapped_column(String(180))
     mime_type: Mapped[str] = mapped_column(String(80))
@@ -67,3 +67,12 @@ class SelectionEvent(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     )
     response: Mapped[dict[str, Any]] = mapped_column(JSONB)
     kind: Mapped[str] = mapped_column(String(24), default="answer")
+
+
+class SelectionFormAction(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
+    __tablename__ = "selection_form_actions"
+    __table_args__ = (Index("uq_selection_form_operation", "request_id", "operation_id", unique=True),)
+    request_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("selection_requests.id", ondelete="CASCADE"))
+    operation_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    response: Mapped[dict[str, Any]] = mapped_column(JSONB)

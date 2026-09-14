@@ -213,10 +213,12 @@ def import_config(
             return {}, [{"row": 0, "error": str(exc)}]
     config = deepcopy(current)
     reader = csv.DictReader(io.StringIO(payload.content.lstrip("\ufeff")))
+    if reader.fieldnames and len(reader.fieldnames) != len(set(reader.fieldnames)):
+        return {}, [{"row": 1, "error": "CSV sütun adları benzersiz olmalı."}]
     mapping = {key: payload.columns.get(key, key) for key in CSV_FIELDS}
     if not reader.fieldnames or any(mapping[k] not in reader.fieldnames for k in CSV_FIELDS[:5]):
         return {}, [
-            {"row": 1, "error": "Map id, subject_id, category, customer_text and source columns"}
+            {"row": 1, "error": "Bilgi kimliği, şirket/ürün kimliği, bilgi türü, müşteri metni ve kaynak sütunlarını seçin."}
         ]
     locale = (config.get("agent") or {}).get("default_locale", "tr")
     facts = {f["id"]: f for f in config.get("facts", [])}
@@ -351,6 +353,11 @@ async def builder_turn(db: Any, tid: UUID, aid: UUID, sid: UUID, text: str) -> d
 Return JSON only: {"reply":"short explanation or clarification question", "patch":{}}.
 Never invent company claims. Propose only explicitly provided information; ask when missing.
 patch may contain organization, agent, offerings, facts, relationships.
+A business capability or service statement must become an entry in facts, not only an offering or reply.
+Capture EVERY explicit business claim in the current message. When both a company name and a service
+are provided, include both organization and facts in the patch. Do not silently drop the service.
+Copy the owner's factual wording into value and customer_text; do not paraphrase or invent details.
+The reply is not stored as company knowledge. Ask for missing details only after capturing facts already provided.
 organization: {"id":"company","display_names":{"tr":"company name"}}.
 agent: {"purposes":["information"],"supported_locales":["tr"],"default_locale":"tr","require_fact_ids_for_claims":true,"unknown_fact_action":"handoff"}.
 offerings entries: {"id":"lowercase_id","kind":"physical_product" or "professional_service","display_names":{"tr":"name"},"provider_id":"company"}.

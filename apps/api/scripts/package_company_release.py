@@ -16,7 +16,7 @@ def package(output: Path) -> None:
     for folder in ("src", "alembic", "config"):
         paths.extend((p, "api/" + p.relative_to(api).as_posix()) for p in (api / folder).rglob("*")
                      if p.is_file() and p.suffix in {".py", ".json"} and "__pycache__" not in p.parts)
-    for name in ("bootstrap_arti_kasnak_agent.py", "bootstrap_platform_owner.py", "bind_runtime_channel.py", "backup_production_database.py", "runtime_preflight.py", "verify_company_models.py", "package_company_release.py"):
+    for name in ("bootstrap_arti_kasnak_agent.py", "bootstrap_platform_owner.py", "bind_runtime_channel.py", "backup_production_database.py", "runtime_preflight.py", "verify_company_models.py", "verify_progressive_live_model.py", "package_company_release.py"):
         paths.append((api / "scripts" / name, "api/scripts/" + name))
     for name in ("alembic.ini", "pyproject.toml", "poetry.lock"):
         paths.append((api / name, "api/" + name))

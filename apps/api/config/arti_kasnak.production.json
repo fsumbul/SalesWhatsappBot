@@ -2087,7 +2087,14 @@
         },
         "completion_fact_id": "flow_submission_received"
       }
-    ]
+    ],
+    "offer_intake_choice": true,
+    "intake_start_phrases": [
+      "teklif olusturmak istiyorum",
+      "teklif olustur",
+      "telif olusturmak istiyorum"
+    ],
+    "intake_form_url": "https://api.ashiraai.com/tr/forms/selection"
   },
   "selection_flow": {
     "id": "pulley_selection",

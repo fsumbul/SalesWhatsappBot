@@ -90,7 +90,7 @@ class WhatsAppClient:
         return await self.send_text_once(to, body_text, preview_url)
 
     async def send_text_once(
-        self, to: str, body_text: str, preview_url: bool = False
+        self, to: str, body_text: str, preview_url: bool = False, *, callback_data: str | None = None
     ) -> dict[str, Any]:
         """Send one POST with no transport retry.
 
@@ -105,6 +105,8 @@ class WhatsAppClient:
             "type": "text",
             "text": {"body": body_text, "preview_url": preview_url},
         }
+        if callback_data is not None:
+            body["biz_opaque_callback_data"] = callback_data
         return await self._post_message(body)
 
     async def send_flow_once(

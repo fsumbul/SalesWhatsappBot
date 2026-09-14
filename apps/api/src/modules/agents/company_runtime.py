@@ -1440,7 +1440,8 @@ def build_customer_decision_schema(
                 "items": fact_id_schema,
                 "minItems": 1 if force_social_reply else 0,
                 "maxItems": min(2, len(fact_ids)),
-                "uniqueItems": True,
+                # Some grammar backends reject uniqueItems. The trusted parser
+                # independently rejects duplicate IDs before rendering.
             },
         },
         "required": ["action", "fact_ids"],

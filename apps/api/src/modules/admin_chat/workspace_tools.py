@@ -178,7 +178,7 @@ async def execute(db: Any, claims: Any, user: Any, session: Any, intent: Any) ->
             context.pop("builder_id", None)
             context.pop("test_id", None)
             reply = f"{agent.name} oluşturuldu. Şirket bilgilerini bu sohbete yazabilirsiniz."
-            cards = [panel("knowledge", agent_id=str(agent.id))]
+            cards = []  # A historical confirmation must not introduce a new full workspace panel.
         else:
             raise HTTPException(409, "Desteklenmeyen önizleme.")
         from .models import AdminChatTurn

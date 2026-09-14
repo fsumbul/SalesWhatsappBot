@@ -40,6 +40,7 @@ from src.modules.outreach.webhooks import router as whatsapp_webhook_router
 from src.modules.reports.router import router as reports_router
 from src.modules.sectors.router import router as sectors_router
 from src.modules.selection.router import router as selection_router
+from src.modules.selection.customer_form import router as customer_form_router
 
 
 @asynccontextmanager
@@ -166,6 +167,7 @@ def create_app() -> FastAPI:
     # --- API v1 routers ---
     api_prefix = "/api/v1"
     app.include_router(selection_router, prefix=api_prefix)
+    app.include_router(customer_form_router, prefix=api_prefix)
     app.include_router(admin_chat_router, prefix=api_prefix)
     app.include_router(auth_router, prefix=api_prefix)
     app.include_router(workspace_router, prefix=api_prefix)

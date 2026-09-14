@@ -42,13 +42,29 @@ def starts(config: Any, body: str) -> bool:
     return bool(
         definition
         and (
-            n in definition.start_phrases + definition.greeting_phrases
+            intake_mode(body) in {"chat", "form"}
+            or n in definition.start_phrases + definition.greeting_phrases
+            or (
+                config.whatsapp_presentation
+                and n in config.whatsapp_presentation.intake_start_phrases
+            )
             or "fact_request:quote_product_question" in n
         )
     )
 
 
+def intake_mode(body: str) -> str | None:
+    clean = normalize(body).strip()
+    for mode in ("form", "chat"):
+        token = "intake:" + mode
+        if clean == token or clean.endswith("[" + token + "]"):
+            return mode
+    return None
+
+
 async def applicable(session: Any, config: Any, conversation: Any, inbound: Any) -> bool:
+    if (inbound.body or "").strip() == "[flow_response]":
+        return False
     if not enabled(config, conversation.id):
         return False
     if starts(config, inbound.body or "") or "sel:" in (inbound.body or ""):
@@ -80,6 +96,10 @@ def as_turn(response: dict[str, Any]) -> RuntimeTurn:
         if options
         else None
     )
+    if response.get("form_url"):
+        interaction = RuntimeInteraction(
+            kind=RuntimeInteractionKind.CTA_URL, button_text="Formu aç", url=response["form_url"]
+        )
     return RuntimeTurn(
         action=CustomerReplyAction.REPLY,
         reply=response["body"],
@@ -171,6 +191,28 @@ async def handle(
         )
         .with_for_update()
     )
+    mode = intake_mode(inbound.body or "")
+    presentation = config.whatsapp_presentation
+    offer_choice = bool(
+        presentation and presentation.offer_intake_choice and presentation.intake_form_url
+    )
+    entry = offer_choice and (
+        mode is not None
+        or (
+            starts(config, inbound.body or "")
+            and normalize(inbound.body or "").strip(" !.,:;?")
+            not in config.selection_flow.greeting_phrases
+        )
+    )
+    if entry and row is not None and mode is None:
+        current = state_of(row)
+        if current.step_index < len(current.definition.steps):
+            step = current.definition.steps[current.step_index]
+            if any(
+                normalize(inbound.body or "") in {normalize(o.value), normalize(o.label)}
+                for o in step.options
+            ):
+                entry = False
     definition_changed = bool(
         row and row.definition != config.selection_flow.model_dump(mode="json")
     )
@@ -220,7 +262,9 @@ async def handle(
         confirmed = False
     else:
         state = state_of(row)
-        if inbound.raw.get("type") in {"image", "document"}:
+        if entry:
+            response, confirmed = prompt(state), False
+        elif inbound.raw.get("type") in {"image", "document"}:
             try:
                 count = await session.scalar(
                     select(func.count())
@@ -303,6 +347,23 @@ async def handle(
             ],
         }
         response["body"] += f"\nTalep no: {str(row.id)[:8]}"
+    if entry and mode != "chat":
+        if mode == "form":
+            from .access import form_token
+
+            response = {
+                "body": "Talebinizi Ashiraai formunda doldurabilirsiniz. Buradaki yanıtlarınız aynı kayıtta saklanır; WhatsApp’tan devam edebilirsiniz.",
+                "options": [],
+                "form_url": str(presentation.intake_form_url) + "#token=" + form_token(row),
+            }
+        else:
+            response = {
+                "body": "Teklif bilgilerinizi nasıl iletmek istersiniz? İki yöntem de aynı talep kaydına kaydedilir.",
+                "options": [
+                    {"id": "intake:form", "title": "Formu doldur"},
+                    {"id": "intake:chat", "title": "Sohbetle ilerle"},
+                ],
+            }
     session.add(
         SelectionEvent(
             tenant_id=row.tenant_id,

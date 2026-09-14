@@ -107,7 +107,12 @@ async def prepare(client, headers, sid):
         "client_message_id": str(uuid4()),
     }
     url = f"/api/v1/admin-chat/sessions/{sid}/turns"
-    response = await client.post(url, headers=headers, json=payload)
+    from unittest.mock import patch
+
+    with patch(
+        "src.modules.admin_chat.workflow_intents.normalize", side_effect=lambda intent: intent
+    ):
+        response = await client.post(url, headers=headers, json=payload)
     assert response.status_code == 200, response.text
     assert response.json()["response_source"] == "model"
     assert (await client.post(url, headers=headers, json=payload)).json() == response.json()

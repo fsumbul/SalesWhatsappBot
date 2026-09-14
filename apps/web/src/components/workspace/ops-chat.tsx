@@ -1,13 +1,16 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { ArrowUp, History, Plus, X } from "lucide-react";
 import { api, ApiError, type Me } from "./types";
+import WorkflowCard, { type WorkflowView } from "./workflow-card";
 import WorkspaceCard from "./workspace-card";
 import AccountMenu from "./account-menu";
 import styles from "./workspace.module.css";
 import { CapacityCard, OutboundCard, RecordCard, type OperationCard } from "./operation-cards";
 type Suggestion = { label: string; text: string };
 type Message = {
+  id?: string;
+  sequence?: number;
   role: string;
   text: string;
   display_text?: string;
@@ -18,7 +21,8 @@ type Message = {
 type Chat = { id: string; title: string };
 const examples = [
   { label: "Teklifleri görüntüle", text: "Teklif taleplerini göster" },
-  { label: "Talepleri analiz et", text: "Talepleri analiz et" },
+  { label: "Kişi ekle", text: "Kişi ekle" },
+  { label: "WhatsApp gönderimi hazırla", text: "WhatsApp gönderimi hazırla" },
   { label: "WhatsApp limiti", text: "WhatsApp limiti" },
 ];
 export default function OpsChat({
@@ -30,6 +34,7 @@ export default function OpsChat({
   initialSection?: string;
   onLogout: () => void;
 }) {
+  const [workflows, setWorkflows] = useState<WorkflowView[]>([]);
   const [sessions, setSessions] = useState<Chat[]>([]);
   const [sid, setSid] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -44,6 +49,20 @@ export default function OpsChat({
   const composer = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const locked = useRef(false);
+  const draftFlushers = useRef(new Map<string, () => Promise<boolean>>());
+  function registerFlush(id: string, flush: (() => Promise<boolean>) | null) {
+    if (flush) draftFlushers.current.set(id, flush);
+    else draftFlushers.current.delete(id);
+  }
+  async function flushDrafts() {
+    for (const flush of Array.from(draftFlushers.current.values())) {
+      if (!(await flush())) {
+        setError("İşlem kartındaki bilgiler henüz kaydedilemedi. Karttan yeniden deneyin.");
+        return false;
+      }
+    }
+    return true;
+  }
   useEffect(() => {
     api<Chat[]>("admin-chat/sessions")
       .then(setSessions)
@@ -52,6 +71,59 @@ export default function OpsChat({
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, busy]);
+  const visibleWorkflowIds = useRef(new Set<string>());
+  useEffect(() => {
+    const added = workflows.filter((view) => !visibleWorkflowIds.current.has(view.id));
+    visibleWorkflowIds.current = new Set(workflows.map((view) => view.id));
+    const active = added.find(
+      (view) => !["paused", "completed", "cancelled"].includes(view.status),
+    );
+    if (active)
+      document
+        .getElementById(`workflow-${active.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [workflows]);
+  const hasPendingDelivery = workflows.some(
+    (view) =>
+      (view.kind === "conversation" && view.status === "awaiting_input") ||
+      (view.kind === "reply" &&
+        ["sending", "accepted", "sent", "delivered", "ambiguous", "failed"].includes(view.result.outcome)) ||
+      (view.kind === "outreach" &&
+        view.result.batch_id &&
+        view.status !== "cancelled" &&
+        view.records?.some((record) =>
+          ["Kuyrukta", "Gönderiliyor", "Meta kabul etti", "Gönderildi", "Teslim edildi"].includes(
+            record.subtitle,
+          ),
+        )),
+  );
+  useEffect(() => {
+    if (!sid || !hasPendingDelivery) return;
+    let disposed = false;
+    let fetching = false;
+    const timer = window.setInterval(async () => {
+      if (fetching || locked.current || document.hidden) return;
+      fetching = true;
+      try {
+        const fresh = await api<WorkflowView[]>(`admin-chat/sessions/${sid}/workflows`);
+        if (!disposed)
+          setWorkflows((current) =>
+            current.map((view) => {
+              const next = fresh.find((candidate) => candidate.id === view.id);
+              return next && next.revision > view.revision ? next : view;
+            }),
+          );
+      } catch {
+        // Keep the last confirmed state; reconnect on the next interval.
+      } finally {
+        fetching = false;
+      }
+    }, 5000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [sid, hasPendingDelivery]);
   useEffect(() => {
     const viewport = window.visualViewport;
     const resize = () =>
@@ -66,14 +138,30 @@ export default function OpsChat({
       document.documentElement.style.removeProperty("--chat-height");
     };
   }, []);
-  function newChat() {
+  async function newChat() {
     if (locked.current || pending) return;
+    locked.current = true;
+    const saved = await flushDrafts();
+    locked.current = false;
+    if (!saved) return;
     setSid("");
+    setWorkflows([]);
     setMessages([]);
     setText("");
     setError("");
     history.current?.close();
     composer.current?.focus();
+  }
+  async function logout() {
+    if (locked.current || pending) return;
+    locked.current = true;
+    setBusy(true);
+    try {
+      if (await flushDrafts()) onLogout();
+    } finally {
+      locked.current = false;
+      setBusy(false);
+    }
   }
   async function openChat(id: string) {
     if (locked.current || pending) return;
@@ -81,8 +169,10 @@ export default function OpsChat({
     setBusy(true);
     setError("");
     try {
+      if (!(await flushDrafts())) return;
       const rows = await api<Message[]>(`admin-chat/sessions/${id}/messages`);
       setSid(id);
+      setWorkflows(await api<WorkflowView[]>(`admin-chat/sessions/${id}/workflows`));
       setMessages(rows);
       setText("");
       history.current?.close();
@@ -100,6 +190,7 @@ export default function OpsChat({
     setError("");
     let attempt = pending;
     try {
+      if (!(await flushDrafts())) return;
       let id = attempt?.sessionId || sid;
       if (!id) {
         const s = await api<Chat>("admin-chat/sessions", "POST", {});
@@ -118,6 +209,7 @@ export default function OpsChat({
       });
       const rows = await api<Message[]>(`admin-chat/sessions/${id}/messages`);
       setMessages(rows);
+      setWorkflows(await api<WorkflowView[]>(`admin-chat/sessions/${id}/workflows`));
       setPending(null);
       // Failure to refresh the history list must not change the status of the completed turn.
       api<Chat[]>("admin-chat/sessions")
@@ -137,6 +229,7 @@ export default function OpsChat({
   }
   const commands: Record<string, string> = {
     agents: "Asistanlar",
+    contacts: "Kişiler",
     inbox: "Gelen kutusu",
     team: "Ekip ve yetkiler",
     platform: "Şirketler",
@@ -156,7 +249,21 @@ export default function OpsChat({
     // Initial deep link only; subsequent operations are ordinary persisted chat turns.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSection]);
-  const empty = messages.length === 0;
+  function renderWorkflow(view: WorkflowView) {
+    return (
+      <WorkflowCard
+        key={view.id}
+        view={view}
+        refresh={refreshWorkflows}
+        registerFlush={registerFlush}
+        disabled={busy || !!pending}
+      />
+    );
+  }
+  const empty = messages.length === 0 && workflows.length === 0;
+  async function refreshWorkflows() {
+    setWorkflows(await api<WorkflowView[]>(`admin-chat/sessions/${sid}/workflows`));
+  }
   const suggestions =
     me.user.role === "viewer"
       ? [
@@ -258,7 +365,13 @@ export default function OpsChat({
           >
             <Plus size={21} />
           </button>
-          <AccountMenu me={me} onNavigate={onNavigate} onLogout={onLogout} />
+          <AccountMenu
+            me={me}
+            onNavigate={onNavigate}
+            onLogout={() => {
+              void logout();
+            }}
+          />
         </div>
       </header>
       {empty ? (
@@ -282,40 +395,57 @@ export default function OpsChat({
             aria-live="polite"
           >
             <div>
+              {workflows.filter((view) => !view.anchor_sequence).map(renderWorkflow)}
               {messages.map((m, i) => (
-                <article
-                  key={i}
-                  className={m.role === "user" ? styles.chatUser : styles.chatAssistant}
-                >
-                  <span className={m.role === "user" ? styles.srOnly : styles.chatSpeaker}>
-                    {m.role === "user" ? "Siz" : "Ashira"}
-                  </span>
-                  <p>{m.display_text ?? m.text}</p>
-                  {m.cards?.map((c, j) =>
-                    [
-                      "workspace",
-                      "workspace_preview",
-                      "agent_choices",
-                      "agent_test",
-                      "invitation",
-                    ].includes(c.type) ? (
-                      <WorkspaceCard
-                        key={`${i}:${j}`}
-                        card={c}
-                        me={me}
-                        send={send}
-                        disabled={busy || !!pending}
-                      />
-                    ) : c.type === "outbound" ? (
-                      <OutboundCard key={c.batch_id} initial={c} />
-                    ) : c.type === "capacity" ? (
-                      <CapacityCard key={j} card={c} />
-                    ) : (
-                      <RecordCard key={j} card={c} disabled={busy || !!pending} send={send} />
-                    ),
-                  )}
-                </article>
+                <Fragment key={m.id ?? `pending:${i}`}>
+                  <article
+                    data-turn-sequence={m.sequence}
+                    className={m.role === "user" ? styles.chatUser : styles.chatAssistant}
+                  >
+                    <span className={m.role === "user" ? styles.srOnly : styles.chatSpeaker}>
+                      {m.role === "user" ? "Siz" : "Ashira"}
+                    </span>
+                    <p>{m.display_text ?? m.text}</p>
+                    {m.cards?.map((c, j) =>
+                      [
+                        "workspace",
+                        "workspace_preview",
+                        "agent_choices",
+                        "agent_test",
+                        "invitation",
+                      ].includes(c.type) ? (
+                        <WorkspaceCard
+                          key={`${i}:${j}`}
+                          card={c}
+                          me={me}
+                          send={send}
+                          disabled={busy || !!pending}
+                        />
+                      ) : c.type === "outbound" ? (
+                        <OutboundCard key={c.batch_id} initial={c} />
+                      ) : c.type === "capacity" ? (
+                        <CapacityCard key={j} card={c} />
+                      ) : (
+                        <RecordCard key={j} card={c} disabled={busy || !!pending} send={send} />
+                      ),
+                    )}
+                  </article>
+                  {m.role === "assistant" &&
+                    workflows
+                      .filter((view) => view.anchor_sequence === m.sequence && !!m.sequence)
+                      .map(renderWorkflow)}
+                </Fragment>
               ))}
+              {workflows
+                .filter(
+                  (view) =>
+                    !!view.anchor_sequence &&
+                    !messages.some(
+                      (message) =>
+                        message.role === "assistant" && message.sequence === view.anchor_sequence,
+                    ),
+                )
+                .map(renderWorkflow)}
               {busy && (
                 <p role="status" className={styles.chatWaiting}>
                   Yanıt hazırlanıyor…
