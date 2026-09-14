@@ -107,7 +107,9 @@ async def initialize(db: Any, user: Any, session: Any, row: Any) -> None:
 async def refresh(db: Any, user: Any, row: Any) -> None:
     category = row.fields.get("category", "agents")
     authorize(user, category)
-    query = row.fields.get("q", "").strip()
+    from .service import search_text
+
+    query = search_text(row.fields.get("q", ""))
     pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
     try:
         page = max(1, int(row.fields.get("page") or "1"))

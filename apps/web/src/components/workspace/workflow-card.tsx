@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { MotionRegion } from "../../lib/motion/components";
 import { api, ApiError } from "./types";
 import { ChangeSummary, WorkflowOutput, type WorkflowChange } from "./workflow-details";
 import RecordList, { type WorkflowRecord } from "./workflow-records";
@@ -183,254 +184,320 @@ export default function WorkflowCard({
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty, busy]);
+  const messaging = ["outreach", "create_template"].includes(view.kind);
   return (
     <section
       id={`workflow-${view.id}`}
-      className={styles.card}
+      data-motion="arrive"
+      className={`${styles.card} ${messaging ? styles.messagingCard : ""}`}
       aria-label={view.title}
       aria-busy={busy}
     >
       <header>
-        <h3>{view.title}</h3>
+        <h3>
+          {messaging
+            ? view.kind === "outreach"
+              ? "WhatsApp mesajı"
+              : "Yeni WhatsApp şablonu"
+            : view.title}
+        </h3>
         <span>
           {view.kind === "outreach" && view.status === "paused" && view.result.outcome === "queued"
             ? "Arka planda çalışıyor"
             : view.kind === "reply" && ["ambiguous", "failed"].includes(view.result.outcome)
               ? "Sonuç kontrol edilmeli"
-              : statuses[view.status]}
+              : view.kind === "create_template" && view.status === "running"
+                ? view.result.meta_status === "PENDING"
+                  ? "Meta onayı bekleniyor"
+                  : "Meta durumu kontrol ediliyor"
+                : statuses[view.status]}
         </span>
       </header>
-      {!terminal && view.output && <WorkflowOutput output={view.output} />}
-      {!terminal && view.result.message && <p role="status">{view.result.message}</p>}
-      {!terminal && view.steps.length > 0 && (
-        <ol className={styles.steps} aria-label="İşlem adımları">
-          {view.steps.map((step, i) => (
-            <li key={step} aria-current={step === view.step ? "step" : undefined}>
-              {i + 1}. {steps[step]}
-            </li>
-          ))}
-        </ol>
-      )}
-      {terminal ? (
-        <>
-          <p role="status">{view.result.message ?? "İşlem iptal edildi."}</p>
-          <details>
-            <summary>İşlem ayrıntıları</summary>
-            {view.output && <WorkflowOutput output={view.output} />}
-            {view.changes && <ChangeSummary changes={view.changes} />}
-            <dl>
-              {view.controls.map(
-                (c) =>
-                  view.fields[c.key] && (
-                    <div key={c.key}>
-                      <dt>{c.label}</dt>
-                      <dd>{c.options[view.fields[c.key]] ?? view.fields[c.key]}</dd>
-                    </div>
-                  ),
-              )}
-            </dl>
-          </details>
-          {view.result.token && (
-            <button
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(
-                    `${location.origin}/${location.pathname.split("/")[1] || "tr"}?invite=${encodeURIComponent(view.result.token)}`,
-                  );
-                  setCopied(true);
-                } catch {
-                  setError("Bağlantı kopyalanamadı.");
-                }
-              }}
-            >
-              Davet bağlantısını kopyala
-            </button>
-          )}
-        </>
-      ) : (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (view.primary_action) void act(view.primary_action);
-          }}
-          noValidate
-        >
-          <details
-            className={view.status === "paused" ? styles.pausedDetails : styles.openDetails}
-            open={view.status !== "paused"}
-          >
-            <summary>Kaydedilmiş bilgiler</summary>
-            {view.kind === "configure" && ["json", "csv"].includes(fields.format) && editable && (
-              <label className={styles.fileUpload}>
-                JSON / CSV dosyası seç
-                <input
-                  type="file"
-                  accept=".json,.csv"
-                  disabled={busy || disabled}
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    if (file.size > 500000) {
-                      setError("Dosya en fazla 500 KB olabilir.");
-                      return;
-                    }
-                    try {
-                      const content = await file.text();
-                      setFields({ ...fields, content });
-                      setSaved(false);
-                    } catch {
-                      setError("Dosya okunamadı.");
-                    }
-                  }}
-                />
-              </label>
-            )}
-            <fieldset
-              disabled={
-                disabled || (busy && !autosaving) || !editable || (!!retry.current && !autosaving)
-              }
-              className={styles.fields}
-            >
-              {view.controls.map((c) => (
-                <div key={c.key}>
-                  <label htmlFor={`${view.id}-${c.key}`}>
-                    {c.label}
-                    {c.required && <span aria-hidden="true"> *</span>}
-                  </label>
-                  {c.control === "select" ? (
-                    <select
-                      id={`${view.id}-${c.key}`}
-                      value={fields[c.key] ?? ""}
-                      aria-required={c.required}
-                      aria-invalid={!!view.errors[c.key]}
-                      aria-describedby={
-                        view.errors[c.key] ? `${view.id}-${c.key}-error` : undefined
-                      }
-                      onChange={(e) => {
-                        setFields({ ...fields, [c.key]: e.target.value });
-                        setSaved(false);
-                        setError("");
-                      }}
-                    >
-                      {!("" in c.options) && <option value="">Seçin</option>}
-                      {Object.entries(c.options).map(([v, l]) => (
-                        <option key={v} value={v}>
-                          {l}
-                        </option>
-                      ))}
-                    </select>
-                  ) : c.control === "textarea" ? (
-                    <textarea
-                      id={`${view.id}-${c.key}`}
-                      rows={c.key === "content" ? 5 : 2}
-                      value={fields[c.key] ?? ""}
-                      aria-required={c.required}
-                      aria-invalid={!!view.errors[c.key]}
-                      aria-describedby={
-                        view.errors[c.key] ? `${view.id}-${c.key}-error` : undefined
-                      }
-                      onChange={(e) => {
-                        setFields({ ...fields, [c.key]: e.target.value });
-                        setSaved(false);
-                        setError("");
-                      }}
-                    />
-                  ) : (
-                    <input
-                      id={`${view.id}-${c.key}`}
-                      type={c.control}
-                      value={fields[c.key] ?? ""}
-                      aria-required={c.required}
-                      aria-invalid={!!view.errors[c.key]}
-                      aria-describedby={
-                        view.errors[c.key] ? `${view.id}-${c.key}-error` : undefined
-                      }
-                      onChange={(e) => {
-                        setFields({ ...fields, [c.key]: e.target.value });
-                        setSaved(false);
-                        setError("");
-                      }}
-                    />
-                  )}
-                  {view.errors[c.key] && (
-                    <small id={`${view.id}-${c.key}-error`}>{view.errors[c.key]}</small>
-                  )}
-                </div>
-              ))}
-            </fieldset>
-          </details>
-          {view.changes && <ChangeSummary changes={view.changes} />}
-          {view.step === "review" && (
-            <p>
-              {view.kind === "rollback"
-                ? "Seçilen geçmiş sürümden yeni bir canlı sürüm oluşturulacak. Sürüm geçmişi korunacak."
-                : view.kind === "owner_invite"
-                  ? "Seçilen şirket için şirket sahibi davet bağlantısı oluşturulacak. Üyelik davet kabul edildiğinde başlar."
-                  : view.kind === "request_update"
-                    ? "Gösterilen talep değişikliği kaydedilecek."
-                    : view.kind === "member"
-                      ? "Gösterilen hesabın erişimi bu değişiklikle güncellenecek."
-                      : view.kind === "configure"
-                        ? "Onaylanan değişiklikler taslağa kaydedilecek. Yayınlama ayrı bir işlemdir."
-                        : view.kind === "publish"
-                          ? "Gösterilen sürüm yeni müşteri mesajları için canlıya alınacak."
-                          : view.kind === "reply"
-                            ? "Gösterilen yanıt bu müşteriye bir kez gönderilecek. Sonuç belirsiz kalırsa otomatik tekrar yapılmaz."
-                            : view.kind === "resume_bot"
-                              ? "Bot yeni müşteri mesajları için devam edecek. Eski mesajlar yeniden gönderilmez."
-                              : view.kind === "outreach"
-                                ? "Uygun alıcılar kuyruğa alınacak. Kuyruğa alınması teslim edildiği anlamına gelmez."
-                                : view.kind === "test"
-                                  ? "Seçilen sürümle müşteri testi çalıştırılacak."
-                                  : view.kind === "invite"
-                                    ? "Bu e-posta için seçilen yetkiyle davet bağlantısı oluşturulacak. Üyelik davet kabul edildiğinde başlar."
-                                    : view.kind === "create_company"
-                                      ? "Bu bilgilerle şirket ve sahibinin davet bağlantısı oluşturulacak."
-                                      : view.kind === "create_agent"
-                                        ? "Bu bilgilerle asistan ve ilk taslak sürümü oluşturulacak."
-                                        : "Bu bilgilerle kişi kaydı oluşturulacak."}
-            </p>
-          )}
-          <div className={styles.actions}>
-            {retry.current && !busy ? (
+      <MotionRegion className={messaging && !terminal ? styles.messageLayout : undefined}>
+        {!terminal && view.output && <WorkflowOutput output={view.output} />}
+        {!terminal &&
+          (!messaging || view.status === "failed" || Object.keys(view.errors).length > 0) &&
+          view.result.message && <p role="status">{view.result.message}</p>}
+        {!terminal && !messaging && view.steps.length > 0 && (
+          <ol className={styles.steps} aria-label="İşlem adımları">
+            {view.steps.map((step, i) => (
+              <li key={step} aria-current={step === view.step ? "step" : undefined}>
+                {i + 1}. {steps[step]}
+              </li>
+            ))}
+          </ol>
+        )}
+        {terminal ? (
+          <>
+            <p role="status">{view.result.message ?? "İşlem iptal edildi."}</p>
+            <details>
+              <summary>İşlem ayrıntıları</summary>
+              {view.output && <WorkflowOutput output={view.output} />}
+              {view.changes && <ChangeSummary changes={view.changes} />}
+              <dl>
+                {view.controls.map(
+                  (c) =>
+                    view.fields[c.key] && (
+                      <div key={c.key}>
+                        <dt>{c.label}</dt>
+                        <dd>{c.options[view.fields[c.key]] ?? view.fields[c.key]}</dd>
+                      </div>
+                    ),
+                )}
+              </dl>
+            </details>
+            {view.result.token && (
               <button
-                type="button"
-                disabled={busy || disabled}
-                onClick={() => act(retry.current!.action)}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(
+                      `${location.origin}/${location.pathname.split("/")[1] || "tr"}?invite=${encodeURIComponent(view.result.token)}`,
+                    );
+                    setCopied(true);
+                  } catch {
+                    setError("Bağlantı kopyalanamadı.");
+                  }
+                }}
               >
-                Aynı işlemi yeniden dene
+                Davet bağlantısını kopyala
               </button>
-            ) : (
-              <>
-                {view.primary_action && (
-                  <button type="submit" disabled={busy || disabled}>
-                    {view.primary_label}
-                  </button>
-                )}
-                {editable && view.kind !== "records" && (
-                  <button type="button" disabled={busy || disabled} onClick={() => act("update")}>
-                    Bilgileri sakla
-                  </button>
-                )}
-                {view.step === "review" && view.status !== "paused" && (
-                  <button type="button" disabled={busy || disabled} onClick={() => act("back")}>
-                    Bilgileri düzenle
-                  </button>
-                )}
-                {view.status !== "paused" && (
-                  <button type="button" disabled={busy || disabled} onClick={() => act("pause")}>
-                    {view.kind === "outreach" && view.status === "running"
-                      ? "Arka planda sürdür"
-                      : "Beklet"}
-                  </button>
-                )}
-                <button type="button" disabled={busy || disabled} onClick={() => act("cancel")}>
-                  İptal et
-                </button>
-              </>
             )}
-          </div>
-        </form>
+          </>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (view.primary_action) void act(view.primary_action);
+            }}
+            noValidate
+          >
+            {messaging && !editable && view.status !== "paused" ? (
+              <section className={styles.reviewSummary} aria-label="Gönderim bilgileri">
+                <h4>{view.kind === "outreach" ? "Gönderim bilgileri" : "Şablon bilgileri"}</h4>
+                <dl>
+                  {view.controls
+                    .filter((c) => fields[c.key])
+                    .map((c) => (
+                      <div key={c.key}>
+                        <dt>
+                          {c.key === "recipients"
+                            ? "Alıcılar"
+                            : c.key === "template"
+                              ? "Şablon"
+                              : c.label}
+                        </dt>
+                        <dd>{c.options[fields[c.key]] ?? fields[c.key]}</dd>
+                      </div>
+                    ))}
+                </dl>
+              </section>
+            ) : (
+              <details
+                className={view.status === "paused" ? styles.pausedDetails : styles.openDetails}
+                open={view.status !== "paused"}
+              >
+                <summary>Kaydedilmiş bilgiler</summary>
+                {view.kind === "configure" &&
+                  ["json", "csv"].includes(fields.format) &&
+                  editable && (
+                    <label className={styles.fileUpload}>
+                      JSON / CSV dosyası seç
+                      <input
+                        type="file"
+                        accept=".json,.csv"
+                        disabled={busy || disabled}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 500000) {
+                            setError("Dosya en fazla 500 KB olabilir.");
+                            return;
+                          }
+                          try {
+                            const content = await file.text();
+                            setFields({ ...fields, content });
+                            setSaved(false);
+                          } catch {
+                            setError("Dosya okunamadı.");
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+                <fieldset
+                  disabled={
+                    disabled ||
+                    (busy && !autosaving) ||
+                    !editable ||
+                    (!!retry.current && !autosaving)
+                  }
+                  className={styles.fields}
+                >
+                  {view.controls.map((c) => (
+                    <div key={c.key}>
+                      <label htmlFor={`${view.id}-${c.key}`}>
+                        {c.label}
+                        {c.required && <span aria-hidden="true"> *</span>}
+                      </label>
+                      {c.control === "select" ? (
+                        <select
+                          id={`${view.id}-${c.key}`}
+                          value={fields[c.key] ?? ""}
+                          aria-required={c.required}
+                          aria-invalid={!!view.errors[c.key]}
+                          aria-describedby={
+                            view.errors[c.key] ? `${view.id}-${c.key}-error` : undefined
+                          }
+                          onChange={(e) => {
+                            setFields({ ...fields, [c.key]: e.target.value });
+                            setSaved(false);
+                            setError("");
+                          }}
+                        >
+                          {!("" in c.options) && <option value="">Seçin</option>}
+                          {Object.entries(c.options).map(([v, l]) => (
+                            <option key={v} value={v}>
+                              {l}
+                            </option>
+                          ))}
+                        </select>
+                      ) : c.control === "textarea" ? (
+                        <textarea
+                          id={`${view.id}-${c.key}`}
+                          rows={c.key === "content" ? 5 : 2}
+                          value={fields[c.key] ?? ""}
+                          aria-required={c.required}
+                          aria-invalid={!!view.errors[c.key]}
+                          aria-describedby={
+                            view.errors[c.key] ? `${view.id}-${c.key}-error` : undefined
+                          }
+                          onChange={(e) => {
+                            setFields({ ...fields, [c.key]: e.target.value });
+                            setSaved(false);
+                            setError("");
+                          }}
+                        />
+                      ) : (
+                        <input
+                          id={`${view.id}-${c.key}`}
+                          type={c.control}
+                          value={fields[c.key] ?? ""}
+                          aria-required={c.required}
+                          aria-invalid={!!view.errors[c.key]}
+                          aria-describedby={
+                            view.errors[c.key] ? `${view.id}-${c.key}-error` : undefined
+                          }
+                          onChange={(e) => {
+                            setFields({ ...fields, [c.key]: e.target.value });
+                            setSaved(false);
+                            setError("");
+                          }}
+                        />
+                      )}
+                      {view.errors[c.key] && (
+                        <small id={`${view.id}-${c.key}-error`}>{view.errors[c.key]}</small>
+                      )}
+                    </div>
+                  ))}
+                </fieldset>
+              </details>
+            )}
+            {view.changes && <ChangeSummary changes={view.changes} />}
+            {view.step === "review" && (
+              <p>
+                {view.kind === "create_template"
+                  ? "Önizlemedeki şablon Meta onayına gönderilecek. Yalnız Meta onayladığında mesaj gönderiminde seçilebilir."
+                  : view.kind === "rollback"
+                    ? "Seçilen geçmiş sürümden yeni bir canlı sürüm oluşturulacak. Sürüm geçmişi korunacak."
+                    : view.kind === "owner_invite"
+                      ? "Seçilen şirket için şirket sahibi davet bağlantısı oluşturulacak. Üyelik davet kabul edildiğinde başlar."
+                      : view.kind === "request_update"
+                        ? "Gösterilen talep değişikliği kaydedilecek."
+                        : view.kind === "member"
+                          ? "Gösterilen hesabın erişimi bu değişiklikle güncellenecek."
+                          : view.kind === "configure"
+                            ? "Onaylanan değişiklikler taslağa kaydedilecek. Yayınlama ayrı bir işlemdir."
+                            : view.kind === "publish"
+                              ? "Gösterilen sürüm yeni müşteri mesajları için canlıya alınacak."
+                              : view.kind === "reply"
+                                ? "Gösterilen yanıt bu müşteriye bir kez gönderilecek. Sonuç belirsiz kalırsa otomatik tekrar yapılmaz."
+                                : view.kind === "resume_bot"
+                                  ? "Bot yeni müşteri mesajları için devam edecek. Eski mesajlar yeniden gönderilmez."
+                                  : view.kind === "outreach"
+                                    ? "Gönderim başlatıldıktan sonra teslim durumunu buradan takip edebilirsiniz."
+                                    : view.kind === "test"
+                                      ? "Seçilen sürümle müşteri testi çalıştırılacak."
+                                      : view.kind === "invite"
+                                        ? "Bu e-posta için seçilen yetkiyle davet bağlantısı oluşturulacak. Üyelik davet kabul edildiğinde başlar."
+                                        : view.kind === "create_company"
+                                          ? "Bu bilgilerle şirket ve sahibinin davet bağlantısı oluşturulacak."
+                                          : view.kind === "create_agent"
+                                            ? "Bu bilgilerle asistan ve ilk taslak sürümü oluşturulacak."
+                                            : "Bu bilgilerle kişi kaydı oluşturulacak."}
+              </p>
+            )}
+            <div className={styles.actions}>
+              {retry.current && !busy ? (
+                <button
+                  type="button"
+                  disabled={busy || disabled}
+                  onClick={() => act(retry.current!.action)}
+                >
+                  Aynı işlemi yeniden dene
+                </button>
+              ) : (
+                <>
+                  {view.primary_action && (
+                    <button type="submit" disabled={busy || disabled}>
+                      {messaging && view.kind === "outreach" && view.step === "review"
+                        ? "Gönderimi başlat"
+                        : view.primary_label}
+                    </button>
+                  )}
+                  {view.kind === "outreach" && editable && (
+                    <button
+                      type="button"
+                      disabled={busy || disabled || dirty}
+                      onClick={() => act("launch", { operation: "create_template" })}
+                    >
+                      Başka şablon ekle
+                    </button>
+                  )}
+                  {editable && !messaging && view.kind !== "records" && (
+                    <button type="button" disabled={busy || disabled} onClick={() => act("update")}>
+                      Bilgileri sakla
+                    </button>
+                  )}
+                  {view.step === "review" && view.status !== "paused" && (
+                    <button type="button" disabled={busy || disabled} onClick={() => act("back")}>
+                      Bilgileri düzenle
+                    </button>
+                  )}
+                  {view.status !== "paused" &&
+                    !(view.kind === "create_template" && view.status === "running") && (
+                      <button
+                        type="button"
+                        disabled={busy || disabled}
+                        onClick={() => act("pause")}
+                      >
+                        {view.kind === "outreach" && view.status === "running"
+                          ? "Arka planda sürdür"
+                          : "Beklet"}
+                      </button>
+                    )}
+                  {!(view.kind === "create_template" && view.status === "running") && (
+                    <button type="button" disabled={busy || disabled} onClick={() => act("cancel")}>
+                      İptal et
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </form>
+        )}
+      </MotionRegion>
+      {messaging && !terminal && view.result.message && view.step === "result" && (
+        <p role="status">{view.result.message}</p>
       )}
       {((["records", "conversation"].includes(view.kind) &&
         !terminal &&
@@ -450,7 +517,7 @@ export default function WorkflowCard({
           }}
         />
       )}
-      <p role="status" className={styles.feedback}>
+      <p role="status" className={styles.feedback} data-motion="feedback">
         {busy
           ? "Kaydediliyor…"
           : copied

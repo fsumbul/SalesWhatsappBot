@@ -9,6 +9,7 @@ import re
 from typing import Any
 from uuid import UUID
 
+import httpx
 from fastapi import HTTPException
 from sqlalchemy import select
 
@@ -53,18 +54,57 @@ def template(row: Any) -> Any:
 
 
 def controls(row: Any) -> list[WorkflowField]:
-    if row.step == "details":
-        return CONTROLS[:2]
     options = {t["id"]: f"{t['name']} · {t['language']}" for t in row.state.get("templates", [])}
     selected = template(row)
     return [
+        CONTROLS[0],
         CONTROLS[2].model_copy(update={"options": options, "required": True}),
         *[
             WorkflowField(key="var_" + key, label=f"Şablon alanı {key}", required=True)
             for key in (selected or {}).get("variables", [])
         ],
-        CONTROLS[3],
+        *([CONTROLS[3]] if row.step != "details" else []),
     ]
+
+
+def output(row: Any) -> dict[str, Any]:
+    result = dict(row.state.get("output", {}))
+    selected = template(row)
+    if selected:
+        body = selected["body"]
+        for key in selected["variables"]:
+            body = re.sub(
+                r"{{\s*" + re.escape(key) + r"\s*}}",
+                lambda _, key=key: row.fields.get("var_" + key) or "{{" + key + "}}",
+                body,
+            )
+        result["template_preview"] = {
+            **{k: selected.get(k, "") for k in ("name", "language", "header", "footer", "buttons")},
+            "body": body,
+            "status": "Meta onaylı · şablon metni değiştirilemez",
+        }
+    result.setdefault(
+        "summary", "Meta onaylı bir şablon seçin. Yalnız değişken alanlarını doldurabilirsiniz."
+    )
+    return result
+
+
+async def initialize(db: Any, user: Any, row: Any) -> None:
+    try:
+        sender = await resolve_channel(db, user.tenant_id)
+        templates = await outbound.meta_templates(sender)
+    except (HTTPException, ValueError, TimeoutError, httpx.HTTPError) as exc:
+        if isinstance(exc, HTTPException) and exc.status_code in {401, 403}:
+            raise
+        row.state = {
+            "output": {
+                "summary": "Meta şablon listesine ulaşılamadı. Devam et ile yeniden deneyebilirsiniz."
+            }
+        }
+        return
+    row.state = {"templates": templates, "sender_id": str(sender.id)}
+    if len(templates) == 1 and not row.fields.get("template"):
+        row.fields = {**row.fields, "template": templates[0]["id"]}
 
 
 def errors(row: Any) -> dict[str, str]:
@@ -109,7 +149,10 @@ async def prepare(db: Any, user: Any, session: Any, row: Any) -> None:
         sender = await resolve_channel(db, user.tenant_id)
         templates = await outbound.meta_templates(sender)
         if not templates:
-            raise HTTPException(409, "Bu akışa uygun Meta onaylı tanıtım şablonu bulunamadı.")
+            raise HTTPException(
+                409,
+                "Meta onaylı uygun şablon bulunamadı. Yeni şablon ekleyip Meta onayına gönderebilirsiniz.",
+            )
         row.state = {
             "templates": templates,
             "sender_id": str(sender.id),

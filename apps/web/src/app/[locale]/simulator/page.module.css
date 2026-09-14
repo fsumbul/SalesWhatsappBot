@@ -125,9 +125,9 @@
   font-size: 14px;
   font-weight: 750;
   transition:
-    background 160ms ease,
-    color 160ms ease,
-    box-shadow 160ms ease;
+    background var(--motion-feedback) var(--motion-state-ease),
+    color var(--motion-feedback) var(--motion-state-ease),
+    box-shadow var(--motion-feedback) var(--motion-state-ease);
 }
 
 .modeSwitch button:hover {
@@ -167,8 +167,8 @@
   font-size: 12px;
   font-weight: 750;
   transition:
-    background 160ms ease,
-    border-color 160ms ease;
+    background var(--motion-feedback) var(--motion-state-ease),
+    border-color var(--motion-feedback) var(--motion-state-ease);
 }
 
 .resetButton:hover {
@@ -243,9 +243,9 @@
   padding: 10px;
   text-align: left;
   transition:
-    background 160ms ease,
-    border-color 160ms ease,
-    transform 160ms ease;
+    background var(--motion-feedback) var(--motion-state-ease),
+    border-color var(--motion-feedback) var(--motion-state-ease),
+    transform var(--motion-feedback) var(--motion-state-ease);
 }
 
 .taskButton:hover {
@@ -351,7 +351,7 @@
   z-index: 1;
   display: block;
   background: var(--green);
-  transition: width 220ms ease;
+  transition: width var(--motion-enter) var(--motion-state-ease);
 }
 
 .chatColumn {
@@ -570,9 +570,9 @@
   font-size: 11px;
   font-weight: 780;
   transition:
-    border-color 160ms ease,
-    background 160ms ease,
-    transform 160ms ease;
+    border-color var(--motion-feedback) var(--motion-state-ease),
+    background var(--motion-feedback) var(--motion-state-ease),
+    transform var(--motion-feedback) var(--motion-state-ease);
 }
 
 .quickActions button:hover,
@@ -649,29 +649,15 @@
   height: 5px;
   border-radius: 50%;
   background: #37a36e;
-  animation: thinking-bounce 900ms ease-in-out infinite;
+  animation: var(--motion-wait-animation);
 }
 
 .thinkingBubble i:nth-child(2) {
-  animation-delay: 120ms;
+  animation-delay: var(--motion-stagger);
 }
 
 .thinkingBubble i:nth-child(3) {
-  animation-delay: 240ms;
-}
-
-@keyframes thinking-bounce {
-  0%,
-  60%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.45;
-  }
-
-  30% {
-    transform: translateY(-3px);
-    opacity: 1;
-  }
+  animation-delay: calc(var(--motion-stagger) * 2);
 }
 
 .proposalCard,
@@ -749,8 +735,8 @@
   font-size: 11px;
   font-weight: 800;
   transition:
-    background 160ms ease,
-    transform 160ms ease;
+    background var(--motion-feedback) var(--motion-state-ease),
+    transform var(--motion-feedback) var(--motion-state-ease);
 }
 
 .primaryAction:hover {
@@ -838,8 +824,8 @@
   background: var(--green);
   color: #fff;
   transition:
-    background 160ms ease,
-    transform 160ms ease;
+    background var(--motion-feedback) var(--motion-state-ease),
+    transform var(--motion-feedback) var(--motion-state-ease);
 }
 
 .sendButton:hover {

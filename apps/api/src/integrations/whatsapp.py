@@ -51,6 +51,18 @@ class WhatsAppClient:
             response.raise_for_status()
             return cast(dict[str, Any], response.json())
 
+    async def create_template_once(self, business_account_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """One reviewed template submission. Callers persist intent before this POST."""
+        if not business_account_id.isdigit():
+            raise ValueError("Invalid Meta business account")
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{_GRAPH_ROOT}/{self.graph_api_version}/{business_account_id}/message_templates",
+                headers={"Authorization": f"Bearer {self.access_token}"}, json=payload,
+            )
+            response.raise_for_status()
+            return cast(dict[str, Any], response.json())
+
     # --- Messages ---
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8))

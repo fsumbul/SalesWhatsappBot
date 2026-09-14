@@ -9,6 +9,7 @@ WorkflowStatus = Literal[
     "awaiting_input", "ready", "running", "completed", "failed", "paused", "cancelled"
 ]
 WorkflowKind = Literal[
+    "create_template",
     "owner_invite",
     "rollback",
     "request_update",

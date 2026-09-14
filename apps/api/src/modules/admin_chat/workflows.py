@@ -33,6 +33,7 @@ from . import (
     workflow_owners,
     workflow_records,
     workflow_requests,
+    workflow_templates,
 )
 from .workflow_models import Workflow, WorkflowAction
 from .workflow_schema import WorkflowCommand, WorkflowField, WorkflowStart, WorkflowView
@@ -41,6 +42,7 @@ from .workspace_tools import TurnTransaction
 TERMINAL = {"completed", "cancelled"}
 ACTIVE = {"awaiting_input", "ready", "running", "failed"}
 TITLES = {
+    "create_template": "Yeni WhatsApp şablonu",
     "request_update": "Talebi güncelle",
     "conversation": "Müşteri konuşması",
     "reply": "Müşteriye yanıt hazırla",
@@ -60,6 +62,7 @@ TITLES = {
     "invite": "Ekip üyesi davet et",
 }
 CONTROLS = {
+    "create_template": workflow_templates.CONTROLS,
     "owner_invite": workflow_owners.CONTROLS,
     **workflow_inbox.CONTROLS,
     "request_update": workflow_requests.CONTROLS,
@@ -113,6 +116,7 @@ CONTROLS = {
 
 def authorize(user: Any, kind: str) -> None:
     required = {
+        "create_template": Role.SALES_MANAGER,
         "request_update": Role.SALES_AGENT,
         "conversation": Role.VIEWER,
         "reply": Role.SALES_AGENT,
@@ -134,7 +138,7 @@ def authorize(user: Any, kind: str) -> None:
 
 
 def validate(kind: str, fields: dict[str, str]) -> dict[str, str]:
-    errors = {}
+    errors = workflow_templates.errors(fields) if kind == "create_template" else {}
     for control in CONTROLS[kind]:
         value = fields.get(control.key, "")
         if control.required and not value:
@@ -184,6 +188,7 @@ def view(row: Any) -> dict[str, Any]:
         primary = "complete" if row.step == "review" else "continue"
         label = (
             {
+                "create_template": "Meta onayına gönder",
                 "request_update": "Talep değişikliğini uygula",
                 "reply": "Yanıtı gönder",
                 "resume_bot": "Botu devam ettir",
@@ -231,6 +236,9 @@ def view(row: Any) -> dict[str, Any]:
         page=(row.state or {}).get("page", 1),
         has_more=(row.state or {}).get("has_more", False),
         controls=(
+            workflow_templates.controls(row)
+            if row.kind == "create_template"
+            else
             workflow_owners.controls(row)
             if row.kind == "owner_invite"
             else workflow_requests.controls(row)
@@ -252,7 +260,11 @@ def view(row: Any) -> dict[str, Any]:
             )
         ),
         changes=(row.state or {}).get("changes", []),
-        output=(row.state or {}).get("output", {}),
+        output=workflow_templates.preview(row.fields)
+        if row.kind == "create_template" and row.step != "result"
+        else workflow_outreach.output(row)
+        if row.kind == "outreach"
+        else (row.state or {}).get("output", {}),
         errors=errors,
         primary_action=primary,
         primary_label=label,
@@ -272,6 +284,9 @@ async def list_views(db: Any, user: Any, session: Any) -> list[dict[str, Any]]:
     )
     result = []
     for row in rows:
+        if row.kind == "outreach" and row.status in ACTIVE and "templates" not in row.state and not row.state.get("batch_id"):
+            await workflow_outreach.initialize(db, user, row)
+            row.revision += 1
         if row.kind == "outreach" and row.state.get("batch_id"):
             before = (row.state, row.status, row.result)
             await workflow_outreach.sync(db, user, row)
@@ -286,6 +301,11 @@ async def list_views(db: Any, user: Any, session: Any) -> list[dict[str, Any]]:
             conversation_before = (row.state, row.status)
             await workflow_inbox.refresh(db, user, row)
             if conversation_before != (row.state, row.status):
+                row.revision += 1
+        if row.kind == "create_template":
+            before = (row.state, row.status, row.result)
+            await workflow_templates.sync(db, user, row)
+            if before != (row.state, row.status, row.result):
                 row.revision += 1
         result.append(view(row))
     await db.flush()
@@ -321,9 +341,9 @@ async def pause_others(db: Any, user: Any, session: Any, except_id: UUID | None 
     )
     for row in rows:
         if row.id != except_id:
-            if row.status == "running" and row.kind != "outreach":
+            if row.status == "running" and row.kind not in {"outreach", "create_template"}:
                 raise HTTPException(409, "Çalışan işlemin sonucu bekleniyor.")
-            if row.kind == "outreach" and row.status == "running":
+            if row.kind in {"outreach", "create_template"} and row.status == "running":
                 row.state = {**row.state, "background_running": True}
             row.status = "paused"
             row.revision += 1
@@ -332,11 +352,21 @@ async def pause_others(db: Any, user: Any, session: Any, except_id: UUID | None 
 
 def patch(row: Any, fields: dict[str, str]) -> None:
     allowed = {c.key for c in CONTROLS[row.kind]}
+    if row.kind == "create_template":
+        allowed.update("example_" + key for key in workflow_templates.variables({**row.fields, **fields}))
+        allowed.update(c.key for c in workflow_templates.controls(row))
     if row.kind == "outreach":
         allowed.update(c.key for c in workflow_outreach.controls(row))
+        allowed.update("var_" + key for t in row.state.get("templates", []) for key in t["variables"])
     if set(fields) - allowed:
         raise HTTPException(422, "Bilinmeyen veya çok uzun işlem alanı.")
     limits = {
+        "body": 1024,
+        "header": 60,
+        "footer": 60,
+        "buttons": 80,
+        "language": 10,
+        "template_category": 20,
         "recipients": 2500,
         "purpose": 1000,
         "template": 160,
@@ -371,9 +401,19 @@ def patch(row: Any, fields: dict[str, str]) -> None:
     limits.update({"column_" + key: 255 for key in workflow_agents.CSV_LABELS})
     if row.kind == "reply":
         limits["content"] = 4000
+    if row.kind == "create_template":
+        limits["name"] = 512
     if any(len(v.strip()) > limits.get(k, 500) for k, v in fields.items()):
         raise HTTPException(422, "Alan uzunluğu sınırı aşıldı.")
     values = {**row.fields, **{k: v.strip() for k, v in fields.items()}}
+    if row.kind == "create_template":
+        current_examples = {"example_" + key for key in workflow_templates.variables(values)}
+        values = {k: v for k, v in values.items() if not k.startswith("example_") or k in current_examples}
+    if row.kind == "outreach" and "template" in fields:
+        selected = next((t for t in row.state.get("templates", []) if values["template"] in {t["id"], t["name"]}), None)
+        if selected:
+            current_variables = {"var_" + key for key in selected["variables"]}
+            values = {k: v for k, v in values.items() if not k.startswith("var_") or k in current_variables}
     if (
         row.kind == "records"
         and "page" not in fields
@@ -447,7 +487,10 @@ async def start(
         status="awaiting_input",
         revision=0,
     )
-    patch(row, payload.fields)
+    patch(row, {"language": "tr", "template_category": "MARKETING", **payload.fields}
+          if row.kind == "create_template" else payload.fields)
+    if row.kind == "outreach":
+        await workflow_outreach.initialize(db, user, row)
     if row.kind == "owner_invite":
         await workflow_owners.initialize(db, row)
     if row.kind == "request_update":
@@ -597,17 +640,23 @@ async def act(
             and row.state.get("background_running")
             and payload.action not in {"resume", "cancel"}
         )
+        or (row.kind == "create_template" and row.state.get("background_running") and payload.action != "resume")
     ):
         raise HTTPException(409, "Bu işlem artık düzenlenemez.")
     action = payload.action
     if action == "launch":
-        if row.kind not in {"records", "conversation"}:
+        if row.kind not in {"records", "conversation", "outreach"}:
             raise HTTPException(422, "Bu işlem bu eylemi desteklemiyor.")
-        kind, values = await (
-            workflow_inbox.launch(db, user, row, payload.fields)
-            if row.kind == "conversation"
-            else workflow_records.launch(db, user, row, payload.fields)
-        )
+        if row.kind == "outreach":
+            if payload.fields != {"operation": "create_template"}:
+                raise HTTPException(422, "Geçersiz şablon işlemi.")
+            kind, values = "create_template", {}
+        else:
+            kind, values = await (
+                workflow_inbox.launch(db, user, row, payload.fields)
+                if row.kind == "conversation"
+                else workflow_records.launch(db, user, row, payload.fields)
+            )
         await start(
             db,
             user,
@@ -640,6 +689,8 @@ async def act(
         row.state = {"member_choices": row.state.get("member_choices", {})}
     if action == "resume":
         await pause_others(db, user, session, row.id)
+        if row.kind == "outreach" and not row.state.get("batch_id"):
+            await workflow_outreach.initialize(db, user, row)
         row.status = (
             "running"
             if row.state.get("background_running")
@@ -708,6 +759,8 @@ async def act(
                     await workflow_inbox.prepare(db, user, row)
                 if row.kind == "member":
                     await workflow_members.prepare(db, user, row)
+                if row.kind == "create_template":
+                    await workflow_templates.prepare(db, user, row)
                 if row.kind in workflow_agents.KINDS:
                     try:
                         async with db.begin_nested():
@@ -732,6 +785,8 @@ async def act(
             raise HTTPException(409, "Önce eksik bilgileri tamamlayıp inceleyin.")
         if row.kind == "reply":
             return await workflow_inbox.send(db, user, session, row, payload, request)
+        if row.kind == "create_template":
+            return await workflow_templates.submit(db, user, session, row, payload, request)
         if row.kind == "owner_invite":
             await workflow_owners.complete(db, user, row)
         elif row.kind == "request_update":

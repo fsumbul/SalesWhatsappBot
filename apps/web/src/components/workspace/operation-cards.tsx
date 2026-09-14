@@ -5,6 +5,15 @@ import styles from "./workspace.module.css";
 
 export type OperationCard = {
   type: string;
+  outcomes?: { goal: string; status: string; label: string; text: string; evidence: string[] }[];
+  sources?: {
+    id: string;
+    tool: string;
+    records: { ref: string; title: string; subtitle: string; details: Record<string, string> }[];
+    output: { summary?: string; delivery_note?: string };
+    error?: string;
+    has_more?: boolean;
+  }[];
   operation?: string;
   operation_id?: string;
   agent_id?: string;
@@ -36,6 +45,35 @@ export type OperationCard = {
   local_remaining?: number;
   checked_at?: string;
 };
+
+export function TaskResultCard({ card }: { card: OperationCard }) {
+  return (
+    <div aria-label="İsteğin sonuçları">
+      {card.outcomes?.map((outcome, index) => (
+        <details key={index}>
+          <summary>{outcome.label} · {outcome.goal}</summary>
+          <p>{outcome.text}</p>
+          {card.sources?.filter((source) => outcome.evidence.includes(source.id)).map((source) => (
+            <details key={source.id}>
+              <summary>Dayanak kayıtlar{source.has_more ? " · daha fazla kayıt var" : ""}</summary>
+              {source.error && <p>{source.error}</p>}
+              {source.output.summary && <p>{source.output.summary}</p>}
+              {source.output.delivery_note && <p>{source.output.delivery_note}</p>}
+              {source.records.map((record) => (
+                <blockquote key={record.ref}>
+                  <strong>{record.title}</strong> <span>{record.subtitle}</span>
+                  {Object.entries(record.details ?? {}).map(([label, value]) => (
+                    <p key={label}>{label}: {value}</p>
+                  ))}
+                </blockquote>
+              ))}
+            </details>
+          ))}
+        </details>
+      ))}
+    </div>
+  );
+}
 const labels: Record<string, string> = {
   draft: "Hazırlanıyor",
   queued: "Kuyrukta",

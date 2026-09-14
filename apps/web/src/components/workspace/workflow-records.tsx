@@ -1,3 +1,4 @@
+import { MotionDisclosure } from "../../lib/motion/components";
 import styles from "./workflow.module.css";
 export type WorkflowRecord = {
   id: string;
@@ -41,11 +42,14 @@ export default function RecordList({
       <ul>
         {records.map((record) => (
           <li key={record.id}>
-            <details>
-              <summary>
-                <strong>{record.title}</strong>
-                <span>{record.subtitle}</span>
-              </summary>
+            <MotionDisclosure
+              title={
+                <>
+                  <strong>{record.title}</strong>
+                  <span>{record.subtitle}</span>
+                </>
+              }
+            >
               <dl>
                 {Object.entries(record.details).map(([label, value]) => (
                   <div key={label}>
@@ -55,7 +59,10 @@ export default function RecordList({
                 ))}
               </dl>
               {record.file && (
-                <a href={`/api/platform/selection-requests/${encodeURIComponent(record.file.request_id)}/files/${encodeURIComponent(record.file.file_id)}`} download>
+                <a
+                  href={`/api/platform/selection-requests/${encodeURIComponent(record.file.request_id)}/files/${encodeURIComponent(record.file.file_id)}`}
+                  download
+                >
                   Dosyayı indir
                 </a>
               )}
@@ -71,7 +78,7 @@ export default function RecordList({
                   </button>
                 ))}
               </div>
-            </details>
+            </MotionDisclosure>
           </li>
         ))}
       </ul>

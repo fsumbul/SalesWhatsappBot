@@ -1,0 +1,157 @@
+/* Ashira motion contract: feedback → arrival → panel. See docs/motion-system.md. */
+:root {
+  --motion-feedback: 120ms;
+  --motion-ambient: 1400ms;
+  --motion-stagger: 40ms;
+  --motion-surface-animation: ashira-surface var(--motion-enter) var(--motion-enter-ease);
+  --motion-wait-animation: ashira-breathe var(--motion-ambient) var(--motion-state-ease) infinite;
+  --motion-enter: 220ms;
+  --motion-panel: 260ms;
+  --motion-layout: 280ms;
+  --motion-exit: 180ms;
+  --motion-enter-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-exit-ease: cubic-bezier(0.4, 0, 1, 1);
+  --motion-state-ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --motion-distance: 6px;
+  --motion-press-scale: 0.98;
+}
+:where(button, summary, a, input, select, textarea) {
+  transition:
+    background-color var(--motion-feedback) var(--motion-state-ease),
+    border-color var(--motion-feedback) var(--motion-state-ease),
+    color var(--motion-feedback) var(--motion-state-ease),
+    box-shadow var(--motion-feedback) var(--motion-state-ease),
+    opacity var(--motion-feedback) var(--motion-state-ease),
+    scale var(--motion-feedback) var(--motion-enter-ease);
+}
+:where(button:not(:disabled), summary):active {
+  scale: var(--motion-press-scale);
+}
+[data-motion="arrive"] {
+  animation: ashira-arrive var(--motion-enter) var(--motion-enter-ease) both;
+}
+[data-motion="surface"] {
+  animation: ashira-surface var(--motion-enter) var(--motion-enter-ease) both;
+}
+[data-motion="feedback"]:not(:empty) {
+  animation: ashira-feedback var(--motion-feedback) var(--motion-enter-ease) both;
+}
+[data-motion="waiting"] {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+[data-motion="waiting"]::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: var(--motion-wait-animation);
+}
+@keyframes ashira-arrive {
+  from {
+    opacity: 0;
+    translate: 0 var(--motion-distance);
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes ashira-surface {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ashira-feedback {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ashira-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+/* Native disclosures remain instantly usable; content settles after opening. */
+@supports selector(details::details-content) {
+  details::details-content {
+    transition: opacity var(--motion-feedback) var(--motion-state-ease);
+    opacity: 0;
+  }
+  details[open]::details-content {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  :where(button, summary):active {
+    scale: 1;
+  }
+}
+
+.motion-extent {
+  min-width: 0;
+  overflow: clip;
+  overflow-clip-margin: 6px;
+}
+.motion-extent > div:not([class]) {
+  display: flow-root;
+}
+.motion-disclosure-content {
+  display: flow-root;
+}
+.motion-disclosure .motion-disclosure-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 4px 0;
+  margin: 0;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  border-radius: 4px;
+  text-align: left;
+  white-space: normal;
+}
+.motion-disclosure-trigger > span {
+  min-width: 0;
+}
+.motion-disclosure-trigger > svg {
+  flex-shrink: 0;
+  transition: rotate var(--motion-feedback) var(--motion-state-ease);
+}
+.motion-disclosure-trigger[aria-expanded="true"] > svg {
+  rotate: 180deg;
+}
+.motion-disclosure-trigger > span > span {
+  display: block;
+  font-size: 12px;
+  color: var(--wf-muted, #64748b);
+  margin-top: 4px;
+}
+.motion-disclosure-content[aria-hidden="true"] {
+  visibility: hidden;
+}
+.motion-extent[data-motion-resizing] > .motion-disclosure-content {
+  visibility: visible;
+}

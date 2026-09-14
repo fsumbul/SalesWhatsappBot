@@ -1,12 +1,19 @@
 "use client";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { ArrowUp, History, Plus, X } from "lucide-react";
+import { motionScrollBehavior, useMotionDialog } from "../../lib/motion";
 import { api, ApiError, type Me } from "./types";
 import WorkflowCard, { type WorkflowView } from "./workflow-card";
 import WorkspaceCard from "./workspace-card";
 import AccountMenu from "./account-menu";
 import styles from "./workspace.module.css";
-import { CapacityCard, OutboundCard, RecordCard, type OperationCard } from "./operation-cards";
+import {
+  CapacityCard,
+  OutboundCard,
+  RecordCard,
+  TaskResultCard,
+  type OperationCard,
+} from "./operation-cards";
 type Suggestion = { label: string; text: string };
 type Message = {
   id?: string;
@@ -45,9 +52,12 @@ export default function OpsChat({
     null,
   );
   const initialized = useRef(false);
-  const history = useRef<HTMLDialogElement>(null);
+  const historyMotion = useMotionDialog();
+  const history = historyMotion.ref;
   const composer = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
+  const nearBottom = useRef(true);
+  const restoredMessageIds = useRef(new Set<string>());
   const locked = useRef(false);
   const draftFlushers = useRef(new Map<string, () => Promise<boolean>>());
   function registerFlush(id: string, flush: (() => Promise<boolean>) | null) {
@@ -69,7 +79,8 @@ export default function OpsChat({
       .catch((e) => setError(e.message));
   }, []);
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    if (nearBottom.current)
+      end.current?.scrollIntoView({ behavior: motionScrollBehavior(), block: "nearest" });
   }, [messages, busy]);
   const visibleWorkflowIds = useRef(new Set<string>());
   useEffect(() => {
@@ -78,16 +89,21 @@ export default function OpsChat({
     const active = added.find(
       (view) => !["paused", "completed", "cancelled"].includes(view.status),
     );
-    if (active)
+    if (active && nearBottom.current)
       document
         .getElementById(`workflow-${active.id}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        ?.scrollIntoView({ behavior: motionScrollBehavior(), block: "nearest" });
   }, [workflows]);
   const hasPendingDelivery = workflows.some(
     (view) =>
+      (view.kind === "create_template" &&
+        ["running", "paused"].includes(view.status) &&
+        !!view.result.outcome) ||
       (view.kind === "conversation" && view.status === "awaiting_input") ||
       (view.kind === "reply" &&
-        ["sending", "accepted", "sent", "delivered", "ambiguous", "failed"].includes(view.result.outcome)) ||
+        ["sending", "accepted", "sent", "delivered", "ambiguous", "failed"].includes(
+          view.result.outcome,
+        )) ||
       (view.kind === "outreach" &&
         view.result.batch_id &&
         view.status !== "cancelled" &&
@@ -144,12 +160,14 @@ export default function OpsChat({
     const saved = await flushDrafts();
     locked.current = false;
     if (!saved) return;
+    nearBottom.current = true;
+    restoredMessageIds.current.clear();
     setSid("");
     setWorkflows([]);
     setMessages([]);
     setText("");
     setError("");
-    history.current?.close();
+    historyMotion.close();
     composer.current?.focus();
   }
   async function logout() {
@@ -171,11 +189,13 @@ export default function OpsChat({
     try {
       if (!(await flushDrafts())) return;
       const rows = await api<Message[]>(`admin-chat/sessions/${id}/messages`);
+      nearBottom.current = true;
+      restoredMessageIds.current = new Set(rows.map((row) => row.id ?? String(row.sequence)));
       setSid(id);
       setWorkflows(await api<WorkflowView[]>(`admin-chat/sessions/${id}/workflows`));
       setMessages(rows);
       setText("");
-      history.current?.close();
+      historyMotion.close();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -185,6 +205,7 @@ export default function OpsChat({
   }
   async function send(value: string) {
     if (locked.current || (!value.trim() && !pending)) return;
+    nearBottom.current = true;
     locked.current = true;
     setBusy(true);
     setError("");
@@ -346,7 +367,7 @@ export default function OpsChat({
             className={styles.chatIcon}
             aria-label="Sohbet geçmişi"
             title="Sohbet geçmişi"
-            onClick={() => history.current?.showModal()}
+            onClick={() => historyMotion.open()}
           >
             <History size={20} />
           </button>
@@ -375,7 +396,7 @@ export default function OpsChat({
         </div>
       </header>
       {empty ? (
-        <section className={styles.chatWelcome}>
+        <section className={styles.chatWelcome} data-motion="surface">
           <div>
             <h1>Bugün neye bakalım?</h1>
             <p>
@@ -390,6 +411,10 @@ export default function OpsChat({
         <>
           <div
             className={styles.chatMessages}
+            onScroll={(event) => {
+              const el = event.currentTarget;
+              nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96;
+            }}
             role="log"
             aria-label="Sohbet mesajları"
             aria-live="polite"
@@ -400,6 +425,15 @@ export default function OpsChat({
                 <Fragment key={m.id ?? `pending:${i}`}>
                   <article
                     data-turn-sequence={m.sequence}
+                    data-motion={
+                      m.role === "user"
+                        ? !m.id
+                          ? "arrive"
+                          : undefined
+                        : restoredMessageIds.current.has(m.id ?? String(m.sequence))
+                          ? undefined
+                          : "arrive"
+                    }
                     className={m.role === "user" ? styles.chatUser : styles.chatAssistant}
                   >
                     <span className={m.role === "user" ? styles.srOnly : styles.chatSpeaker}>
@@ -421,6 +455,8 @@ export default function OpsChat({
                           send={send}
                           disabled={busy || !!pending}
                         />
+                      ) : c.type === "task_result" ? (
+                        <TaskResultCard key={j} card={c} />
                       ) : c.type === "outbound" ? (
                         <OutboundCard key={c.batch_id} initial={c} />
                       ) : c.type === "capacity" ? (
@@ -447,7 +483,7 @@ export default function OpsChat({
                 )
                 .map(renderWorkflow)}
               {busy && (
-                <p role="status" className={styles.chatWaiting}>
+                <p role="status" className={styles.chatWaiting} data-motion="waiting">
                   Yanıt hazırlanıyor…
                 </p>
               )}
@@ -460,13 +496,21 @@ export default function OpsChat({
           </footer>
         </>
       )}
-      <dialog ref={history} aria-label="Sohbet geçmişi" className={styles.historyDrawer}>
+      <dialog
+        onCancel={(event) => {
+          event.preventDefault();
+          historyMotion.close();
+        }}
+        ref={history}
+        aria-label="Sohbet geçmişi"
+        className={styles.historyDrawer}
+      >
         <div>
           <h2>Sohbet geçmişi</h2>
           <button
             className={styles.chatIcon}
             aria-label="Geçmişi kapat"
-            onClick={() => history.current?.close()}
+            onClick={() => historyMotion.close()}
           >
             <X size={20} />
           </button>

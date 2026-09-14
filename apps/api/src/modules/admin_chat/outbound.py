@@ -55,7 +55,10 @@ async def meta_templates(sender: Any) -> list[dict[str, Any]]:
             after=after,
         )
         for row in data.get("data", []):
-            if row.get("status") != "APPROVED" or row.get("category") != "MARKETING":
+            if row.get("status") != "APPROVED" or row.get("category") not in {
+                "MARKETING",
+                "UTILITY",
+            }:
                 continue
             components = row.get("components", [])
             # Only text templates whose entire content can be reviewed in this UI.
@@ -73,7 +76,10 @@ async def meta_templates(sender: Any) -> list[dict[str, Any]]:
                 (c.get("buttons", []) for c in components if c.get("type") == "BUTTONS"), []
             )
             if any(
-                b.get("type") != "QUICK_REPLY" or not b.get("text") or len(b["text"]) > 128
+                b.get("type") not in {"QUICK_REPLY", "FLOW", "URL", "PHONE_NUMBER"}
+                or not b.get("text")
+                or len(b["text"]) > 128
+                or (b.get("type") == "URL" and "{{" in b.get("url", ""))
                 for b in buttons
             ):
                 continue
@@ -91,6 +97,11 @@ async def meta_templates(sender: Any) -> list[dict[str, Any]]:
                     "body": body,
                     "variables": sorted(names, key=int),
                     "buttons": [b["text"] for b in buttons],
+                    **(
+                        {"button_specs": buttons}
+                        if any(b["type"] != "QUICK_REPLY" for b in buttons)
+                        else {}
+                    ),
                     "header": next(
                         (c.get("text", "") for c in components if c.get("type") == "HEADER"), ""
                     ),
@@ -256,6 +267,39 @@ def rendered(batch: Any) -> str:
     return "\n".join(
         v for v in [batch.template.get("header"), body, batch.template.get("footer")] if v
     )
+
+
+def template_components(batch: Any, recipient_id: Any) -> list[dict[str, Any]]:
+    """Fill approved variable slots and button payloads without altering template text."""
+    components = []
+    if batch.template["variables"]:
+        components.append(
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": str(batch.variables[k])}
+                    for k in batch.template["variables"]
+                ],
+            }
+        )
+    buttons = batch.template.get("button_specs") or [
+        {"type": "QUICK_REPLY", "text": label} for label in batch.template.get("buttons", [])
+    ]
+    for index, button in enumerate(buttons):
+        if button["type"] == "QUICK_REPLY":
+            parameters = [{"type": "payload", "payload": button["text"]}]
+            subtype = "quick_reply"
+        elif button["type"] == "FLOW":
+            parameters = [
+                {"type": "action", "action": {"flow_token": f"chat-outbound:{recipient_id}"}}
+            ]
+            subtype = "flow"
+        else:
+            continue  # Approved static URL/phone buttons need no send-time parameters.
+        components.append(
+            {"type": "button", "sub_type": subtype, "index": str(index), "parameters": parameters}
+        )
+    return components
 
 
 async def batch_card(db: Any, batch: Any) -> dict[str, Any]:

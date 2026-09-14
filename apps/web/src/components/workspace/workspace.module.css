@@ -1090,3 +1090,23 @@
     max-width: 100%;
   }
 }
+
+/* Stateful feedback uses the same contract as chat and workflows. */
+.chatCompose {
+  transition:
+    border-color var(--motion-feedback) var(--motion-state-ease),
+    box-shadow var(--motion-feedback) var(--motion-state-ease);
+}
+.chatAccount summary svg {
+  transition: rotate var(--motion-feedback) var(--motion-state-ease);
+}
+.chatAccount[open] summary svg {
+  rotate: 180deg;
+}
+.historyDrawer::backdrop {
+  animation: var(--motion-surface-animation);
+}
+.loginCard,
+.settingsMain {
+  animation: var(--motion-surface-animation);
+}

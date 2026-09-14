@@ -153,6 +153,23 @@ async def route_intent(db: Any, user: Any, session: Any, intent: Any) -> tuple[A
         return intent, None
     target = None
     if intent.target:
+        if intent.tool in {"conversation", "delivery"}:
+            from . import workflow_inbox
+            from .service import search_text
+
+            query = search_text(intent.target)
+            pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            total, records = await workflow_inbox.listing(db, user, pattern, 1)
+            if total == 1:
+                return Intent(
+                    tool="workflow", workflow_kind="conversation", workflow_action="start",
+                    workflow_fields={"conversation": records[0]["id"]},
+                ), None
+            if total > 1:
+                return Intent(
+                    tool="workflow", workflow_kind="records", workflow_action="start",
+                    workflow_fields={"category": "inbox", "q": intent.target},
+                ), "Birden fazla konuşma eşleşti. Okumak istediğiniz konuşmayı seçin."
         matches = await find_requests(db, user, intent)
         if len(matches) == 1:
             target = matches[0]
@@ -169,7 +186,7 @@ async def route_intent(db: Any, user: Any, session: Any, intent: Any) -> tuple[A
         )
         if len(active) == 1:
             current = active[0]
-            if intent.tool == "delivery" and current.kind == "conversation":
+            if intent.tool in {"conversation", "delivery"} and current.kind == "conversation":
                 return Intent(
                     tool="workflow",
                     workflow_kind="conversation",
@@ -194,6 +211,11 @@ async def route_intent(db: Any, user: Any, session: Any, intent: Any) -> tuple[A
             if rid:
                 target = await own(db, user, rid)
     if target is None:
+        if intent.tool in {"conversation", "delivery"}:
+            return Intent(
+                tool="workflow", workflow_kind="records", workflow_action="start",
+                workflow_fields={"category": "inbox", "q": intent.target or ""},
+            ), "Eşleşen konuşmaları gelen kutusunda aradım. Konuşma varsa aşağıdaki listeden açabilirsiniz."
         return Intent(
             tool="workflow",
             workflow_kind="records",

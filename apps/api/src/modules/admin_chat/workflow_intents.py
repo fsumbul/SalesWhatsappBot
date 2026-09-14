@@ -6,6 +6,7 @@ This conversion runs after grounding and
 permission-language checks; it never supplies a missing role or approval.
 """
 
+import re
 from typing import Any
 
 from .planner import Intent
@@ -40,7 +41,9 @@ def normalize(intent: Intent) -> Intent:
             workflow_kind="outreach",
             workflow_action="start",
             workflow_fields={
-                "recipients": "\n".join(intent.recipients),
+                "recipients": "\n".join(
+                    re.sub(r"[\s().-]", "", value) for value in intent.recipients
+                ),
                 "purpose": intent.purpose or "",
             },
         )

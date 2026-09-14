@@ -123,7 +123,8 @@ async def test_text_format_is_semantic_but_content_must_stay_literal(monkeypatch
         await plan(text)
 
 
-async def test_natural_outreach_uses_shared_review_queue_and_status(client, monkeypatch):
+@pytest.mark.parametrize("phone", ["+15550102030", "+1 (555) 010-2030"])
+async def test_natural_outreach_uses_shared_review_queue_and_status(client, monkeypatch, phone):
     from uuid import uuid4
 
     from tests.test_chat_outbound import setup
@@ -132,14 +133,14 @@ async def test_natural_outreach_uses_shared_review_queue_and_status(client, monk
     headers, _, _, _, sid = await setup(client, monkeypatch)
     model(monkeypatch, {"tool": "outreach", "recipients": ["+15550102030"], "purpose": "tanıtım"})
     mid = uuid4()
-    response = await turn(client, headers, sid, "+15550102030 tanıtım gönder", mid)
+    response = await turn(client, headers, sid, f"{phone} tanıtım gönder", mid)
     assert response.status_code == 200, response.text
     assert response.json()["cards"] == []
     row = response.json()["workflows"][-1]
     assert row["kind"] == "outreach" and row["step"] == "details"
     assert row["fields"]["recipients"] == "+15550102030"
     assert (
-        await turn(client, headers, sid, "+15550102030 tanıtım gönder", mid)
+        await turn(client, headers, sid, f"{phone} tanıtım gönder", mid)
     ).json() == response.json()
     model(monkeypatch, {"tool": "send_outreach"})
     assert (await turn(client, headers, sid, "Hazırladığın tanıtımı gönder")).status_code == 409

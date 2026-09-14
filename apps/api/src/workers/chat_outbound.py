@@ -9,7 +9,12 @@ from sqlalchemy import select, text, update
 from src.core.db import session_scope
 from src.core.rbac import Role, role_at_least
 from src.integrations.whatsapp import WhatsAppClient
-from src.modules.admin_chat.outbound import eligibility, meta_templates, rendered
+from src.modules.admin_chat.outbound import (
+    eligibility,
+    meta_templates,
+    rendered,
+    template_components,
+)
 from src.modules.admin_chat.outbound_models import OutboundBatch, OutboundRecipient
 from src.modules.auth.models import User
 from src.modules.discovery.models import ContactType, Lead, LeadContact
@@ -115,26 +120,7 @@ async def send_one(tenant_id: UUID, recipient_id: UUID) -> None:
         row.attempted_at = datetime.now(UTC)
         await db.commit()  # MUST precede the POST. No automatic retry past this point.
         try:
-            components = []
-            if batch.template["variables"]:
-                components = [
-                    {
-                        "type": "body",
-                        "parameters": [
-                            {"type": "text", "text": str(batch.variables[k])}
-                            for k in batch.template["variables"]
-                        ],
-                    }
-                ]
-            components.extend(
-                {
-                    "type": "button",
-                    "sub_type": "quick_reply",
-                    "index": str(i),
-                    "parameters": [{"type": "payload", "payload": label}],
-                }
-                for i, label in enumerate(batch.template.get("buttons", []))
-            )
+            components = template_components(batch, row.id)
             response = await WhatsAppClient(
                 phone_number_id=sender.phone_number_id
             ).send_template_once(

@@ -14,7 +14,7 @@ from src.core.rbac import RequireAgent
 from src.integrations.llm import LLMCompletionError, LLMNotConfiguredError
 from src.modules.selection.review import authorize
 
-from . import outbound, planner, service, workflow_requests
+from . import outbound, planner, service, task_runner, workflow_requests
 from .models import AdminChatSession, AdminChatTurn
 
 router = APIRouter(prefix="/admin-chat", tags=["admin chat"])
@@ -159,7 +159,12 @@ async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSe
         intent, source = await planner.plan(
             payload.text,
             workflow_context=[
-                {k: v for k, v in w.items() if k in {"kind", "step", "status", "fields"}}
+                {
+                    **{k: v for k, v in w.items() if k in {"kind", "step", "status", "fields"}},
+                    "template_choices": next(
+                        (c["options"] for c in w.get("controls", []) if c["key"] == "template"), {}
+                    ),
+                }
                 for w in current_views
                 if w["status"] not in workflows.TERMINAL
             ],
@@ -179,7 +184,11 @@ async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSe
     audit: Any
     try:
         intent, request_message = await workflow_requests.route_intent(db, user, session, intent)
-        if workflow_intents.ambiguous_approval(
+        if intent.tool == "task":
+            reply, cards, action, audit = await task_runner.execute(
+                db, claims, user, session, intent, payload.text, payload.client_message_id, current_views
+            )
+        elif workflow_intents.ambiguous_approval(
             payload.text,
             bool(session.context.get("workspace", {}).get("pending_operation")),
             current_views,
@@ -203,6 +212,20 @@ async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSe
         raise HTTPException(502, "Model araç seçimi doğrulanamadı; gönderim yapılmadı.") from exc
     if request_message:
         reply = request_message
+    if intent.workflow_kind == "create_template" and intent.workflow_action == "complete":
+        # Template submission releases/reacquires the lock around its single Meta POST.
+        # A concurrent retry may have already recorded this turn from the durable receipt.
+        completed_retry = await db.scalar(
+            select(AdminChatTurn).where(
+                AdminChatTurn.session_id == session_id,
+                AdminChatTurn.client_message_id == payload.client_message_id,
+                AdminChatTurn.user_id == user.id,
+                AdminChatTurn.tenant_id == user.tenant_id,
+            )
+        )
+        if completed_retry:
+            await db.commit()
+            return completed_retry.response
     turn_id = uuid4()
     response = {
         "session_id": str(session.id),

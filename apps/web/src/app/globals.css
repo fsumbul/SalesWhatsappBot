@@ -1,3 +1,4 @@
+@import "./motion.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

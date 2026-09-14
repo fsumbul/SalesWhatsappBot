@@ -106,7 +106,9 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       },
       body,
       cache: "no-store",
-      signal: AbortSignal.timeout(180000),
+      signal: AbortSignal.timeout(
+        /^admin-chat\/sessions\/[^/]+\/turns$/.test(route) ? 300000 : 180000,
+      ),
     });
   try {
     let upstream = await invoke();

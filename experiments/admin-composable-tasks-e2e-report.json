@@ -1,0 +1,164 @@
+{
+  "date": "2026-09-14",
+  "status": "local_verified_not_deployed",
+  "model": {
+    "name": "qwen3.8-27b",
+    "max_context_tokens": 4096,
+    "actual_provider": true
+  },
+  "api_cases": [
+    {
+      "question": "+1 (555) 010-2030 yazdıklarını getir. ne konuşmuş",
+      "reply": "Deniz (+1 555 010 2030) ile konuşma: Müşteri 'Ölçü çizimini yarın paylaşacağım.' demiş; Asistan/ekip 'Çiziminizi bekliyoruz.' yanıtını vermiş; Müşteri 'Döküm kasnak kataloğunu rica ediyorum.' yazmış.",
+      "outcomes": [
+        {
+          "goal": "+1 (555) 010-2030 yazdıklarını getir. ne konuşmuş",
+          "text": "Deniz (+1 555 010 2030) ile konuşma: Müşteri 'Ölçü çizimini yarın paylaşacağım.' demiş; Asistan/ekip 'Çiziminizi bekliyoruz.' yanıtını vermiş; Müşteri 'Döküm kasnak kataloğunu rica ediyorum.' yazmış.",
+          "label": "Tamamlandı",
+          "status": "completed",
+          "evidence": [
+            "e2"
+          ]
+        }
+      ],
+      "verified": true,
+      "steps": 3,
+      "executor_elapsed_ms": 42793
+    },
+    {
+      "question": "Deniz ne konuşmuş, son mesajımız okunmuş mu? Ayrıca toplam kaç teknik talep var?",
+      "reply": "Deniz ile konuşulanlar: Deniz 'Ölçü çizimini yarın paylaşacağım.' demiş; asistan/ekip 'Çiziminizi bekliyoruz.' yanıtını vermiş; Deniz ayrıca 'Döküm kasnak kataloğunu rica ediyorum.' mesajını göndermiş.\n\nEvet, son mesaj okunmuş (teslimat durumu: 'Son mesaj okundu').\n\nToplam teknik talep sayısı: 0 (kayıtlı teknik talep bulunmuyor).",
+      "outcomes": [
+        {
+          "goal": "Deniz ne konuşmuş",
+          "text": "Deniz ile konuşulanlar: Deniz 'Ölçü çizimini yarın paylaşacağım.' demiş; asistan/ekip 'Çiziminizi bekliyoruz.' yanıtını vermiş; Deniz ayrıca 'Döküm kasnak kataloğunu rica ediyorum.' mesajını göndermiş.",
+          "label": "Tamamlandı",
+          "status": "completed",
+          "evidence": [
+            "e2"
+          ]
+        },
+        {
+          "goal": "son mesajımız okunmuş mu?",
+          "text": "Evet, son mesaj okunmuş (teslimat durumu: 'Son mesaj okundu').",
+          "label": "Tamamlandı",
+          "status": "completed",
+          "evidence": [
+            "e3"
+          ]
+        },
+        {
+          "goal": "toplam kaç teknik talep var?",
+          "text": "Toplam teknik talep sayısı: 0 (kayıtlı teknik talep bulunmuyor).",
+          "label": "Tamamlandı",
+          "status": "completed",
+          "evidence": [
+            "e4"
+          ]
+        }
+      ],
+      "verified": true,
+      "steps": 5,
+      "executor_elapsed_ms": 75744
+    },
+    {
+      "question": "Deniz ne yazmış? Ayrıca Ece adlı müşteriyi ece@example.com adresiyle ekle.",
+      "reply": "Deniz'in son mesajları: 'Ölçü çizimini yarın paylaşacağım.' ve 'Döküm kasnak kataloğunu rica ediyorum.'\n\nOkunan mesajlardan:\n• Asistan / ekip: “Çiziminizi bekliyoruz.”\n\nEce için işlem kartı hazır. İşlem henüz uygulanmadı; karttaki bilgileri kontrol edip devam edin.",
+      "outcomes": [
+        {
+          "goal": "Deniz ne yazmış?",
+          "text": "Deniz'in son mesajları: 'Ölçü çizimini yarın paylaşacağım.' ve 'Döküm kasnak kataloğunu rica ediyorum.'\n\nOkunan mesajlardan:\n• Asistan / ekip: “Çiziminizi bekliyoruz.”",
+          "label": "Tamamlandı",
+          "status": "completed",
+          "evidence": [
+            "e2"
+          ]
+        },
+        {
+          "goal": "Ece adlı müşteriyi ece@example.com adresiyle ekle.",
+          "text": "Ece için işlem kartı hazır. İşlem henüz uygulanmadı; karttaki bilgileri kontrol edip devam edin.",
+          "label": "İnceleme bekliyor",
+          "status": "awaiting_review",
+          "evidence": [
+            "e3"
+          ]
+        }
+      ],
+      "verified": true,
+      "steps": 4,
+      "executor_elapsed_ms": 65081
+    },
+    {
+      "question": "Güncel stok miktarımız kaç?",
+      "reply": "Güncel stok miktarı sorgusu mevcut araçlarla desteklenmemektedir. Stok verilerine erişim için ilgili sistem veya yetkili birimle iletişime geçmeniz gerekmektedir.",
+      "outcomes": [
+        {
+          "goal": "Güncel stok miktarımız kaç?",
+          "text": "Güncel stok miktarı sorgusu mevcut araçlarla desteklenmemektedir. Stok verilerine erişim için ilgili sistem veya yetkili birimle iletişime geçmeniz gerekmektedir.",
+          "label": "Desteklenmiyor",
+          "status": "unsupported",
+          "evidence": []
+        }
+      ],
+      "verified": true,
+      "steps": 1,
+      "executor_elapsed_ms": 14766
+    }
+  ],
+  "browser": {
+    "passed": true,
+    "reused_real_model_turn": false,
+    "checks": [
+      "real model multi-goal task",
+      "conversation without technical request",
+      "actual stored read receipt",
+      "evidence expansion",
+      "reload persistence",
+      "mobile containment",
+      "one composer",
+      "no JavaScript errors"
+    ],
+    "screenshot": "/tmp/admin-tasks-browser-mobile.png",
+    "external_sends": 0
+  },
+  "checks": {
+    "combined_tests_passed": 305,
+    "final_focused_task_tests": 21,
+    "database_skips": 0,
+    "ruff": "passed",
+    "typescript": "passed",
+    "production_web_build": "passed",
+    "company_config_validation": "passed"
+  },
+  "external_sends": 0,
+  "production_deployed": true,
+  "deployment": {
+    "backup": "C:\\sites\\ashiraai\\backups\\admin-tasks-20260914-201009",
+    "build": "X50MlL6IF9ogY6jJf1u5x",
+    "verified_files": 223,
+    "environment_unchanged": true,
+    "https_status": 200,
+    "runtime_gates": "database, Meta, LLM, Redis, worker, scheduled tasks passed",
+    "host_probe": "legacy WMIC invalid output; independent CIM CPU samples 1,7,1 percent",
+    "staging_cleaned": true,
+    "live_original_request": {
+      "tool": "task",
+      "goals": [
+        "conversation"
+      ],
+      "card_types": [
+        "task_result"
+      ],
+      "audit": {
+        "verified": true,
+        "elapsed_ms": 64140
+      },
+      "outcomes": [
+        {
+          "status": "completed"
+        }
+      ]
+    },
+    "live_verification_transaction": "rolled back"
+  }
+}

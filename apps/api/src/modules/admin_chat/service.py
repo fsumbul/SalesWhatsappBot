@@ -1,6 +1,7 @@
 # ruff: noqa: RUF001
 """Server-owned tool execution; customer content is data and never a planner input."""
 
+import re
 from datetime import datetime, time, timedelta
 from typing import Any
 from uuid import UUID
@@ -104,10 +105,19 @@ def normalized(column: Any) -> Any:
     return func.lower(func.translate(column, "İIıŞşĞğÜüÖöÇç", "iiissgguuoocc"))
 
 
+def search_text(value: str) -> str:
+    """Normalize phone formatting without guessing a country code or changing names."""
+    value = value.strip()
+    compact = re.sub(r"[\s().-]", "", value)
+    if re.fullmatch(r"(?:\+|00)?\d{7,15}", compact):
+        return "+" + compact[2:] if compact.startswith("00") else compact
+    return value
+
+
 def request_query(user: Any, intent: Any) -> Any:
     stmt = select(SelectionRequest).where(SelectionRequest.tenant_id == user.tenant_id)
     if intent.target:
-        query = normalize(intent.target).strip()
+        query = normalize(search_text(intent.target)).strip()
         pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         stmt = (
             stmt.join(Conversation, Conversation.id == SelectionRequest.conversation_id)
@@ -192,9 +202,8 @@ async def execute(db: Any, claims: Any, user: Any, session: Any, intent: Any) ->
         # Aggregate every matching row in SQL; the 50-card display limit must not truncate totals.
         filters = [SelectionRequest.tenant_id == user.tenant_id]
         if intent.target:
-            return result(
-                "Genel analiz tüm talepleri kapsar. Bir müşteri için talep özetini veya eksik bilgileri isteyebilirsiniz."
-            )
+            matches = request_query(user, intent.model_copy(update={"tool": "search"})).with_only_columns(SelectionRequest.id)
+            filters.append(SelectionRequest.id.in_(matches))
         if intent.status:
             filters.append(SelectionRequest.status == intent.status)
         if intent.today:

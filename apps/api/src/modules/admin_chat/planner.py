@@ -11,12 +11,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from src.integrations.llm import LLMMessage, get_llm_client
 from src.modules.selection.engine import normalize
 
+from .task_schema import TaskGoal
 from .workflow_schema import WorkflowKind
 
 
 class Intent(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tool: Literal[
+        "task",
         "workflow",
         "workspace",
         "search",
@@ -39,6 +41,7 @@ class Intent(BaseModel):
         "templates",
     ]
     workflow_kind: WorkflowKind | None = None
+    goals: list[TaskGoal] = Field(default_factory=list, max_length=8)
     workflow_action: (
         Literal[
             "start",
@@ -92,6 +95,12 @@ class Intent(BaseModel):
 
     @model_validator(mode="after")
     def validate_arguments(self) -> Any:
+        if (self.tool == "task") != bool(self.goals):
+            raise ValueError("Task goals required only for task execution")
+        if self.tool == "task" and any(
+            getattr(self, key) for key in type(self).model_fields if key not in {"tool", "goals"}
+        ):
+            raise ValueError("Task arguments belong in goals")
         if self.tool == "workflow" and not self.workflow_action:
             raise ValueError("Workflow action required")
         if self.tool != "workflow" and (
@@ -171,6 +180,7 @@ def fast_intent(text: str) -> Intent | None:
         "Bilgi ekle",
         "Müşteri testi",
         "Taslağı yayınla",
+        "Yeni WhatsApp şablonu",
     }:
         return Intent(
             tool="workflow",
@@ -180,6 +190,7 @@ def fast_intent(text: str) -> Intent | None:
                 "Bilgi ekle": "configure",
                 "Müşteri testi": "test",
                 "Taslağı yayınla": "publish",
+                "Yeni WhatsApp şablonu": "create_template",
                 "Şirket oluştur": "create_company",
                 "Asistan oluştur": "create_agent",
                 "Kişi ekle": "person",
@@ -292,6 +303,16 @@ quotes (customer-confirmed technical quote requests, no prices or priced quotati
 status (waiting_review/in_review/completed/cancelled); assign to an explicitly named teammate;
 note containing only the administrator's literal note. today means today's requests.
 WhatsApp tools: capacity (actual Meta limit and local quota); templates (Meta-approved marketing text templates);
+Creating/adding another WhatsApp message template ("başka şablon ekle", "yeni mesaj şablonu oluştur")
+uses tool=workflow, workflow_kind=create_template, workflow_action=start. It is NOT company information
+and is NOT a message send. Fields: name, language, template_category (MARKETING or UTILITY),
+header, body, footer, buttons (one quick reply label per line), example_1, example_2 etc.
+Copy provided text literally; missing fields remain missing. The form provides default language/category.
+Approved send templates are immutable: never invent template IDs or rewrite approved body/header/footer/buttons.
+For selecting a send template by name or position, use workflow_kind=outreach, workflow_action=update,
+workflow_fields.template set to the matching ID from current template_choices. Those choices come from Meta.
+Only explicitly requested new templates can have new text. User reviews the entire draft before submission.
+"Meta onayına gönder" completes an already-ready create_template review; adding fields alone never submits it.
 outreach opens the shared progressive workflow to prepare a durable message preview for one or up to 100 numbers. Copy each recipient EXACTLY from the message,
 including + or 00 country prefix. purpose is the literal request text copied from the operator message.
 A request to send to NEW numbers always starts outreach; never complete an existing review when new numbers are supplied. Template and consent fields are completed in the shared form before review.
@@ -347,11 +368,48 @@ Output schema JSON only.
 """
 
 
+TASK_ROUTING = """
+The composable task executor supersedes the single-tool rule for reading and multi-part requests.
+For natural read/search/summary/analysis questions use tool=task and goals only.
+Each goal has kind and text. text MUST be an exact excerpt of the current administrator message.
+Use one goal per requested outcome; never omit a second outcome. Up to 8 goals.
+Kinds: records (lists/searches of any record category), conversation (read or summarize WhatsApp
+messages, independent of technical requests), request (technical request details/files/missing
+fields), delivery (existing message receipts), analytics (request counts), capacity, templates,
+workflow (prepare an explicit change), unsupported (a capability we do not have).
+The task runner searches, reads the results, follows references and verifies its answer.
+For compound reads and writes include separate goals; writes open existing review workflows.
+Example: 'Deniz ne yazmış, mesajımız okunmuş mu?' has conversation and delivery goals.
+Example: '+905551112233 yazdıklarını getir. ne konuşmuş' has one conversation goal containing
+the WHOLE literal request. Do not search technical requests for conversation history.
+For a single change, field update, explicit confirmation/cancellation or resuming existing work,
+keep the existing workflow intent rules above. Do not wrap a confirmation in a task.
+Never classify a multi-part request as clarify merely because it needs multiple tools.
+Missing capabilities also use task with an unsupported goal and a specific explanation of
+what is unavailable. Do not return the generic clarify/help menu for an unsupported request.
+There are no live inventory/stock, accounting or sale-price lookup tools in this capability set.
+Reserve clarify for greetings, help or a message with no discernible requested outcome.
+"""
+
+
+def literal_recipient(value: str, text: str) -> str:
+    """Restore a whole phone token; formatting cannot change digits or country prefix."""
+    compact = re.sub(r"[\s().-]", "", value)
+    if not re.fullmatch(r"(?:\+|00)[1-9][0-9]{7,14}", compact):
+        raise ValueError("Ungrounded recipient")
+    for match in re.finditer(r"(?<![\w+])(?:\+|00)[0-9][0-9 ().-]*[0-9](?!\w)", text):
+        literal = match.group()
+        if re.sub(r"[\s().-]", "", literal) == compact:
+            return literal
+    raise ValueError("Ungrounded recipient")
+
+
 async def plan(
     text: str,
     *,
     pending_operation: str | None = None,
     workflow_context: list[dict[str, Any]] | None = None,
+    allow_task: bool = True,
 ) -> tuple[Intent, str]:
     # Only explicit UI action envelopes bypass language understanding.
     # Natural-language messages must exercise the configured model.
@@ -370,16 +428,24 @@ async def plan(
                 if pending_operation
                 in {"invite", "create_company", "create_agent", "accept_config", "publish"}
                 else "\nThere is no workspace preview to confirm."
-            ),
-            max_tokens=2200,
+            )
+            + (TASK_ROUTING if allow_task else "\nTask execution is unavailable here. Select one existing workflow operation for this literal user request."),
+            max_tokens=1024,
             response_schema=Intent.model_json_schema(),
         ),
         timeout=45,
     )
     intent = Intent.model_validate_json(raw)
+    if intent.tool == "task":
+        if not allow_task:
+            raise ValueError("Nested task execution is forbidden")
+        if any(goal.text not in text for goal in intent.goals):
+            raise ValueError("Task goals must quote the administrator request")
+        return intent, "model"
     # A model can only point at literal text from this administrator turn.
     if intent.operation_id or intent.operation == "select_agent":
         raise ValueError("Model cannot supply operation tokens")
+    intent.recipients = [literal_recipient(value, text) for value in intent.recipients]
     for value in (
         intent.target,
         intent.assignee,
@@ -398,12 +464,21 @@ async def plan(
     if intent.workflow_fields.get("format") not in {None, "text", "json", "csv"}:
         raise ValueError("Unsupported workflow format")
     for key, value in intent.workflow_fields.items():
+        if key == "template" and intent.workflow_kind == "outreach" and any(
+            value in context.get("template_choices", {})
+            for context in workflow_context or [] if context.get("kind") == "outreach"
+        ):
+            continue
         if (
-            key not in {"role", "person_type", "category", "active", "format"}
+            key not in {"role", "person_type", "category", "active", "format", "template_category", "language"}
             and value
             and normalize(value) not in normalize(text)
         ):
             raise ValueError("Ungrounded workflow field")
+    if "template_category" in intent.workflow_fields and intent.workflow_fields["template_category"] not in {"MARKETING", "UTILITY"}:
+        raise ValueError("Unsupported template category")
+    if "language" in intent.workflow_fields and intent.workflow_fields["language"] not in {"tr", "en", "en_US", "de", "ar"}:
+        raise ValueError("Unsupported template language")
     if intent.workflow_fields.get("active"):
         active_words = {
             "true": ("etkin", "aktif", "true"),
@@ -445,6 +520,8 @@ async def plan(
         complete_words = ("geri al", "yeniden yayinla", "onayla")
     elif intent.workflow_kind == "resume_bot":
         complete_words = ("devam ettir", "onayla")
+    elif intent.workflow_kind == "create_template":
+        complete_words = ("meta onayina gonder", "onaya gonder", "meta'ya gonder", "metaya gonder", "onayla")
     if intent.workflow_action == "complete" and (
         not any(w in normalize(text) for w in complete_words)
         or re.search(r"\bgeri alma(?:yin|yiniz)?\b", normalize(text))
