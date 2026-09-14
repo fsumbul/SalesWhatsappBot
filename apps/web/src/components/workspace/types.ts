@@ -41,6 +41,8 @@ export type Turn = {
   action?: string;
   handoff_requested?: boolean;
   response_source?: string;
+  answer_origin?: string;
+  answer_verified?: boolean;
   fallback_reason?: string;
   interaction?: {
     kind: string;

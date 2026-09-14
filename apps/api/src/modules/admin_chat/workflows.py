@@ -235,6 +235,7 @@ def view(row: Any) -> dict[str, Any]:
         record_actions=(row.state or {}).get("record_actions", []),
         page=(row.state or {}).get("page", 1),
         has_more=(row.state or {}).get("has_more", False),
+        scope=(row.state or {}).get("scope"),
         controls=(
             workflow_templates.controls(row)
             if row.kind == "create_template"

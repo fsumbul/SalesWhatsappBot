@@ -72,21 +72,18 @@ this document itself.
 
 ## Local LLM runtime boundary
 
-`CompanyAgentRuntime` is the bridge from an **approved** config to a local
-LLM. It does not send the whole JSON document to the model. It projects only
-the organization name, reply policy, and `customer_visible` fact texts into a
-system prompt. Internal `Fact.value`, sources, customer-profile definitions,
-and unregistered module data never cross that boundary.
+The current contract is [natural conversation, 15 September 2026](./natural-conversation-2026-09-15.md).
+`CompanyAgentRuntime` retrieves customer-visible evidence from the approved company graph,
+then the local model writes the conversational answer. An independent model pass checks
+the entire answer; schema, source IDs, length, tenant access and mutations are also checked
+by code. Internal values and credentials are not language context.
 
-The local model must return a small JSON reply envelope:
+`RuntimeTurn` retains `reply`, `fact_ids`, action and interaction, and adds `answer_origin`
+and `answer_verified`. The latter records a semantic check, not a truth guarantee.
+Model failure yields an empty reply and error metadata, not a canned customer response.
+Missing business information does not automatically hand off the conversation.
 
-```json
-{"action":"reply","reply":"...","fact_ids":["approved-fact-id"]}
-```
-
-The runtime rejects unknown/internal fact IDs, duplicate citations, malformed
-JSON, and replies above the configured character limit. A malformed or
-unavailable model fails closed to the configuration's deterministic
-`unknown_fact_action`; raw model text is never sent to a customer. This makes
-the LLM the linguistic layer, while the JSON remains the authority for what
-the company is allowed to say.
+New agent policies default to `response_mode=conversational`. Legacy `strict` and `grounded`
+values remain readable but no longer select literal customer prose. Approved
+`customer_text` is evidence; it is not a required verbatim answer. UI options and operation
+confirmations remain server-controlled.

@@ -158,7 +158,8 @@ class ChatCompletionsLLMClient:
     complete chat-completions URL.
     """
 
-    def __init__(self, *, base_url: str, model: str, api_key: str = "") -> None:
+    def __init__(self, *, base_url: str, model: str, api_key: str = "",
+                 enable_thinking: bool | None = None) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_url = (
             self.base_url
@@ -167,6 +168,35 @@ class ChatCompletionsLLMClient:
         )
         self.model = model
         self.api_key = api_key
+        self.enable_thinking = enable_thinking
+        self._tokenizer_available: bool | None = None
+
+    async def prompt_size(self, messages: list[LLMMessage], system: str = "") -> tuple[int, int] | None:
+        """Use a self-hosted tokenizer when available; other compatible APIs may omit it."""
+        if self._tokenizer_available is False:
+            return None
+        root = self.api_url.removesuffix("/chat/completions").removesuffix("/v1")
+        data = ([{"role": "system", "content": system}] if system else []) + [
+            {"role": m.role, "content": m.content} for m in messages
+        ]
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        try:
+            async with httpx.AsyncClient(timeout=5, headers=headers) as client:
+                response = await client.post(f"{root}/tokenize", json={
+                    "model": self.model, "messages": data, "add_generation_prompt": True,
+                    **({"chat_template_kwargs": {"enable_thinking": self.enable_thinking}}
+                       if self.enable_thinking is not None else {}),
+                })
+                response.raise_for_status()
+                body = response.json()
+                count, maximum = int(body["count"]), int(body["max_model_len"])
+                if count < 0 or maximum <= 0:
+                    raise ValueError("Invalid tokenizer budget")
+                self._tokenizer_available = True
+                return count, maximum
+        except (httpx.HTTPError, KeyError, TypeError, ValueError):
+            self._tokenizer_available = False
+            return None
 
     async def complete(
         self,
@@ -186,6 +216,8 @@ class ChatCompletionsLLMClient:
             "temperature": 0,
             "max_tokens": max_tokens,
         }
+        if self.enable_thinking is not None:
+            payload["chat_template_kwargs"] = {"enable_thinking": self.enable_thinking}
         if response_schema is not None:
             payload["response_format"] = {
                 "type": "json_schema",
@@ -357,6 +389,7 @@ def get_llm_client() -> LLMClient:
             base_url=s.llm_base_url,
             model=s.llm_model,
             api_key=s.llm_api_key,
+            enable_thinking=s.llm_enable_thinking,
         )
     if not s.llm_provider:
         return NullLLMClient()

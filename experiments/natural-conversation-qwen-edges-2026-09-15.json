@@ -1,0 +1,281 @@
+{
+  "scope": [
+    {
+      "scope": {
+        "record_type": "messages",
+        "audience": "matching",
+        "subject": null,
+        "query": "Deniz",
+        "timezone": "Europe/Istanbul",
+        "date_mode": "today",
+        "local_today": "2026-09-15",
+        "date_start": "2026-09-15T00:00:00+03:00",
+        "date_end_exclusive": "2026-09-16T00:00:00+03:00",
+        "date_field": "message_created_at",
+        "direction": "both",
+        "total": 2,
+        "page": 1,
+        "has_more": false,
+        "complete": true,
+        "contact_count": 1,
+        "conversation_count": 1
+      },
+      "question": "bu veriler kimlre ait? sadece bir kişniin mi yoksaa herkesin mi gün içindei",
+      "answer": {
+        "text": "Bu veriler, bugün (15 Eylül 2026) 'Deniz' adlı kişiyle olan konuşmaya aittir. Sadece bu tek kişiyle ilgili 2 mesajı kapsamaktadır; diğer kişilerin mesajları bu sonuçta yer almaz.",
+        "evidence_ids": [
+          "messages"
+        ],
+        "verified": true,
+        "handoff_requested": false,
+        "source": "model_generated",
+        "reason": null,
+        "calls": 2,
+        "truncated": false
+      },
+      "seconds": 47.5
+    },
+    {
+      "scope": {
+        "record_type": "messages",
+        "audience": "matching",
+        "subject": null,
+        "query": "Deniz",
+        "timezone": "Europe/Istanbul",
+        "date_mode": "all_time",
+        "local_today": "2026-09-15",
+        "date_start": null,
+        "date_end_exclusive": null,
+        "date_field": "message_created_at",
+        "direction": "both",
+        "total": 3,
+        "page": 1,
+        "has_more": false,
+        "complete": true,
+        "contact_count": 1,
+        "conversation_count": 1
+      },
+      "question": "bu veriler kimlre ait? sadece bir kişniin mi yoksaa herkesin mi gün içindei",
+      "answer": {
+        "text": "Bu veriler yalnızca 'Deniz' adlı tek bir kişiye ait. Toplam 3 mesaj bulunuyor ve bunlar 12 Eylül 2026 ile 15 Eylül 2026 tarihleri arasında geçen tek bir konuşmadan oluşuyor. Veriler, bu tarih aralığındaki tüm yönlere (gelen ve giden) ait mesajları kapsıyor.",
+        "evidence_ids": [
+          "messages"
+        ],
+        "verified": true,
+        "handoff_requested": false,
+        "source": "model_generated",
+        "reason": null,
+        "calls": 2,
+        "truncated": false
+      },
+      "seconds": 57.34
+    },
+    {
+      "scope": {
+        "record_type": "messages",
+        "audience": "company",
+        "subject": null,
+        "query": "",
+        "timezone": "Europe/Istanbul",
+        "date_mode": "today",
+        "local_today": "2026-09-15",
+        "date_start": "2026-09-15T00:00:00+03:00",
+        "date_end_exclusive": "2026-09-16T00:00:00+03:00",
+        "date_field": "message_created_at",
+        "direction": "both",
+        "total": 4,
+        "page": 1,
+        "has_more": false,
+        "complete": true,
+        "contact_count": 2,
+        "conversation_count": 2
+      },
+      "question": "bu veriler kimlre ait? sadece bir kişniin mi yoksaa herkesin mi gün içindei",
+      "answer": {
+        "text": "Bu veriler 15 Eylül 2026 gününe ait olup, Ece ve Deniz olmak üzere iki farklı kişiyle yapılan konuşmaları kapsamaktadır. Veriler, günün tamamını (00:00'dan 24:00'e kadar) ve hem gelen hem de giden mesajları içermektedir.",
+        "evidence_ids": [
+          "messages"
+        ],
+        "verified": true,
+        "handoff_requested": false,
+        "source": "model_generated",
+        "reason": null,
+        "calls": 2,
+        "truncated": false
+      },
+      "seconds": 31.38
+    },
+    {
+      "scope": {
+        "record_type": "messages",
+        "audience": "company",
+        "subject": null,
+        "query": "",
+        "timezone": "Europe/Istanbul",
+        "date_mode": "all_time",
+        "local_today": "2026-09-15",
+        "date_start": null,
+        "date_end_exclusive": null,
+        "date_field": "message_created_at",
+        "direction": "both",
+        "total": 6,
+        "page": 1,
+        "has_more": false,
+        "complete": true,
+        "contact_count": 2,
+        "conversation_count": 2
+      },
+      "question": "bu veriler kimlre ait? sadece bir kişniin mi yoksaa herkesin mi gün içindei",
+      "answer": {
+        "text": "Bu veriler iki farklı kişiye ait: Ece ve Deniz. Toplamda 6 mesaj bulunuyor ve bu kayıtlar 12 Eylül 2026 ile 15 Eylül 2026 tarihleri arasını kapsıyor. Verilerde hem gelen hem de giden mesajlar yer alıyor.",
+        "evidence_ids": [
+          "messages"
+        ],
+        "verified": true,
+        "handoff_requested": false,
+        "source": "model_generated",
+        "reason": null,
+        "calls": 2,
+        "truncated": false
+      },
+      "seconds": 56.5
+    }
+  ],
+  "intake": [
+    {
+      "question": "Teklif hazırlamak istiyorum.",
+      "reply": "Merhaba, Artı Kasnak’a hoş geldiniz. Size hitap edebilmek için isminizi öğrenebilir miyim?",
+      "verified": true,
+      "origin": "model_generated",
+      "reason": null,
+      "state": {
+        "id": "f7cabae2f03d4d5c9fb70e65c5bb3c27",
+        "answers": {},
+        "step_index": 0,
+        "revision": 0,
+        "status": "draft"
+      },
+      "seconds": 46.64
+    },
+    {
+      "question": "Benim adım Deniz Kaya.",
+      "reply": "Deniz Bey, isminizi kaydettim. Size uygun kasnağı birlikte belirleyelim. Nasıl devam etmek istersiniz?",
+      "verified": true,
+      "origin": "model_generated",
+      "reason": null,
+      "state": {
+        "id": "f7cabae2f03d4d5c9fb70e65c5bb3c27",
+        "answers": {
+          "contact_name": {
+            "status": "value",
+            "value": "Deniz Kaya"
+          }
+        },
+        "step_index": 1,
+        "revision": 1,
+        "status": "draft"
+      },
+      "seconds": 48.48
+    },
+    {
+      "question": "Soyadımı yanlış yazdım, Deniz Kaan olacak.",
+      "reply": "Deniz Kaan Bey, isminizi kaydettim. Size uygun kasnağı birlikte belirleyelim. Nasıl devam etmek istersiniz?",
+      "verified": true,
+      "origin": "model_generated",
+      "reason": null,
+      "state": {
+        "id": "f7cabae2f03d4d5c9fb70e65c5bb3c27",
+        "answers": {
+          "contact_name": {
+            "status": "value",
+            "value": "Deniz Kaan"
+          }
+        },
+        "step_index": 1,
+        "revision": 2,
+        "status": "draft"
+      },
+      "seconds": 54.46
+    },
+    {
+      "question": "Bir dakika, gökkuşağı neden oluşur?",
+      "reply": "Gökkuşağı, güneş ışığının yağmur damlalarında kırılması, yansıması ve tekrar kırılması sonucu oluşur. Bu süreç, beyaz ışığı oluşturan farklı renklerin açılmasına ve gökyüzünde yay şeklinde görünmesine neden olur.",
+      "verified": true,
+      "origin": "model_generated",
+      "reason": null,
+      "state": {
+        "id": "f7cabae2f03d4d5c9fb70e65c5bb3c27",
+        "answers": {
+          "contact_name": {
+            "status": "value",
+            "value": "Deniz Kaan"
+          }
+        },
+        "step_index": 1,
+        "revision": 2,
+        "status": "draft"
+      },
+      "seconds": 29.2
+    },
+    {
+      "question": "İşe dönelim, yeni kasnak seçmek istiyorum.",
+      "reply": "Deniz Kaan Bey, yeni kasnak seçimi için devam edelim. Hangi tür kasnağa ihtiyacınız var?",
+      "verified": true,
+      "origin": "model_generated",
+      "reason": null,
+      "state": {
+        "id": "f7cabae2f03d4d5c9fb70e65c5bb3c27",
+        "answers": {
+          "contact_name": {
+            "status": "value",
+            "value": "Deniz Kaan"
+          },
+          "intent": {
+            "status": "value",
+            "value": "new",
+            "label": "Yeni kasnak seç"
+          }
+        },
+        "step_index": 3,
+        "revision": 3,
+        "status": "draft"
+      },
+      "seconds": 35.26
+    }
+  ],
+  "customer_final": [
+    {
+      "question": "Captromal kasnağın güncel fiyatı kaç?",
+      "reply": "Captromal kasnağın güncel fiyatı hakkında elimde kesin bir bilgi bulunmuyor. Fiyatlar güncel ticari koşullara göre teklif aşamasında netleşiyor. İhtiyacınıza uygun bir teklif alabilmeniz için detayları paylaşmanız yeterli.",
+      "verified": true,
+      "origin": "model_generated",
+      "fact_ids": [
+        "customization_and_order_flexibility"
+      ],
+      "reason": null,
+      "seconds": 62.6
+    },
+    {
+      "question": "Biraz ara verelim, gökkuşağı nasıl oluşur?",
+      "reply": "Gökkuşağı, güneş ışığının yağmur damlalarında kırılması, yansıması ve yeniden kırılması sonucu oluşur. Bu süreç, beyaz ışığı oluşturan farklı renklerin açılarak yelpaze şeklinde görünmesini sağlar.",
+      "verified": true,
+      "origin": "model_generated",
+      "fact_ids": [],
+      "reason": null,
+      "seconds": 46.35
+    },
+    {
+      "question": "İşe dönelim: bunun yarın kesin teslimi mümkün mü?",
+      "reply": "Yarın kesin teslimatı doğrulayamıyorum. Bu konuda güncel stok veya lojistik bilgisi elimde bulunmuyor.",
+      "verified": true,
+      "origin": "model_generated",
+      "fact_ids": [],
+      "reason": null,
+      "seconds": 31.45
+    }
+  ],
+  "evaluation_status": "reviewed_observations_not_truth_guarantee",
+  "model": "qwen3.8-27b",
+  "enable_thinking": false,
+  "review_note": "Final scope matrix uses exact same typo question after each actual SQL result. Person counts and date coverage checked manually. All-time replies describe observed record dates, not explicitly the absence of a SQL date filter. Customer and intake observations reviewed separately; see release-review Markdown for limitations and historical failures."
+}

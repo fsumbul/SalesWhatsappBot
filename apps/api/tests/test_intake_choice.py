@@ -31,15 +31,15 @@ async def test_entry_buttons_web_link_and_same_draft(client, monkeypatch):
     async with session_scope(tid) as db:
         conv = await db.get(Conversation, cid)
 
-        async def say(body):
+        async def say(body, *, start_requested=False):
             msg = Message(
                 tenant_id=tid, conversation_id=cid, direction="inbound", body=body, raw={}
             )
             db.add(msg)
             await db.flush()
-            return await handle(db, config, conv, msg)
+            return await handle(db, config, conv, msg, start_requested=start_requested)
 
-        turn, _, row, _ = await say("Teklif oluşturmak istiyorum")
+        turn, _, row, _ = await say("Teklif oluşturmak istiyorum", start_requested=True)
         assert [o.title for o in turn.interaction.options] == ["Formu doldur", "Sohbetle ilerle"]
         rid = row.id
         turn, _, row, _ = await say("Formu doldur [intake:form]")
@@ -77,6 +77,10 @@ async def test_entry_buttons_web_link_and_same_draft(client, monkeypatch):
         )
         db.add(msg)
         await db.flush()
+        from tests.test_natural_conversation import Scripted
+        monkeypatch.setattr("src.integrations.llm.get_llm_client", lambda: Scripted(
+            {"action": "answer", "values": [{"field": "intent", "quote": "Yeni kasnak seç"}]},
+            {"authorized": True}))
         _, _, row, _ = await handle(db, config, conv, msg)
         assert row.answers["intent"]["value"] == "new"
         await db.commit()

@@ -6,7 +6,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from time import perf_counter
 from typing import Any
@@ -547,17 +546,26 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             selection_request = None
             selection_confirmed = False
             turn = None
-            resume_prompt = None
+            _resume_prompt = None
             selection_side_handoff = False
             selection_processing_ms = None
             if selection_active:
                 selection_started = perf_counter()
                 (
                     turn,
-                    resume_prompt,
+                    _resume_prompt,
                     selection_request,
                     selection_confirmed,
                 ) = await selection_service.handle(session, config, conversation, inbound)
+                if selection_request is not None:
+                    turn = await selection_service.natural_turn(
+                        config, get_llm_client(), inbound.body, turn,
+                        selection_service.state_of(selection_request), history,
+                    )
+                    _resume_prompt = None
+                elif turn is not None:
+                    from src.modules.agents.customer_language import describe_navigation
+                    turn = await describe_navigation(config, get_llm_client(), inbound.body, turn, history)
                 selection_processing_ms = round((perf_counter() - selection_started) * 1000, 2)
             selection_deterministic = turn is not None
             if turn is None:
@@ -565,22 +573,20 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                     config,
                     get_llm_client(),
                     whatsapp_capabilities=_tenant_whatsapp_capabilities(tenant_id),
-                ).reply(inbound.body, history=history, context_fact_ids=context_fact_ids)
-                if resume_prompt is not None and turn.action in {
-                    CustomerReplyAction.REPLY,
-                    CustomerReplyAction.ASK_CLARIFICATION,
-                    CustomerReplyAction.HANDOFF,
-                    CustomerReplyAction.DECLINE,
-                }:
-                    selection_side_handoff = turn.action == CustomerReplyAction.HANDOFF
-                    suffix = selection_service.as_turn(resume_prompt)
-                    combined = turn.reply + "\n\n" + suffix.reply
-                    turn = replace(
-                        turn,
-                        action=CustomerReplyAction.REPLY,
-                        reply=combined,
-                        interaction=suffix.interaction if len(combined) <= 1024 else None,
+                ).reply(inbound.body, history=history, context_fact_ids=context_fact_ids,
+                        form_received=bool(inbound.raw.get("type") == "interactive" and
+                                           inbound.raw.get("interactive", {}).get("nfm_reply")))
+                if turn.intake_requested and config.selection_flow is not None:
+                    turn, _resume_prompt, selection_request, selection_confirmed = await selection_service.handle(
+                        session, config, conversation, inbound, start_requested=True,
                     )
+                    if selection_request is not None:
+                        turn = await selection_service.natural_turn(
+                            config, get_llm_client(), inbound.body, turn,
+                            selection_service.state_of(selection_request), history,
+                        )
+                    selection_active = True
+                    _resume_prompt = None
 
         finally:
             if typing_refresh_task is not None:
@@ -683,6 +689,16 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 await session.commit()
                 return {"status": job.status}
 
+            if not turn.reply:
+                job.status = AgentRuntimeJobStatus.SKIPPED.value
+                job.completed_at = datetime.now(UTC)
+                job.error = "No verified model reply; no outbound send attempted"
+                job.audit = {**(job.audit or {}), "answer_origin": turn.answer_origin,
+                             "answer_verified": False, "model_error": turn.fallback_reason,
+                             "external_send_attempts": 0}
+                await session.commit()
+                return {"status": job.status}
+
             # Persist the transition before the only external POST. If the
             # process dies or the response is ambiguous after this commit,
             # recovery marks the job for human review and never replays it.
@@ -693,13 +709,16 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             job.status = AgentRuntimeJobStatus.SENDING.value
             job.audit = {
                 "model": "deterministic_selection"
-                if selection_deterministic
+                if selection_deterministic and turn.answer_origin == "server_rendered"
                 else settings.llm_model,
                 "selection_request_id": str(selection_request.id) if selection_request else None,
                 "selection_confirmed": selection_confirmed,
                 "selection_processing_ms": selection_processing_ms,
                 "provider": settings.llm_provider,
                 "response_source": turn.response_source,
+                "answer_origin": turn.answer_origin,
+                "answer_verified": turn.answer_verified,
+                "answer_evidence_ids": list(turn.answer_evidence_ids),
                 "fallback_reason": turn.fallback_reason,
                 "history_messages": len(history),
                 "context_fact_ids": list(context_fact_ids),
@@ -757,6 +776,9 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                     "fact_ids": list(turn.fact_ids),
                     "used_fallback": turn.used_fallback,
                     "response_source": turn.response_source,
+                    "answer_origin": turn.answer_origin,
+                    "answer_verified": turn.answer_verified,
+                    "answer_evidence_ids": list(turn.answer_evidence_ids),
                     "transport_type": transport_type,
                     "interaction": _interaction_audit(turn),
                     "request_resolutions": list(turn.request_resolutions),

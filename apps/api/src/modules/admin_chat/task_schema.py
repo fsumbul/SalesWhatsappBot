@@ -14,6 +14,7 @@ GoalKind = Literal[
     "templates",
     "workflow",
     "unsupported",
+    "general",
 ]
 Category = Literal[
     "inbox",
@@ -46,6 +47,7 @@ class TaskStep(BaseModel):
     tool: Literal[
         "search",
         "conversation",
+        "messages",
         "request",
         "delivery",
         "analytics",
@@ -62,10 +64,11 @@ class TaskStep(BaseModel):
     page: int = Field(default=1, ge=1, le=10000)
     status: Literal["waiting_review", "in_review", "completed", "cancelled"] | None = None
     today: bool = False
+    direction: Literal["inbound", "outbound"] | None = None
     answers: list[TaskAnswer] = Field(default_factory=list, max_length=8)
 
 
 class TaskCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    supported: bool
     feedback: str = Field(default="", max_length=600)
+    supported: bool

@@ -6,7 +6,7 @@ import io
 import json
 import time
 from copy import deepcopy
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from typing import Any, Literal
 from uuid import UUID
 
@@ -481,22 +481,20 @@ async def test_turn(
     ]
     context = tuple(session.messages[-1].get("fact_ids", [])) if session.messages else ()
     started = time.monotonic()
-    from src.modules.selection.service import as_turn, preview_selection
+    from src.modules.selection.service import preview_natural
 
     saved = session.messages[-1].get("selection_state") if session.messages else None
-    turn, selection_state, resume_prompt = preview_selection(config, saved, payload.text)
-    handoff_requested = False
+    turn, selection_state, _ = await preview_natural(
+        config, saved, payload.text, get_llm_client(), history,
+    )
     if turn is None:
         turn = await CompanyAgentRuntime(config, get_llm_client()).reply(
             payload.text, history=history, context_fact_ids=context
         )
-        if resume_prompt:
-            resume = as_turn(resume_prompt)
-            handoff_requested = turn.action == CustomerReplyAction.HANDOFF
-            combined = turn.reply + "\n\n" + resume.reply
-            turn = replace(turn, action=CustomerReplyAction.REPLY, reply=combined,
-                           interaction=resume.interaction if len(combined) <= 1024 else None)
-
+        if turn.intake_requested and config.selection_flow is not None:
+            turn, selection_state, resume_prompt = await preview_natural(
+                config, saved, payload.text, get_llm_client(), history, start_requested=True,
+            )
     settings = get_settings()
     result = jsonable_encoder(
         {
@@ -504,7 +502,7 @@ async def test_turn(
             "version_id": version.id,
             "version": version.version,
             "selection_state": selection_state,
-            "handoff_requested": handoff_requested or turn.action == CustomerReplyAction.HANDOFF,
+            "handoff_requested": turn.action == CustomerReplyAction.HANDOFF,
             "model": settings.llm_model,
             "latency_ms": round((time.monotonic() - started) * 1000),
         }

@@ -37,6 +37,12 @@ def script(monkeypatch, message, kinds, steps, *, check=True, prepare=None):
                     {"tool": "task", "goals": [{"kind": k, "text": message} for k in kinds]}
                 )
             if title == "TaskCheck":
+                payload = json.loads(messages[0].content)
+                # The new contract repairs unsupported prose instead of replacing it with a canned sentence.
+                if any("Ece eklendi" in a["text"] for a in payload["answers"]):
+                    steps.insert(0, finish(("Ürün bilgisi istemiş.", ["e2"]),
+                                           ("Ece için kayıt hazırlanıyor; işlem henüz uygulanmadı.", ["e3"])))
+                    return json.dumps({"supported": False, "feedback": "A prepared review is not an applied contact or send."})
                 return json.dumps(
                     {"supported": check, "feedback": "Unsupported claim" if not check else ""}
                 )

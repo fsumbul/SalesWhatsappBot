@@ -33,7 +33,7 @@ from .company_runtime import (
 
 Topic = Literal[
     "details", "price", "stock", "delivery", "suitability", "warranty",
-    "certification", "quote", "visuals", "contact", "social", "other",
+    "certification", "quote", "visuals", "contact", "social", "general", "other",
 ]
 
 
@@ -76,7 +76,10 @@ def planner_context(config: CompanyAgentConfig, context_fact_ids: tuple[str, ...
     assert config.agent is not None
     return {
         "subjects": {
-            (config.organization.id if config.organization else "company"): "The company itself",
+            (config.organization.id if config.organization else "company"): (
+                _localized_text(config.organization.display_names, config.agent.default_locale)
+                if config.organization else "The company itself"
+            ),
             "unknown": "Unidentified or ambiguous subject; never guess a distinct product",
             **{
                 item.id: _localized_text(item.display_names, config.agent.default_locale)
@@ -128,9 +131,14 @@ offer or submit a drawing; visuals=photos/catalog browsing; contact; social;
 other=unsupported action or anything else. A price request is NOT quote intake.
 Negated requests are not requests ('no price needed' -> omit price). Subjective
 expensive/praise/rapport alone is social, not a request for a numeric price.
-When business requests coexist with greetings or feelings, retain the business
-requests only. A purely social turn has one social request with the configured company subject.
-""" + _json(context),
+Preserve social or general questions alongside business requests when they need a reply.
+A purely social turn has one social request with the configured company subject.
+""" + (
+            "\nConversational mode: include general knowledge questions as topic=general with "
+            "the company subject (this does NOT make them company facts). Social and general "
+            "requests can coexist with business requests. Preserve both. Missing business data "
+            "is not human handoff; explicit human-support requests belong to contact."
+        ) + _json(context),
         max_tokens=640,
         response_schema=schema,
     )

@@ -147,13 +147,8 @@ async def test_two_company_workflow_isolation_and_revision(client, monkeypatch):
         v = (await client.get(f"/api/v1/agents/{aid}/versions", headers=headers)).json()[0]
         expected_name = name
 
-        class LLM:
-            async def complete(self, *args, expected_name=expected_name, **kwargs):
-                assert "service" in kwargs["system"]
-                assert expected_name in kwargs["system"]
-                return json.dumps({"action": "reply", "fact_ids": ["service"]})
-
-        monkeypatch.setattr("src.modules.agents.workspace.get_llm_client", lambda: LLM())
+        from tests.natural_fakes import ServiceLanguageModel
+        monkeypatch.setattr("src.modules.agents.workspace.get_llm_client", lambda: ServiceLanguageModel(expected_name, fact))
         test = await client.post(
             f"/api/v1/agents/{aid}/test-sessions", headers=headers, json={"version_id": v["id"]}
         )
@@ -317,8 +312,12 @@ async def test_operational_chat_uses_model_is_private_and_idempotent(client, mon
 
     class LLM:
         async def complete(self, messages, **kwargs):
-            calls.append(messages[0].content)
-            return Intent(tool="analytics").model_dump_json()
+            if kwargs["response_schema"]["title"] == "Intent":
+                calls.append(messages[0].content)
+                return Intent(tool="analytics").model_dump_json()
+            if kwargs["response_schema"]["title"] == "LanguageReply":
+                return json.dumps({"text": "Henüz kayıtlı teknik talep bulunmuyor."})
+            return json.dumps({"unsupported_claims": [], "supported": True})
 
     monkeypatch.setattr("src.modules.admin_chat.planner.get_llm_client", lambda: LLM())
     payload = {"text": "Genel durum", "client_message_id": str(uuid4())}

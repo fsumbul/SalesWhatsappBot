@@ -1,0 +1,34 @@
+[
+  {
+    "question": "Güncel fiyatı kaç?",
+    "unsupported_draft": "Fiyat malzeme ve halat kombinasyonuna göre değişir. Ölçü verirseniz fiyatı belirleyebiliriz.",
+    "result": {
+      "text": "Güncel fiyat bilgisi teklif aşamasında doğrulanır. Şu an için kesin bir fiyat veremiyorum.",
+      "evidence_ids": [
+        "commercial_terms"
+      ],
+      "verified": true,
+      "handoff_requested": false,
+      "source": "model_generated",
+      "reason": null,
+      "calls": 3,
+      "truncated": false
+    },
+    "seconds": 26.85
+  },
+  {
+    "question": "Yarın kesin teslim olur mu?",
+    "unsupported_draft": "Yarın kesin teslimatı doğrulayamıyorum. Teslimat stok ve üretim planına bağlıdır; kesin tarih için sipariş detaylarınız gerekir.",
+    "result": {
+      "text": "Maalesef yarın kesin teslimat garantisi veremiyorum. Bu bilgiyi doğrulayacak güncel bir veri bulunmuyor.",
+      "evidence_ids": [],
+      "verified": true,
+      "handoff_requested": false,
+      "source": "model_generated",
+      "reason": null,
+      "calls": 3,
+      "truncated": false
+    },
+    "seconds": 36.32
+  }
+]

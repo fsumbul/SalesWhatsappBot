@@ -22,6 +22,7 @@ type Message = {
   text: string;
   display_text?: string;
   response_source?: string;
+  technical_error?: string | null;
   cards?: OperationCard[];
   suggestions?: Suggestion[];
 };
@@ -437,9 +438,9 @@ export default function OpsChat({
                     className={m.role === "user" ? styles.chatUser : styles.chatAssistant}
                   >
                     <span className={m.role === "user" ? styles.srOnly : styles.chatSpeaker}>
-                      {m.role === "user" ? "Siz" : "Ashira"}
+                      {m.technical_error ? "Bağlantı durumu" : m.role === "user" ? "Siz" : "Ashira"}
                     </span>
-                    <p>{m.display_text ?? m.text}</p>
+                    <p role={m.technical_error ? "status" : undefined}>{m.technical_error ?? m.display_text ?? m.text}</p>
                     {m.cards?.map((c, j) =>
                       [
                         "workspace",

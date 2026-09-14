@@ -36,6 +36,13 @@ async def turn(client, headers, sid, text, mid=None):
 def model(monkeypatch, intent, builder_patch=None):
     class LLM:
         async def complete(self, messages, **kwargs):
+            schema = kwargs.get("response_schema", {}).get("title")
+            if schema == "LanguageCheck":
+                return json.dumps({"unsupported_claims": [], "supported": True})
+            if schema == "LanguageReply":
+                payload = json.loads(messages[0].content)
+                result = next((e["summary"] for e in payload["evidence"] if e.get("summary")), "Nasıl yardımcı olayım?")
+                return json.dumps({"text": result})
             if "response_schema" in kwargs:
                 return json.dumps(intent)
             return json.dumps({"reply": "Bilgiler önizlemeye hazır.", "patch": builder_patch or {}})
@@ -280,13 +287,10 @@ async def test_chat_customer_runtime_history_fallback_and_no_meta(client, monkey
     model(monkeypatch, {"tool": "workspace", "operation": "test", "instruction": question})
     calls = []
 
-    class RuntimeModel:
-        async def complete(self, messages, **kwargs):
-            calls.append(messages)
-            assert "Acme" in kwargs["system"]
-            return json.dumps({"action": "reply", "fact_ids": ["service"]})
-
-    monkeypatch.setattr(workspace, "get_llm_client", lambda: RuntimeModel())
+    from tests.natural_fakes import ServiceLanguageModel
+    runtime_model = ServiceLanguageModel()
+    calls = runtime_model.calls
+    monkeypatch.setattr(workspace, "get_llm_client", lambda: runtime_model)
 
     async def no_send(*args, **kwargs):
         pytest.fail("Customer tests must never send to Meta")
@@ -299,11 +303,11 @@ async def test_chat_customer_runtime_history_fallback_and_no_meta(client, monkey
     assert result["reply"] == "Bakım hizmeti veriyoruz."
     assert result["response_source"] == "model"
     assert result["version_id"] == version["id"]
-    assert len(calls) == 1
+    assert len(calls) == 3
     assert (
         await seed_legacy_turn(client, headers, monkeypatch, sid, question, mid)
     ).json() == r.json()
-    assert len(calls) == 1
+    assert len(calls) == 3
     r2 = await seed_legacy_turn(client, headers, monkeypatch, sid, question)
     assert r2.status_code == 200, r2.text
     saved = (await client.get(f"/api/v1/agents/{aid}/test-sessions", headers=headers)).json()

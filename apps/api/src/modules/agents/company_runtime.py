@@ -1,10 +1,11 @@
 # ruff: noqa: RUF001
 """Local-LLM runtime for an approved :class:`CompanyAgentConfig`.
 
-The language model is a *decision maker*, never the renderer or source of
-company knowledge. This module projects the approved company graph into the
-small customer-visible context the model may use, requests a structured
-action/fact selection, and renders literal approved customer text itself.
+The language model generates replies grounded in server-selected company facts.
+Legacy decision parsers remain importable for stored protocol validation.
+The server projects the approved company graph into a bounded context.
+The model interprets requests and writes prose; a second pass checks the whole
+answer against that evidence. UI controls and state transitions remain server-owned.
 
 Keeping this boundary pure makes it usable from WhatsApp, a web inbox, or a
 test harness without coupling the safety contract to a transport.
@@ -298,6 +299,10 @@ class RuntimeTurn:
     fallback_reason: str | None = None
     interaction: RuntimeInteraction | None = None
     request_resolutions: tuple[dict[str, object], ...] = ()
+    answer_origin: str = "server_rendered"
+    answer_verified: bool = False
+    answer_evidence_ids: tuple[str, ...] = ()
+    intake_requested: bool = False
 
 
 def _localized_text(texts: dict[str, str], default_locale: str) -> str:
@@ -1570,9 +1575,8 @@ def safe_unknown_fact_turn(config: CompanyAgentConfig, reason: str | None = None
 class CompanyAgentRuntime:
     """Execute a customer turn using an injected local LLM client.
 
-    A malformed/unavailable answer becomes the deterministic safe fallback.
-    The caller can record ``used_fallback`` and trigger human handoff when the
-    configured action is ``handoff``.
+    Unavailable or unverified prose produces an empty reply with error metadata.
+    Human handoff requires the current customer's explicit request.
     """
 
     def __init__(
@@ -1593,100 +1597,32 @@ class CompanyAgentRuntime:
         *,
         history: list[LLMMessage] | None = None,
         context_fact_ids: tuple[str, ...] | None = None,
+        form_received: bool = False,
     ) -> RuntimeTurn:
-        completion_turn = _flow_completion_turn(self.config, customer_message)
+        from .customer_language import describe_navigation, reply_naturally
+
+        completion_turn = _flow_completion_turn(self.config, customer_message) if form_received else None
         if completion_turn is not None:
-            return replace(completion_turn, response_source="guided")
+            return await describe_navigation(self.config, self.llm, customer_message,
+                                             completion_turn, history or [])
 
-        # Our own quick-reply IDs and a deliberately small set of exact menu
-        # phrases are deterministic navigation, not open-ended language
-        # understanding.  Rendering their approved fact directly prevents an
-        # old conversation history from making the model reject a valid menu
-        # command.
-        guided_fact_id = _explicit_fact_action_id(self.config, customer_message)
-        guided_fact_id = guided_fact_id or _explicit_product_overview_fact_id(
-            self.config,
-            customer_message,
+        # Explicit UI IDs choose approved data and controls, never response prose.
+        if _FACT_ACTION_RE.search(customer_message) or _PRODUCT_ACTION_RE.search(customer_message):
+            fact_id = (_explicit_fact_action_id(self.config, customer_message)
+                       or _explicit_product_overview_fact_id(self.config, customer_message))
+            if fact_id is None:
+                fact_id = self.config.agent.menu_fact_id
+            if fact_id:
+                selected = next((f for f in self.config.facts if f.id == fact_id
+                                 and f.customer_visible and f.customer_text), None)
+                if selected:
+                    turn = RuntimeTurn(CustomerReplyAction.REPLY,
+                                       _localized_text(selected.customer_text, self.config.agent.default_locale),
+                                       (selected.id,))
+                    turn = replace(turn, interaction=_suggest_interaction(
+                        self.config, turn, customer_message, self.whatsapp_capabilities))
+                    return await describe_navigation(self.config, self.llm, customer_message, turn, history or [])
+        return await reply_naturally(
+            self.config, self.llm, customer_message, history=history or [],
+            context_fact_ids=context_fact_ids or (), capabilities=self.whatsapp_capabilities,
         )
-        if guided_fact_id is None and (_FACT_ACTION_RE.search(customer_message) or _PRODUCT_ACTION_RE.search(customer_message)):
-            # A stale menu ID is navigation, never a fresh model instruction.
-            menu_id = self.config.agent.menu_fact_id if self.config.agent else None
-            guided_fact_id = next((f.id for f in self.config.facts
-                                   if f.id == menu_id and f.customer_visible and f.customer_text), None)
-            if guided_fact_id is None:
-                return replace(safe_unknown_fact_turn(self.config), response_source="guided", used_fallback=False)
-        if guided_fact_id is not None:
-            turn = parse_customer_reply(
-                json.dumps(
-                    {"action": CustomerReplyAction.REPLY.value, "fact_ids": [guided_fact_id]}
-                ),
-                self.config,
-                customer_message=customer_message,
-                context_fact_ids=context_fact_ids,
-            )
-            return replace(
-                turn,
-                response_source="guided",
-                interaction=_suggest_interaction(
-                    self.config,
-                    turn,
-                    customer_message,
-                    self.whatsapp_capabilities,
-                ),
-            )
-
-        if self.config.agent is not None and self.config.agent.semantic_dialogue is not None:
-            from .semantic_dialogue import reply_to_requests
-
-            try:
-                return await reply_to_requests(
-                    self.config,
-                    self.llm,
-                    customer_message,
-                    history=history or [],
-                    context_fact_ids=context_fact_ids or (),
-                    capabilities=self.whatsapp_capabilities,
-                )
-            except Exception as exc:
-                return safe_unknown_fact_turn(self.config, type(exc).__name__)
-
-        messages = [*(history or []), LLMMessage(role="user", content=customer_message)]
-        system_prompt = build_customer_system_prompt(
-            self.config,
-            customer_message=customer_message,
-            context_fact_ids=context_fact_ids,
-        )
-        response_schema = build_customer_decision_schema(
-            self.config,
-            customer_message=customer_message,
-            context_fact_ids=context_fact_ids,
-        )
-        try:
-            raw = await self.llm.complete(
-                messages,
-                system=system_prompt,
-                max_tokens=256,
-                response_schema=response_schema,
-            )
-            turn = parse_customer_reply(
-                raw,
-                self.config,
-                customer_message=customer_message,
-                context_fact_ids=context_fact_ids,
-            )
-            return replace(
-                turn,
-                interaction=_suggest_interaction(
-                    self.config,
-                    turn,
-                    customer_message,
-                    self.whatsapp_capabilities,
-                ),
-            )
-        except Exception as exc:
-            # The model is an untrusted availability boundary. Network errors,
-            # malformed provider envelopes, invalid JSON and unexpected model
-            # output must all resolve to the same server-owned safe response.
-            # asyncio cancellation derives from BaseException and is therefore
-            # deliberately not swallowed here.
-            return safe_unknown_fact_turn(self.config, type(exc).__name__)

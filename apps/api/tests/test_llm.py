@@ -58,3 +58,27 @@ def test_factory_returns_chat_completions_client() -> None:
 
     assert isinstance(client, ChatCompletionsLLMClient)
     assert client.api_url == "https://llm.example.test/v1/chat/completions"
+
+
+@pytest.mark.parametrize('enabled', [None, False, True])
+async def test_thinking_extension_is_opt_in_and_matches_tokenizer(enabled):
+    import json
+
+    import httpx
+    import respx
+    client = ChatCompletionsLLMClient(base_url='https://qwen.example/v1', model='qwen',
+                                      enable_thinking=enabled)
+    with respx.mock() as mock:
+        sizing = mock.post('https://qwen.example/tokenize').mock(return_value=httpx.Response(
+            200, json={'count': 30, 'max_model_len': 4096}))
+        completion = mock.post('https://qwen.example/v1/chat/completions').mock(return_value=httpx.Response(
+            200, json={'choices': [{'message': {'content': 'Merhaba'}}]}))
+        messages = [LLMMessage(role='user', content='Selam')]
+        assert await client.prompt_size(messages) == (30, 4096)
+        assert await client.complete(messages) == 'Merhaba'
+        for route in (sizing, completion):
+            data = json.loads(route.calls[0].request.content)
+            if enabled is None:
+                assert 'chat_template_kwargs' not in data
+            else:
+                assert data['chat_template_kwargs'] == {'enable_thinking': enabled}

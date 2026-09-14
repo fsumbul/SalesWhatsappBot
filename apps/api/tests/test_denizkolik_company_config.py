@@ -46,13 +46,22 @@ def test_denizkolik_config_is_publishable_and_keeps_whatsapp_menu_bounded() -> N
 
 
 @pytest.mark.asyncio
-async def test_plain_product_command_opens_the_ten_category_list() -> None:
-    turn = await CompanyAgentRuntime(_config(), NullLLMClient()).reply("ürünleri göster")
+async def test_product_navigation_keeps_ten_categories_and_model_prose() -> None:
+    from tests.test_natural_conversation import Scripted
+    model = Scripted({"text": "Ürün gruplarını aşağıdan seçebilirsiniz.",
+                      "evidence_ids": ["all_product_groups"]}, {"supported": True})
+    turn = await CompanyAgentRuntime(_config(), model).reply("Ürünler [fact_request:all_product_groups]")
 
     assert turn.fact_ids == ("all_product_groups",)
     assert turn.interaction is not None
     assert turn.interaction.kind == RuntimeInteractionKind.LIST
     assert len(turn.interaction.options) == 10
+    assert turn.answer_verified and turn.answer_origin == "model_generated"
+
+
+async def test_plain_product_command_requires_model_even_for_legacy_company():
+    turn = await CompanyAgentRuntime(_config(), NullLLMClient()).reply("ürünleri göster")
+    assert turn.reply == "" and not turn.answer_verified
 
 
 @pytest.mark.parametrize(

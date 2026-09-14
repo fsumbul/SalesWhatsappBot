@@ -1124,7 +1124,7 @@
     {
       "id": "pulley_technical_information_required",
       "subject_id": "elevator_pulley",
-      "category": "commercial_rule",
+      "category": "eligibility",
       "value": [
         "pulley diameter",
         "pulley width",
@@ -1897,7 +1897,7 @@
     }
   ],
   "agent": {
-    "response_mode": "strict",
+    "response_mode": "conversational",
     "purposes": [
       "information",
       "lead_capture",

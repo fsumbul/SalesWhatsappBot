@@ -159,6 +159,8 @@ class Settings(BaseSettings):
     llm_provider: str = ""
     llm_api_key: str = ""
     llm_model: str = ""
+    # Optional Qwen/vLLM extension. None preserves other compatible APIs.
+    llm_enable_thinking: bool | None = None
     # Ollama accepts either its root URL or a URL ending in /v1. For
     # chat_compatible uses the API base URL, normally ending in /v1.
     llm_base_url: str = "http://localhost:11434/v1"

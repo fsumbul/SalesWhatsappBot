@@ -1,0 +1,206 @@
+{
+  "model": "qwen3.8-27b",
+  "date": "2026-09-14T21:14:31.001361+00:00",
+  "admin": [
+    {
+      "question": "Bugün gelen müşteri mesajlarını getir.",
+      "seconds": 28.05,
+      "status": 200,
+      "reply": "Bugün (2026-09-15) gelen 2 müşteri mesajı bulundu: Ece (+15550102031) ve Deniz (+15550102030) 'Döküm kasnak kataloğunu istiyorum.' mesajını gönderdi.",
+      "answer_origin": "model_generated",
+      "answer_verified": true,
+      "result_scope": [
+        {
+          "record_type": "messages",
+          "audience": "company",
+          "subject": null,
+          "query": "",
+          "timezone": "Europe/Istanbul",
+          "date_mode": "today",
+          "local_today": "2026-09-15",
+          "date_start": "2026-09-15T00:00:00+03:00",
+          "date_end_exclusive": "2026-09-16T00:00:00+03:00",
+          "date_field": "message_created_at",
+          "direction": "inbound",
+          "total": 2,
+          "page": 1,
+          "has_more": false,
+          "complete": true,
+          "contact_count": 2,
+          "conversation_count": 2
+        }
+      ],
+      "technical_error": null
+    },
+    {
+      "question": "bu veriler kimlre ait? sadece bir kişniin mi yoksaa herkesin mi gün içindei",
+      "seconds": 26.71,
+      "status": 200,
+      "reply": "Bu veriler, şirketin tüm müşteri sohbetlerinden gelen bugünkü (2026-09-15) mesajlara aittir. Sadece bir kişiye değil, gün içinde gelen tüm müşteri mesajlarını kapsar. Bugün toplam 2 farklı müşteriden (Ece ve Deniz) mesaj gelmiştir.",
+      "answer_origin": "model_generated",
+      "answer_verified": true,
+      "result_scope": [
+        {
+          "page": 1,
+          "query": "",
+          "total": 2,
+          "subject": null,
+          "audience": "company",
+          "complete": true,
+          "has_more": false,
+          "timezone": "Europe/Istanbul",
+          "date_mode": "today",
+          "direction": "inbound",
+          "date_field": "message_created_at",
+          "date_start": "2026-09-15T00:00:00+03:00",
+          "local_today": "2026-09-15",
+          "record_type": "messages",
+          "contact_count": 2,
+          "conversation_count": 2,
+          "date_end_exclusive": "2026-09-16T00:00:00+03:00"
+        }
+      ],
+      "technical_error": null
+    },
+    {
+      "question": "Sadece Deniz için tüm zamanlardaki yazışmaları getir.",
+      "seconds": 74.64,
+      "status": 200,
+      "reply": "Deniz (+15550102030) için tüm zamanlardaki yazışmalar (toplam 3, tam liste): 1) 2026-09-12 00:14 (gelen): “Önceki siparişim hakkında yazıyorum.” 2) 2026-09-15 00:14 (gelen): “Döküm kasnak kataloğunu istiyorum.” 3) 2026-09-15 00:14 (giden): “Çiziminizi bekliyoruz.”",
+      "answer_origin": "model_generated",
+      "answer_verified": true,
+      "result_scope": [
+        {
+          "record_type": "messages",
+          "audience": "matching",
+          "subject": null,
+          "query": "Deniz",
+          "timezone": "Europe/Istanbul",
+          "date_mode": "all_time",
+          "local_today": "2026-09-15",
+          "date_start": null,
+          "date_end_exclusive": null,
+          "date_field": "message_created_at",
+          "direction": "both",
+          "total": 3,
+          "page": 1,
+          "has_more": false,
+          "complete": true,
+          "contact_count": 1,
+          "conversation_count": 1
+        }
+      ],
+      "technical_error": null
+    },
+    {
+      "question": "Peki bunlar bir kişiye mi ait, yalnız bugünün mü?",
+      "seconds": 40.03,
+      "status": 200,
+      "reply": "Bu veriler yalnızca Deniz'e (+15550102030) aittir ve yalnızca bugüne değil, tüm zamanlardaki yazışmalarını kapsamaktadır.",
+      "answer_origin": "model_generated",
+      "answer_verified": true,
+      "result_scope": [
+        {
+          "page": 1,
+          "query": "Deniz",
+          "total": 3,
+          "subject": null,
+          "audience": "matching",
+          "complete": true,
+          "has_more": false,
+          "timezone": "Europe/Istanbul",
+          "date_mode": "all_time",
+          "direction": "both",
+          "date_field": "message_created_at",
+          "date_start": null,
+          "local_today": "2026-09-15",
+          "record_type": "messages",
+          "contact_count": 1,
+          "conversation_count": 1,
+          "date_end_exclusive": null
+        }
+      ],
+      "technical_error": null
+    },
+    {
+      "question": "Biraz ara verelim. Gökkuşağı neden oluşur?",
+      "seconds": 43.82,
+      "status": 200,
+      "reply": "Gökkuşağı, güneş ışığının yağmur damlalarında kırılması, yansıması ve tekrar kırılması sonucu oluşur. Bu süreçte beyaz ışık, oluşturan renklerine ayrılır ve gökyüzünde yay şeklinde bir renk bandı olarak görünür. Genellikle güneşin arkamızda olduğu ve havada su damlacıklarının bulunduğu durumlarda görülür.",
+      "answer_origin": "model_generated",
+      "answer_verified": true,
+      "result_scope": [
+        {
+          "page": 1,
+          "query": "Deniz",
+          "total": 3,
+          "subject": null,
+          "audience": "matching",
+          "complete": true,
+          "has_more": false,
+          "timezone": "Europe/Istanbul",
+          "date_mode": "all_time",
+          "direction": "both",
+          "date_field": "message_created_at",
+          "date_start": null,
+          "local_today": "2026-09-15",
+          "record_type": "messages",
+          "contact_count": 1,
+          "conversation_count": 1,
+          "date_end_exclusive": null
+        }
+      ],
+      "technical_error": null
+    },
+    {
+      "question": "İşe dönelim, bugünkü yazışmaları herkesi kapsayacak şekilde getir.",
+      "seconds": 84.61,
+      "status": 200,
+      "reply": "Bugünkü (15.09.2026) tüm yazışmalar: Ece (+15550102031) ile 2 mesaj (gelen: 'Döküm kasnak kataloğunu istiyorum.', giden: 'Çiziminizi bekliyoruz.') ve Deniz (+15550102030) ile 2 mesaj (gelen: 'Döküm kasnak kataloğunu istiyorum.', giden: 'Çiziminizi bekliyoruz.').",
+      "answer_origin": "model_generated",
+      "answer_verified": true,
+      "result_scope": [
+        {
+          "record_type": "messages",
+          "audience": "company",
+          "subject": null,
+          "query": "",
+          "timezone": "Europe/Istanbul",
+          "date_mode": "today",
+          "local_today": "2026-09-15",
+          "date_start": "2026-09-15T00:00:00+03:00",
+          "date_end_exclusive": "2026-09-16T00:00:00+03:00",
+          "date_field": "message_created_at",
+          "direction": "both",
+          "total": 4,
+          "page": 1,
+          "has_more": false,
+          "complete": true,
+          "contact_count": 2,
+          "conversation_count": 2
+        }
+      ],
+      "technical_error": null
+    }
+  ],
+  "customer": [
+    {
+      "question": "Captromal kasnağın özelliklerini anlatır mısın?",
+      "seconds": 74.83,
+      "action": "reply",
+      "reply": "",
+      "fact_ids": [],
+      "used_fallback": true,
+      "response_source": "fallback",
+      "fallback_reason": "TypeError",
+      "request_resolutions": [],
+      "answer_origin": "model_unavailable",
+      "answer_verified": false,
+      "intake_requested": false
+    }
+  ],
+  "safety": {},
+  "failures": [],
+  "evaluation_status": "historical_not_accepted",
+  "review_note": "Partial development snapshot; includes an inference timeout and a live-development class reload mismatch. Not release acceptance."
+}

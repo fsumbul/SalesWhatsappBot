@@ -103,6 +103,7 @@ class FactCategory(StrEnum):
 class ResponseMode(StrEnum):
     STRICT = "strict"
     GROUNDED = "grounded"
+    CONVERSATIONAL = "conversational"
 
 
 class UnknownFactAction(StrEnum):
@@ -397,7 +398,7 @@ class SemanticDialoguePolicy(StrictModel):
 
 
 class AgentReplyPolicy(StrictModel):
-    response_mode: ResponseMode = ResponseMode.GROUNDED
+    response_mode: ResponseMode = ResponseMode.CONVERSATIONAL
     purposes: list[ConversationPurpose] = Field(min_length=1, max_length=7)
     supported_locales: list[Locale] = Field(min_length=1, max_length=20)
     default_locale: Locale

@@ -23,7 +23,10 @@ class Responses:
 
     async def complete(self, *args, **kwargs):
         self.calls += 1
-        return json.dumps(self.responses.pop(0))
+        value = self.responses.pop(0)
+        if kwargs.get("response_schema", {}).get("title") == "LanguageCheck":
+            value = {"unsupported_claims": [], **value}
+        return json.dumps(value)
 
 
 async def test_semantic_requests_answer_known_specification_and_report_unknown_price():
@@ -58,41 +61,40 @@ async def test_semantic_requests_answer_known_specification_and_report_unknown_p
         and f.category.value == "specification"
         and f.customer_visible
     )
-    llm.responses[1]["resolutions"][0]["fact_ids"] = [fact.id]
+    llm.responses[1:] = [
+        {"text": "Bu kasnak hakkında doğrulanmış teknik bilgiler var; ancak fiyatını doğrulayamıyorum.",
+         "evidence_ids": [fact.id]},
+        {"supported": True},
+    ]
     turn = await CompanyAgentRuntime(config, llm).reply("Captromal özellikleri ve fiyatı nedir?")
-    assert llm.calls == 2
-    assert turn.response_source == "model", turn
+    assert llm.calls == 3
+    assert turn.response_source == "model" and turn.answer_verified
     assert not turn.used_fallback
-    assert fact.customer_text["tr"] in turn.reply
+    assert fact.id in turn.fact_ids and fact.customer_text["tr"] != turn.reply
     assert len(turn.request_resolutions) == 2
-    assert turn.request_resolutions[1]["status"] == "unavailable"
 
 
-async def test_stale_menu_uses_current_published_menu_without_model():
-    llm = Responses()
+async def test_stale_menu_selects_current_ui_but_model_writes_reply():
+    llm = Responses({"text": "Güncel ürün seçeneklerini aşağıdan inceleyebilirsiniz."}, {"supported": True})
     turn = await CompanyAgentRuntime(production_config(), llm).reply(
         "Eski menü [product_detail:deleted_product]"
     )
-    assert llm.calls == 0
-    assert turn.response_source == "guided"
+    assert llm.calls == 2 and turn.answer_verified
+    assert turn.response_source == "model"
     assert turn.fact_ids == ("all_product_groups",)
     assert turn.interaction is not None
 
 
-async def test_semantic_invalid_evidence_is_visible_fallback():
+async def test_invalid_evidence_never_becomes_a_customer_reply():
     llm = Responses(
         {"requests": [{"subject_id": "company", "topic": "social", "question": "Merhaba"}]},
-        {
-            "resolutions": [
-                {"request_index": 0, "status": "answered", "fact_ids": ["another_tenants_fact"]}
-            ]
-        },
+        {"text": "Başka şirket bilgisi", "evidence_ids": ["another_tenants_fact"]},
+        {"text": "Başka şirket bilgisi", "evidence_ids": ["another_tenants_fact"]},
+        {"text": "Başka şirket bilgisi", "evidence_ids": ["another_tenants_fact"]},
     )
     turn = await CompanyAgentRuntime(production_config(), llm).reply("Selamlar size")
-    assert turn.response_source == "fallback"
-    assert turn.used_fallback
-    assert turn.fallback_reason == "ValueError"
-    assert "another_tenants_fact" not in turn.reply
+    assert not turn.answer_verified and turn.reply == ""
+    assert turn.answer_origin == "verification_failed"
 
 
 async def test_model_outage_is_not_reported_as_model_success():
@@ -138,7 +140,8 @@ async def test_semantic_runtime_respects_custom_company_graph_identity():
                  "semantic_dialogue":{"unavailable_messages":{"other":{"tr":"Bu bilgi doğrulanmadı."}},"clarification_text":{"tr":"Sorunuzu açar mısınız?"}}},
         "facts":[{"id":"training","subject_id":"training_org","category":"capability","value":"Kurumsal eğitim","source":"owner","customer_visible":True,"customer_text":{"tr":"Kurumsal eğitim sunuyoruz."}}]})
     llm=Responses({"requests":[{"subject_id":"training_org","topic":"details","question":"Hizmetleriniz?"}]},
-                  {"resolutions":[{"request_index":0,"status":"answered","fact_ids":["training"]}]})
+                  {"text":"Kurumlara yönelik eğitim veriyoruz.", "evidence_ids":["training"]},
+                  {"supported":True})
     turn=await CompanyAgentRuntime(config,llm).reply("Hangi hizmetleri sunuyorsunuz?")
     assert turn.response_source == "model"
-    assert turn.reply == "Kurumsal eğitim sunuyoruz."
+    assert turn.reply == "Kurumlara yönelik eğitim veriyoruz." and turn.answer_verified

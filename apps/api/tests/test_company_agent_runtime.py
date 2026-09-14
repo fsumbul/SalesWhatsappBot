@@ -309,36 +309,37 @@ def test_reply_rejects_more_than_two_facts_even_without_schema_enforcement() -> 
         )
 
 
-class _ReplyingLocalLLM:
-    response_schema: dict[str, object] | None = None
-
-    async def complete(
-        self,
-        messages: list[LLMMessage],
-        *,
-        system: str = "",
-        max_tokens: int = 1024,
-        response_schema: dict[str, object] | None = None,
-    ) -> str:
-        assert messages[-1].content == "Fiyat nedir?"
-        assert '"facts":' in system
-        self.response_schema = response_schema
-        return '{"action":"reply","fact_ids":["premium-price"]}'
-
-
 class _FactSelectingLLM:
-    def __init__(self, *fact_ids: str) -> None:
+    """Scripted language model for transport/UI tests; live semantics have separate acceptance."""
+    def __init__(self, *fact_ids):
         self.fact_ids = fact_ids
+        self.response_schema = None
 
-    async def complete(
-        self,
-        messages: list[LLMMessage],
-        *,
-        system: str = "",
-        max_tokens: int = 1024,
-        response_schema: dict[str, object] | None = None,
-    ) -> str:
-        return json.dumps({"action": "reply", "fact_ids": self.fact_ids})
+    async def complete(self, messages, *, system="", max_tokens=1024, response_schema=None):
+        self.response_schema = response_schema
+        title = response_schema["title"]
+        if title == "LanguageCheck":
+            return json.dumps({"unsupported_claims": [], "supported": True})
+        if title == "RequestPlan":
+            candidates = [*_arti_kasnak_production_config().facts, *_config_with_three_visible_facts().facts]
+            fact = next((f for f in candidates if f.id in self.fact_ids), None)
+            social = fact and fact.category.value == "social"
+            subject = fact.subject_id if fact else "company"
+            return json.dumps({"requests": [{"subject_id": subject,
+                "topic": "social" if social else "price" if messages[-1].content == "Fiyat nedir?" else "details",
+                "question": messages[-1].content[:180]}]})
+        assert title == "LanguageReply"
+        data = json.loads(messages[0].content)
+        if any(f.startswith("conversation_") or f == "welcome" for f in self.fact_ids):
+            return json.dumps({"text": "Modelin bu konuşma için ürettiği yanıt."})
+        texts = {e["id"]: e.get("text", "") for e in data["evidence"]}
+        return json.dumps({"text": "\n".join(texts.get(f, "Unsupported") for f in self.fact_ids),
+                           "evidence_ids": self.fact_ids})
+
+
+class _ReplyingLocalLLM(_FactSelectingLLM):
+    def __init__(self):
+        super().__init__("premium-price")
 
 
 class _UnavailableLocalLLM:
@@ -398,10 +399,9 @@ async def test_runtime_returns_only_validated_local_llm_output() -> None:
     assert turn.reply == "Premium Plan aylık 999 TL'dir."
     assert turn.fact_ids == ("premium-price",)
     assert turn.used_fallback is False
-    assert llm.response_schema == build_customer_decision_schema(
-        _config(),
-        customer_message="Fiyat nedir?",
-    )
+    assert llm.response_schema["title"] == "LanguageCheck"
+    assert turn.answer_verified and turn.answer_origin == "model_generated"
+
 
 
 @pytest.mark.asyncio
@@ -426,17 +426,13 @@ async def test_product_catalog_reply_offers_progressive_product_buttons() -> Non
 
 
 @pytest.mark.asyncio
-async def test_welcome_reply_offers_three_guided_start_buttons() -> None:
+async def test_welcome_reply_is_model_generated() -> None:
     config = _arti_kasnak_production_config()
     turn = await CompanyAgentRuntime(config, _FactSelectingLLM("welcome")).reply("Merhaba")
 
-    assert turn.interaction is not None
-    assert turn.interaction.kind == RuntimeInteractionKind.REPLY_BUTTONS
-    assert [(option.id, option.title) for option in turn.interaction.options] == [
-        ("fact_request:all_product_groups", "Ürünleri göster"),
-        ("fact_request:company_overview", "Şirketi tanı"),
-        ("fact_request:quote_product_question", "Teklif al"),
-    ]
+    assert turn.answer_verified
+    assert turn.answer_origin == "model_generated"
+
 
 
 def test_broad_conversation_gets_semantic_candidates_without_random_technical_facts() -> None:
@@ -469,7 +465,7 @@ def test_broad_conversation_gets_semantic_candidates_without_random_technical_fa
     ],
 )
 @pytest.mark.asyncio
-async def test_semantic_conversation_behaviors_render_only_approved_text(
+async def test_social_conversation_is_model_generated_without_canned_facts(
     message: str,
     fact_id: str,
 ) -> None:
@@ -478,8 +474,9 @@ async def test_semantic_conversation_behaviors_render_only_approved_text(
     fact = next(item for item in config.facts if item.id == fact_id)
 
     assert turn.action == CustomerReplyAction.REPLY
-    assert turn.fact_ids == (fact_id,)
-    assert turn.reply == fact.customer_text["tr"]
+    assert turn.fact_ids == ()
+    assert turn.reply != fact.customer_text["tr"]
+    assert turn.answer_verified
     assert turn.used_fallback is False
 
 
@@ -808,40 +805,34 @@ async def test_runtime_rejects_a_globally_visible_fact_outside_query_candidates(
         _FactSelectingLLM("premium-support"),
     ).reply("Fiyat nedir?")
 
-    assert turn.action == CustomerReplyAction.HANDOFF
+    assert turn.action == CustomerReplyAction.REPLY
     assert turn.fact_ids == ()
     assert turn.used_fallback is True
 
 
 @pytest.mark.asyncio
-async def test_plain_product_menu_command_bypasses_unavailable_model() -> None:
+async def test_plain_product_menu_never_bypasses_unavailable_model() -> None:
     config = _arti_kasnak_production_config()
     turn = await CompanyAgentRuntime(config, _UnavailableLocalLLM()).reply(
         "ürünleri göster",
         history=[LLMMessage(role="assistant", content="eski ilgisiz konuşma")] * 12,
     )
 
-    assert turn.action == CustomerReplyAction.REPLY
-    assert turn.fact_ids == ("all_product_groups",)
-    assert turn.used_fallback is False
-    assert turn.interaction is not None
-    assert turn.interaction.kind == RuntimeInteractionKind.REPLY_BUTTONS
+    assert turn.reply == "" and turn.used_fallback
+    assert not turn.answer_verified
 
 
 @pytest.mark.asyncio
-async def test_marketing_info_reply_bypasses_unavailable_model() -> None:
+async def test_marketing_info_requires_model_generated_reply() -> None:
     config = _arti_kasnak_production_config()
     turn = await CompanyAgentRuntime(config, _UnavailableLocalLLM()).reply("Bilgi Al")
 
-    assert turn.action == CustomerReplyAction.REPLY
-    assert turn.fact_ids == ("all_product_groups",)
-    assert turn.used_fallback is False
-    assert turn.interaction is not None
-    assert turn.interaction.kind == RuntimeInteractionKind.REPLY_BUTTONS
+    assert turn.reply == "" and turn.used_fallback
+    assert not turn.answer_verified
 
 
 @pytest.mark.asyncio
-async def test_own_fact_button_bypasses_unavailable_model() -> None:
+async def test_own_fact_button_resolves_data_but_does_not_fabricate_outage_reply() -> None:
     config = _arti_kasnak_production_config()
     turn = await CompanyAgentRuntime(config, _UnavailableLocalLLM()).reply(
         "Ürünleri göster [fact_request:all_product_groups]"
@@ -865,7 +856,7 @@ def test_guided_fact_button_exposes_only_its_approved_fact() -> None:
 @pytest.mark.asyncio
 async def test_elevator_product_family_uses_a_four_item_list() -> None:
     config = _arti_kasnak_production_config()
-    turn = await CompanyAgentRuntime(config, _UnavailableLocalLLM()).reply(
+    turn = await CompanyAgentRuntime(config, _FactSelectingLLM("product_families")).reply(
         "Asansör türleri [product_detail:elevator_pulley]",
         history=[LLMMessage(role="assistant", content="eski ilgisiz konuşma")] * 12,
     )
@@ -960,7 +951,7 @@ async def test_company_profile_reply_offers_the_approved_website_cta() -> None:
 async def test_runtime_fails_closed_when_local_llm_is_unavailable() -> None:
     turn = await CompanyAgentRuntime(_config(), _UnavailableLocalLLM()).reply("Fiyat nedir?")
 
-    assert turn.action == CustomerReplyAction.HANDOFF
+    assert turn.action == CustomerReplyAction.REPLY
     assert turn.fact_ids == ()
     assert turn.used_fallback is True
 
@@ -971,11 +962,9 @@ async def test_handoff_uses_only_the_configured_customer_visible_contact() -> No
         "Bilinmeyen bir soru"
     )
 
-    assert turn.action == CustomerReplyAction.HANDOFF
-    assert turn.reply == (
-        "Bu bilgiyi otomatik olarak yanıtlayamıyorum. İletişim: support@example.test."
-    )
-    assert turn.fact_ids == ("support-contact",)
+    assert turn.action == CustomerReplyAction.REPLY
+    assert turn.reply == ""
+    assert turn.fact_ids == ()
     assert turn.used_fallback is True
 
 
@@ -987,11 +976,8 @@ async def test_handoff_uses_only_the_configured_customer_visible_contact() -> No
 async def test_runtime_fails_closed_for_any_model_boundary_error(llm: object) -> None:
     turn = await CompanyAgentRuntime(_config(), llm).reply("Fiyat nedir?")
 
-    assert turn.action == CustomerReplyAction.HANDOFF
-    assert (
-        turn.reply
-        == "Bu bilgiyi otomatik olarak yanıtlayamıyorum. Yetkili ekip incelemesi gerekiyor."
-    )
+    assert turn.action == CustomerReplyAction.REPLY
+    assert turn.reply == ""
     assert turn.fact_ids == ()
     assert turn.used_fallback is True
 

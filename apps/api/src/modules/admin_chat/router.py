@@ -12,9 +12,10 @@ from sqlalchemy import select, text
 from src.core.deps import ClaimsDep, DBSessionDep
 from src.core.rbac import RequireAgent
 from src.integrations.llm import LLMCompletionError, LLMNotConfiguredError
+from src.modules.conversation_language import respond
 from src.modules.selection.review import authorize
 
-from . import outbound, planner, service, task_runner, workflow_requests
+from . import language, outbound, planner, service, task_runner, workflow_requests
 from .models import AdminChatSession, AdminChatTurn
 
 router = APIRouter(prefix="/admin-chat", tags=["admin chat"])
@@ -117,6 +118,10 @@ async def messages(session_id: UUID, claims: ClaimsDep, db: DBSessionDep) -> Any
                     "response_source": row.response.get(
                         "response_source", row.audit.get("planner")
                     ),
+                    "answer_origin": row.response.get("answer_origin", "legacy"),
+                    "answer_verified": row.response.get("answer_verified", False),
+                    "result_scope": row.response.get("result_scope", []),
+                    "technical_error": row.response.get("technical_error"),
                     "created_at": row.created_at,
                     "sequence": row.sequence,
                 },
@@ -155,9 +160,13 @@ async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSe
             raise HTTPException(409, "client_message_id already used for another message")
         return previous.response
     current_views = await workflows.list_views(db, user, session)
+    history, memory = await language.recall(db, user, session)
+    session.context = {**session.context, "language": {"result_scope": memory.get("result_scope", [])}}
     try:
         intent, source = await planner.plan(
             payload.text,
+            history=history,
+            conversation_context={"result_scope": memory.get("result_scope", [])},
             workflow_context=[
                 {
                     **{k: v for k, v in w.items() if k in {"kind", "step", "status", "fields"}},
@@ -184,7 +193,9 @@ async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSe
     audit: Any
     try:
         intent, request_message = await workflow_requests.route_intent(db, user, session, intent)
-        if intent.tool == "task":
+        if intent.tool in {"reply", "clarify"}:
+            reply, cards, action, audit = "", [], None, {"tool": intent.tool}
+        elif intent.tool == "task":
             reply, cards, action, audit = await task_runner.execute(
                 db, claims, user, session, intent, payload.text, payload.client_message_id, current_views
             )
@@ -212,6 +223,24 @@ async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSe
         raise HTTPException(502, "Model araç seçimi doğrulanamadı; gönderim yapılmadı.") from exc
     if request_message:
         reply = request_message
+    updated_views = await workflows.list_views(db, user, session)
+    memory = language.observe(audit, updated_views, reply, action, memory)
+    answer_origin = "model_generated"
+    answer_verified = bool(audit.get("verified"))
+    if intent.tool != "task":
+        generated = await respond(
+            planner.get_llm_client(), payload.text, history=history,
+            evidence=memory["evidence"],
+            context={"channel": "admin", "result_scope": memory["result_scope"],
+                     "write_authority": "Only current explicitly requested and validated operations."},
+        )
+        reply = generated.text
+        answer_origin, answer_verified = generated.source, generated.verified
+        audit["language"] = {"calls": generated.calls, "verified": generated.verified,
+                            "reason": generated.reason, "evidence_ids": list(generated.evidence_ids)}
+    elif intent.tool == "task" and not answer_verified:
+        answer_origin = "verification_failed"
+    audit["language_memory"] = memory
     if intent.workflow_kind == "create_template" and intent.workflow_action == "complete":
         # Template submission releases/reacquires the lock around its single Meta POST.
         # A concurrent retry may have already recorded this turn from the durable receipt.
@@ -232,11 +261,15 @@ async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSe
         "turn_id": str(turn_id),
         "reply": reply,
         "response_source": source,
+        "answer_origin": answer_origin,
+        "answer_verified": answer_verified,
+        "technical_error": None if reply else "Yanıt üretilemedi. İşlem durumu varsa kartlarında gösteriliyor.",
+        "result_scope": memory["result_scope"],
         "cards": cards,
-        "workflows": await workflows.list_views(db, user, session),
+        "workflows": updated_views,
         "selected_request_id": session.context.get("selected_request_id"),
         "action_result": action,
-        "suggestions": service.suggestions(session.context, intent),
+        "suggestions": [] if intent.tool in {"reply", "clarify"} else service.suggestions(session.context, intent),
     }
     response["user_display_text"] = payload.text.removeprefix("action:")
     if payload.text.startswith("action:workspace:"):

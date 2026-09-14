@@ -677,8 +677,13 @@ async def _create_outreach_job(
 
 
 class _HandoffLLM:
-    async def complete(self, *_args: object, **_kwargs: object) -> str:
-        return '{"action":"handoff","fact_ids":[]}'
+    async def complete(self, *_args: object, **kwargs: object) -> str:
+        schema = kwargs["response_schema"]["title"]
+        if schema == "RequestPlan":
+            return json.dumps({"requests": [{"subject_id": "company", "topic": "contact", "question": "İnsan desteği"}]})
+        if schema == "LanguageReply":
+            return json.dumps({"text": "İnsan desteği isteğinizi iletiyorum.", "handoff_requested": True})
+        return json.dumps({"unsupported_claims": [], "supported": True, "human_requested": True})
 
 
 async def test_session_scope_clears_tenant_guc_on_the_same_pooled_connection(
@@ -1267,7 +1272,7 @@ async def test_stop_during_model_call_terminalizes_all_jobs_before_meta_post(
         async def complete(self, *_args: object, **_kwargs: object) -> str:
             model_started.set()
             await release_model.wait()
-            return '{"action":"handoff","fact_ids":[]}'
+            return await _HandoffLLM().complete(*_args, **_kwargs)
 
     monkeypatch.setattr(runtime_worker, "get_llm_client", lambda: _BlockingLLM())
     sends = 0
@@ -1462,3 +1467,24 @@ async def test_rapid_inbound_turns_are_ordered_and_coalesced_to_one_reply(
             AgentRuntimeJobStatus.HANDOFF.value,
         ]
         assert jobs[0].audit["coalesced_into_job_id"] == str(jobs[1].id)
+
+
+async def test_model_outage_records_error_without_message_or_automatic_handoff(runtime_database, monkeypatch):
+    from src.integrations.llm import NullLLMClient
+    tenant_id, _ = await _seed_runtime_tenant(with_agent=True)
+    job_id, conversation_id = await _create_inbound_job(tenant_id, 'wamid.natural-outage')
+    monkeypatch.setattr(runtime_worker, 'get_llm_client', lambda: NullLLMClient())
+    async def forbidden(*args, **kwargs):
+        pytest.fail('No generated reply means no Meta send')
+    monkeypatch.setattr(WhatsAppClient, 'send_text_once', forbidden)
+    result = await runtime_worker._process_runtime_job(tenant_id, job_id)
+    assert result == {'status': 'skipped'}
+    assert await runtime_worker._process_runtime_job(tenant_id, job_id) == result
+    async with session_scope(tenant_id) as db:
+        job = await db.get(AgentRuntimeJob, job_id)
+        conv = await db.get(Conversation, conversation_id)
+        assert job.audit['external_send_attempts'] == 0
+        assert job.audit['answer_origin'] == 'model_unavailable'
+        assert conv.assigned_to is None
+        assert await db.scalar(select(func.count()).select_from(Message).where(
+            Message.conversation_id == conversation_id, Message.direction == 'outbound')) == 0

@@ -59,6 +59,7 @@ class WorkflowView(BaseModel):
     record_actions: list[dict[str, str]] = Field(default_factory=list)
     page: int = 1
     has_more: bool = False
+    scope: dict[str, Any] | None = None
     changes: list[dict[str, str]] = Field(default_factory=list)
     output: dict[str, Any] = Field(default_factory=dict)
     result: dict[str, str]

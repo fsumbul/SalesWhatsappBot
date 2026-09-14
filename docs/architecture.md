@@ -1,3 +1,8 @@
+> 15 Eylül 2026 konuşma güncellemesi: Ashira ve WhatsApp runtime artık model tarafından
+> yazılan cevapları, araç kanıtı ve ayrı üretim/doğrulama metadatasıyla kullanır.
+> Güncel sözleşme ve eski fallback davranışını değiştiren ayrıntılar:
+> [Doğal konuşma](./natural-conversation-2026-09-15.md). Aşağıdaki E2/E3 notları tarihsel aşamaları anlatır.
+
 # Mimari — LeadPulse
 
 ## Genel Bakış

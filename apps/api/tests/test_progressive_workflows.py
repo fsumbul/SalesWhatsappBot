@@ -311,17 +311,12 @@ async def test_workflow_model_outage_and_invalid_import_keep_input(client, monke
 
 
 async def test_progressive_test_result_and_stale_version(client, monkeypatch):
-    import json
 
     from src.modules.agents import workspace
+    from tests.natural_fakes import ServiceLanguageModel
     from tests.test_chat_workspace import agent
     from tests.test_company_workspace import config
-
-    class Model:
-        async def complete(self, *args, **kwargs):
-            return json.dumps({"action": "reply", "fact_ids": ["service"]})
-
-    monkeypatch.setattr(workspace, "get_llm_client", lambda: Model())
+    monkeypatch.setattr(workspace, "get_llm_client", lambda: ServiceLanguageModel())
     headers, _ = await account(client, UserRole.TENANT_OWNER)
     aid, version = await agent(client, headers)
     proposal = (

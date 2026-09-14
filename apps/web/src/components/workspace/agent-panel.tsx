@@ -689,7 +689,7 @@ export function Transcript({
       )}
       {messages.map((m, i) => (
         <article key={i} className={m.role === "user" ? styles.userMessage : styles.botMessage}>
-          <small>{m.role === "user" ? "Siz" : "Asistan"}</small>
+          <small>{m.role === "user" ? "Siz" : m.answer_verified === false && !m.content ? "Test durumu" : "Asistan"}</small>
           <p>{m.content}</p>
           {(m.action === "handoff" || m.handoff_requested) && (
             <small>İnsan devri istendi · Testte gerçek devir kaydı oluşturulmaz</small>
@@ -719,8 +719,12 @@ export function Transcript({
           )}
           {m.response_source && (
             <small className={m.response_source === "fallback" ? styles.warning : ""}>
-              {m.response_source === "fallback"
-                ? "Model yanıtı alınamadı veya doğrulanamadı · Güvenli yedek yanıt"
+              {m.answer_origin === "model_generated"
+                ? `Modelden üretildi: ${m.model}`
+                : m.answer_origin === "model_unavailable" || m.answer_origin === "verification_failed"
+                  ? "Model yanıtı üretilemedi veya doğrulanamadı · Mesaj gönderilmedi"
+                : m.response_source === "fallback"
+                  ? "Eski sürüm yedek yanıtı"
                 : m.response_source === "guided"
                   ? "Menü eylemi"
                   : `Model: ${m.model}`}

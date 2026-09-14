@@ -15,6 +15,7 @@ from src.modules.auth.models import Tenant, User
 from src.modules.discovery.models import Lead, LeadContact
 
 from . import workflow_inbox
+from .data_scope import scope
 from .workflow_requests import STATUS as REQUEST_STATUS
 from .workflow_schema import WorkflowField
 
@@ -74,6 +75,8 @@ def controls(row: Any) -> list[WorkflowField]:
     keys = set() if row.fields.get("category") == "request_details" else {"q"}
     if row.fields.get("category") in {"requests", "quotes"}:
         keys.update({"status", "today"})
+    if row.fields.get("category") == "inbox":
+        keys.add("today")
     if row.fields.get("category") in {"knowledge", "versions"}:
         keys.add("agent")
     return [
@@ -189,7 +192,7 @@ async def refresh(db: Any, user: Any, row: Any) -> None:
                 }
             )
     elif category == "inbox":
-        total, records = await workflow_inbox.listing(db, user, pattern, page)
+        total, records = await workflow_inbox.listing(db, user, pattern, page, today=row.fields.get("today") == "true")
     elif category in {"knowledge", "versions"}:
         agents = await AgentService(db).list_agents(user.tenant_id)
         row.state = {**row.state, "agent_choices": {a.slug: a.name for a in agents}}
@@ -394,6 +397,9 @@ async def refresh(db: Any, user: Any, row: Any) -> None:
         "total": total,
         "page": page,
         "has_more": page * 20 < total,
+        "scope": scope(user, category, query=query, today=row.fields.get("today") == "true",
+                       total=total, page=page, has_more=page * 20 < total,
+                       status=row.fields.get("status") or None),
         "output": {
             "summary": f"{CATEGORIES[category]} · {total} kayıt"
             if total

@@ -1,0 +1,72 @@
+{
+  "model": "qwen3.8-27b",
+  "date": "2026-09-14T21:22:32.588135+00:00",
+  "enable_thinking": false,
+  "admin": [
+    {
+      "question": "Bugün gelen müşteri mesajlarını getir.",
+      "seconds": 41.78,
+      "status": 200,
+      "reply": "Bugün (2026-09-15) gelen 2 müşteri mesajı bulundu: Ece (+15550102031) ve Deniz (+15550102030) müşterileri 'Döküm kasnak kataloğunu istiyorum.' mesajını gönderdi.",
+      "answer_origin": "model_generated",
+      "answer_verified": true,
+      "result_scope": [
+        {
+          "record_type": "messages",
+          "audience": "company",
+          "subject": null,
+          "query": "",
+          "timezone": "Europe/Istanbul",
+          "date_mode": "today",
+          "local_today": "2026-09-15",
+          "date_start": "2026-09-15T00:00:00+03:00",
+          "date_end_exclusive": "2026-09-16T00:00:00+03:00",
+          "date_field": "message_created_at",
+          "direction": "inbound",
+          "total": 2,
+          "page": 1,
+          "has_more": false,
+          "complete": true,
+          "contact_count": 2,
+          "conversation_count": 2
+        }
+      ],
+      "technical_error": null
+    },
+    {
+      "question": "bu veriler kimlre ait? sadece bir kişniin mi yoksaa herkesin mi gün içindei",
+      "seconds": 55.29,
+      "status": 200,
+      "reply": "Bu veriler, şirketin tüm müşteri hesaplarına ait bugünkü (2026-09-15) gelen mesajları kapsamaktadır. Sadece bir kişiye değil, gün içinde gelen tüm müşteri mesajlarını içermektedir. Önceki sorguda belirtildiği gibi, bu kapsamda Ece ve Deniz olmak üzere toplam 2 farklı müşteriden gelen mesajlar listelenmiştir.",
+      "answer_origin": "model_generated",
+      "answer_verified": true,
+      "result_scope": [
+        {
+          "page": 1,
+          "query": "",
+          "total": 2,
+          "subject": null,
+          "audience": "company",
+          "complete": true,
+          "has_more": false,
+          "timezone": "Europe/Istanbul",
+          "date_mode": "today",
+          "direction": "inbound",
+          "date_field": "message_created_at",
+          "date_start": "2026-09-15T00:00:00+03:00",
+          "local_today": "2026-09-15",
+          "record_type": "messages",
+          "contact_count": 2,
+          "conversation_count": 2,
+          "date_end_exclusive": "2026-09-16T00:00:00+03:00"
+        }
+      ],
+      "technical_error": null
+    }
+  ],
+  "customer": [],
+  "safety": {},
+  "failures": [],
+  "evaluation_status": "historical_not_accepted",
+  "review_note": "Partial development snapshot before all direct replies used the common language writer."
+}

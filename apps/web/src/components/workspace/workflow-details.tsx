@@ -80,15 +80,16 @@ export function WorkflowOutput({ output }: { output: Record<string, unknown> }) 
           </details>
         </section>
       )}
-      {text("reply") && (
+      {(text("reply") || text("answer_origin")) && (
         <>
-          <h4>Müşteri testi yanıtı</h4>
-          <p>{text("reply")}</p>
+          <h4>{text("reply") ? "Müşteri testi yanıtı" : "Müşteri testi durumu"}</h4>
+          <p role={text("reply") ? undefined : "status"}>{text("reply") || "Model yanıtı üretilemedi veya doğrulanamadı."}</p>
           <dl>
             <div>
               <dt>Yanıt kaynağı</dt>
               <dd>
-                {{ model: "Model", guided: "Menü", fallback: "Model hatasında güvenli yanıt" }[
+                {{ model_generated: "Modelden üretildi", model_unavailable: "Model kullanılamıyor", verification_failed: "Doğrulama başarısız" }[text("answer_origin")] ||
+                { model: "Model", guided: "Menü", fallback: "Eski sürüm yedek yanıtı" }[
                   text("response_source")
                 ] ||
                   text("response_source") ||

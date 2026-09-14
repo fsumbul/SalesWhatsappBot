@@ -36,18 +36,16 @@ def enabled(config: Any, conversation_id: Any) -> bool:
     return config.selection_flow is not None
 
 
-def starts(config: Any, body: str) -> bool:
+def starts(config: Any, body: str, *, legacy: bool = False) -> bool:
     definition = config.selection_flow
     n = normalize(body).strip(" !.,:;?")
     return bool(
         definition
         and (
             intake_mode(body) in {"chat", "form"}
-            or n in definition.start_phrases + definition.greeting_phrases
-            or (
-                config.whatsapp_presentation
-                and n in config.whatsapp_presentation.intake_start_phrases
-            )
+            or (legacy and n in definition.start_phrases + definition.greeting_phrases)
+            or (legacy and config.whatsapp_presentation
+                and n in config.whatsapp_presentation.intake_start_phrases)
             or "fact_request:quote_product_question" in n
         )
     )
@@ -175,7 +173,7 @@ async def download_media(raw: dict[str, Any]) -> tuple[str, str, bytes]:
 
 
 async def handle(
-    session: Any, config: Any, conversation: Any, inbound: Any
+    session: Any, config: Any, conversation: Any, inbound: Any, *, start_requested: bool = False,
 ) -> tuple[RuntimeTurn | None, dict[str, Any] | None, SelectionRequest | None, bool]:
     """Handled turn, side-question resume prompt, request, newly confirmed flag."""
     prior = await session.scalar(
@@ -197,6 +195,8 @@ async def handle(
         presentation and presentation.offer_intake_choice and presentation.intake_form_url
     )
     entry = offer_choice and (
+        start_requested
+        or
         mode is not None
         or (
             starts(config, inbound.body or "")
@@ -236,7 +236,7 @@ async def handle(
                 None,
                 False,
             )
-        if not definition_changed and not starts(config, inbound.body or ""):
+        if not definition_changed and not start_requested and not starts(config, inbound.body or ""):
             return None, None, None, False
         previous = await session.scalar(
             select(SelectionRequest)
@@ -298,7 +298,14 @@ async def handle(
                 )
             confirmed = False
         else:
-            reduced, confirmed = reduce(state, inbound.body or "")
+            if "sel:" not in (inbound.body or ""):
+                from src.integrations.llm import get_llm_client
+
+                from .language import apply_language
+
+                reduced, confirmed = await apply_language(get_llm_client(), state, inbound.body or "")
+            else:
+                reduced, confirmed = reduce(state, inbound.body or "")
             if reduced is None:
                 return None, prompt(state), row, False
             response = reduced
@@ -377,6 +384,50 @@ async def handle(
     return as_turn(response), None, row, confirmed
 
 
+async def natural_turn(config: Any, llm: Any, message: str, turn: Any, state: State, history: Any) -> RuntimeTurn:
+    from dataclasses import replace
+
+    from src.modules.agents.customer_language import reply_naturally
+
+    from .engine import summary
+
+    data = {"status": state.status, "answers": summary(state),
+            "ready_for_confirmation": state.step_index >= len(state.definition.steps),
+            "next_question": state.definition.steps[state.step_index].question
+                             if state.step_index < len(state.definition.steps) and state.status == "draft" else None,
+            "result": turn.reply if turn else "No change; answer the customer's question.",
+            "rule": "Recorded technical requirements are not a price or suitability approval."}
+    result = await reply_naturally(config, llm, message, history=history, context_fact_ids=(), intake=data)
+    # Only the canonical reducer supplies options/tokens; no model-proposed UI.
+    return replace(result, interaction=turn.interaction if turn else None)
+
+
+async def preview_natural(config: Any, saved: Any, body: str, llm: Any, history: Any,
+                          *, start_requested: bool = False) -> tuple[Any, Any, Any]:
+    from uuid import uuid4
+
+    from .language import apply_language
+
+    if config.selection_flow is None:
+        return None, saved, None
+    if not saved or saved["status"] != "draft":
+        if not start_requested and not starts(config, body):
+            return None, saved, None
+        state = State(uuid4().hex, config.selection_flow, {})
+        response = prompt(state)
+    else:
+        state = State(saved["id"], config.selection_flow, dict(saved["answers"]),
+                      saved["step_index"], saved["revision"], saved["status"])
+        if "sel:" in body:
+            response, _ = reduce(state, body)
+        else:
+            response, _ = await apply_language(llm, state, body)
+    saved = {"id": state.id, "answers": state.answers, "step_index": state.step_index,
+             "revision": state.revision, "status": state.status}
+    turn = await natural_turn(config, llm, body, as_turn(response) if response else None, state, history)
+    return turn, saved, None
+
+
 def preview_selection(
     config: Any, saved: dict[str, Any] | None, body: str
 ) -> tuple[RuntimeTurn | None, dict[str, Any] | None, dict[str, Any] | None]:
@@ -403,7 +454,7 @@ def preview_selection(
         else None
     )
     if state is None or state.status != "draft":
-        if not starts(config, body):
+        if not starts(config, body, legacy=True):
             return None, saved, None
         state = State(uuid4().hex, config.selection_flow, {})
         response = prompt(state)

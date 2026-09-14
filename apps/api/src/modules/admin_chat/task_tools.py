@@ -30,6 +30,11 @@ async def read(
     step: TaskStep,
     references: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
+    if step.tool == "messages":
+        workflow_records.authorize(user, "inbox")
+        return await workflow_inbox.read_messages(
+            db, user, query=step.query, today=step.today, direction=step.direction, page=step.page,
+        )
     if step.tool == "search":
         if not step.category:
             raise ValueError("Search requires a category")
@@ -85,13 +90,15 @@ async def read(
                 },
                 "output": {"summary": await workflow_inbox.delivery_summary(db, user, UUID(cid))},
             }
-        row = draft("conversation", {"conversation": cid, "page": str(step.page)})
+        row = draft("conversation", {"conversation": cid, "page": str(step.page),
+                                     "today": "true" if step.today else "false",
+                                     "direction": step.direction or ""})
         await workflow_inbox.refresh(db, user, row)
         return {**row.state, "category": "messages", "fields": row.fields}
     if step.tool in {"analytics", "capacity", "templates"}:
         # Do not let legacy read tools clear the real session's workflow context.
         shadow = SimpleNamespace(id=session.id, context=dict(session.context))
-        reply, cards, _, _ = await service.execute(
+        reply, cards, _, audit = await service.execute(
             db,
             claims,
             user,
@@ -100,7 +107,8 @@ async def read(
                 tool=step.tool, target=step.query or None, status=step.status, today=step.today
             ),
         )
-        return {"output": {"summary": reply}, "cards": cards}
+        return {"output": {"summary": reply, **audit.get("result_data", {})}, "cards": cards,
+                **({"scope": audit["result_scope"]} if audit.get("result_scope") else {})}
     raise ValueError("Unsupported read capability")
 
 

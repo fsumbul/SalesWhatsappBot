@@ -18,6 +18,7 @@ from src.modules.selection.models import SelectionFile, SelectionRequest
 from src.modules.selection.review import ROLES, ReviewUpdate, apply_review
 
 from . import outbound, workspace_tools
+from .data_scope import scope as result_scope
 from .planner import Intent
 
 INITIAL_SUGGESTIONS = [
@@ -195,9 +196,7 @@ async def execute(db: Any, claims: Any, user: Any, session: Any, intent: Any) ->
         return reply, outbound_cards, None, audit
 
     if intent.tool == "clarify":
-        return result(
-            "WhatsApp tanıtımı hazırlayabilir, tek numaraya veya numara listesine gönderebilir, Meta limitini gösterebilirim. Talepleri analiz edebilir, teklif taleplerini, bekleyen işleri, talep özeti, eksikler, dosyalar, konuşma ve mesaj teslimatını inceleyebilirim. Talep numarasını seçtikten sonra durum, sorumlu veya iç not güncelleyebilirsiniz. Şirket bilgilerini değiştirebilir, asistan oluşturabilir, müşteri testi yapabilir ve sürüm yayınlayabilirsiniz. Ekip, şirket yönetimi, JSON/CSV aktarımı ve gelen kutusu da sohbet içinde açılır. Yapmak istediğiniz işi yazın."
-        )
+        return result("")  # The common language layer asks a contextual question.
     if intent.tool == "analytics":
         # Aggregate every matching row in SQL; the 50-card display limit must not truncate totals.
         filters = [SelectionRequest.tenant_id == user.tenant_id]
@@ -235,6 +234,9 @@ async def execute(db: Any, claims: Any, user: Any, session: Any, intent: Any) ->
         )
         context = {}
         total = sum(counts.values())
+        audit["result_scope"] = result_scope(user, "requests", query=intent.target or "",
+                                      today=intent.today, total=total, status=intent.status)
+        audit["result_data"] = {"counts": counts, "total": total, "unassigned": unassigned}
         if not total:
             return result(
                 "Bu kapsamda henüz kayıtlı talep yok. Müşterilerden gelen talepler burada analiz edilecek."

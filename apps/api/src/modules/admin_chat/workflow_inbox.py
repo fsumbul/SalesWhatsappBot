@@ -3,6 +3,7 @@
 
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select, text
@@ -14,6 +15,7 @@ from src.modules.outreach import inbox_control
 from src.modules.outreach.models import Conversation, Message, MessageDirection
 from src.modules.outreach.service import ConversationService
 
+from .data_scope import day_window, scope
 from .models import AdminChatSession
 from .workflow_schema import WorkflowField
 from .workspace_tools import TurnTransaction
@@ -23,6 +25,8 @@ CONTROLS = {
     "conversation": [
         WorkflowField(key="conversation", label="Konuşma", required=True),
         WorkflowField(key="page", label="Sayfa"),
+        WorkflowField(key="today", label="Bugün"),
+        WorkflowField(key="direction", label="Mesaj yönü"),
     ],
     "reply": [
         WorkflowField(key="conversation", label="Konuşma", required=True),
@@ -61,7 +65,7 @@ def controls(row: Any) -> list[WorkflowField]:
     return [control for control in CONTROLS[row.kind] if control.key == "content"]
 
 
-async def listing(db: Any, user: Any, pattern: str, page: int) -> tuple[int, list[dict[str, Any]]]:
+async def listing(db: Any, user: Any, pattern: str, page: int, *, today: bool = False) -> tuple[int, list[dict[str, Any]]]:
     stmt = (
         select(Conversation, Lead, LeadContact)
         .join(Lead, Lead.id == Conversation.lead_id)
@@ -77,6 +81,12 @@ async def listing(db: Any, user: Any, pattern: str, page: int) -> tuple[int, lis
             ),
         )
     )
+    if today:
+        start, end = day_window(user)
+        stmt = stmt.where(select(Message.id).where(
+            Message.tenant_id == user.tenant_id, Message.conversation_id == Conversation.id,
+            Message.created_at >= start, Message.created_at < end,
+        ).exists())
     total = int(await db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
     rows = await db.execute(
         stmt.order_by(Conversation.last_message_at.desc().nulls_last(), Conversation.id)
@@ -94,6 +104,72 @@ async def listing(db: Any, user: Any, pattern: str, page: int) -> tuple[int, lis
         for conv, lead, contact in rows
     ]
     return total, records
+
+
+async def read_messages(
+    db: Any, user: Any, *, query: str = "", conversation_id: str | None = None,
+    today: bool = False, direction: str | None = None, page: int = 1,
+) -> dict[str, Any]:
+    """Read a bounded page across conversations, filtering actual message timestamps."""
+    from .service import search_text
+
+    if direction not in {None, "inbound", "outbound"}:
+        raise HTTPException(422, "Geçerli mesaj yönü seçin.")
+    query = search_text(query)
+    pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    stmt = select(Message, Conversation, Lead, LeadContact).join(
+        Conversation, Conversation.id == Message.conversation_id,
+    ).join(Lead, Lead.id == Conversation.lead_id).join(
+        LeadContact, LeadContact.id == Conversation.contact_id,
+    ).where(
+        Message.tenant_id == user.tenant_id, Conversation.tenant_id == user.tenant_id,
+        Lead.tenant_id == user.tenant_id, LeadContact.tenant_id == user.tenant_id,
+    )
+    subject = None
+    if conversation_id:
+        conv = await own(db, user, conversation_id)
+        contact = await db.get(LeadContact, conv.contact_id)
+        lead = await db.get(Lead, conv.lead_id)
+        subject = {"conversation_id": str(conv.id), "contact": contact.normalized_value,
+                   "name": lead.person_name or lead.company_name}
+        stmt = stmt.where(Message.conversation_id == conv.id)
+    if query:
+        stmt = stmt.where(or_(Lead.person_name.ilike(pattern, escape="\\"),
+                              Lead.company_name.ilike(pattern, escape="\\"),
+                              LeadContact.normalized_value.ilike(pattern, escape="\\")))
+    if today:
+        start, end = day_window(user)
+        stmt = stmt.where(Message.created_at >= start, Message.created_at < end)
+    if direction:
+        stmt = stmt.where(Message.direction == direction)
+    population = stmt.with_only_columns(
+        Message.id.label("message_id"), Conversation.id.label("conversation_id"),
+        LeadContact.id.label("contact_id"),
+    ).subquery()
+    total, contact_count, conversation_count = (await db.execute(select(
+        func.count(), func.count(func.distinct(population.c.contact_id)),
+        func.count(func.distinct(population.c.conversation_id)),
+    ).select_from(population))).one()
+    records = []
+    for message, conv, lead, contact in await db.execute(
+        stmt.order_by(Message.created_at.desc(), Message.id.desc()).offset((page - 1) * 20).limit(20)
+    ):
+        records.append({
+            "id": str(message.id), "conversation": str(conv.id),
+            "title": lead.person_name or lead.company_name or contact.normalized_value,
+            "subtitle": contact.normalized_value,
+            "details": {"Mesaj": message.body or "Medya mesajı",
+                        "Zaman": message.created_at.astimezone(ZoneInfo(user.timezone or "Europe/Istanbul")).isoformat(),
+                        "Yön": str(message.direction)},
+            "actions": [],
+        })
+    return {
+        "category": "messages", "records": records, "total": total,
+        "page": page, "has_more": page * 20 < total,
+        "scope": scope(user, "messages", query=query, today=today, direction=direction,
+                       total=total, page=page, has_more=page * 20 < total, subject=subject,
+                       contact_count=contact_count, conversation_count=conversation_count),
+    }
 
 
 async def refresh(db: Any, user: Any, row: Any) -> None:
@@ -120,6 +196,15 @@ async def refresh(db: Any, user: Any, row: Any) -> None:
     stmt = select(Message).where(
         Message.tenant_id == user.tenant_id, Message.conversation_id == conv.id
     )
+    today = row.fields.get("today") == "true"
+    direction = row.fields.get("direction") or None
+    if direction not in {None, "inbound", "outbound"}:
+        raise HTTPException(422, "Geçerli mesaj yönü seçin.")
+    if today:
+        start, end = day_window(user)
+        stmt = stmt.where(Message.created_at >= start, Message.created_at < end)
+    if direction:
+        stmt = stmt.where(Message.direction == direction)
     total = int(await db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
     messages = list(
         (
@@ -136,7 +221,7 @@ async def refresh(db: Any, user: Any, row: Any) -> None:
             "title": "Müşteri"
             if message.direction == MessageDirection.INBOUND
             else "Asistan / ekip",
-            "subtitle": message.created_at.isoformat(),
+            "subtitle": message.created_at.astimezone(ZoneInfo(user.timezone or "Europe/Istanbul")).isoformat(),
             "details": {
                 "Mesaj": message.body or "Medya mesajı",
                 "Durum": DELIVERY.get(
@@ -161,6 +246,12 @@ async def refresh(db: Any, user: Any, row: Any) -> None:
         "record_actions": actions,
         "page": page,
         "has_more": page * 20 < total,
+        "total": total,
+        "scope": scope(user, "messages", today=today, direction=direction, total=total,
+                       page=page, has_more=page * 20 < total,
+                       subject={"conversation_id": str(conv.id),
+                                "contact": contact.normalized_value if contact else "",
+                                "name": lead.person_name if lead else ""}),
     }
     row.status, row.step = "awaiting_input", "details"
 
