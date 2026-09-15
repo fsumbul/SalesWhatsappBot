@@ -114,8 +114,20 @@ export default function OpsChat({
           ),
         )),
   );
+  const hasPendingImport = workflows.some((view) => {
+    const imported = view.output?.campaign_import;
+    const status =
+      imported && typeof imported === "object" && "status" in imported
+        ? (imported as { status?: unknown }).status
+        : undefined;
+    return (
+      view.kind === "outreach" &&
+      (["queued", "parsing", "awaiting_mapping"].includes(String(status)) ||
+        (Boolean(imported) && ["preparing", "queueing"].includes(String(view.result.outcome))))
+    );
+  });
   useEffect(() => {
-    if (!sid || !hasPendingDelivery) return;
+    if (!sid || (!hasPendingDelivery && !hasPendingImport)) return;
     let disposed = false;
     let fetching = false;
     const timer = window.setInterval(async () => {
@@ -135,12 +147,12 @@ export default function OpsChat({
       } finally {
         fetching = false;
       }
-    }, 5000);
+    }, hasPendingImport ? 2000 : 5000);
     return () => {
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [sid, hasPendingDelivery]);
+  }, [sid, hasPendingDelivery, hasPendingImport]);
   useEffect(() => {
     const viewport = window.visualViewport;
     const resize = () =>

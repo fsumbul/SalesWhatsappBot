@@ -1,6 +1,7 @@
 """FastAPI dependencies shared across modules."""
 
 from collections.abc import AsyncIterator
+from ipaddress import ip_address, ip_network
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -9,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .config import get_settings
 from .db import get_sessionmaker, reset_tenant_context, set_tenant_context
 from .errors import UnauthorizedError
 from .security import decode_token
@@ -85,10 +87,41 @@ async def get_current_claims(
 ClaimsDep = Annotated[dict[str, Any], Depends(get_current_claims)]
 
 
-def get_client_ip(x_forwarded_for: Annotated[str | None, Header()] = None) -> str:
-    if x_forwarded_for:
-        return x_forwarded_for.split(",")[0].strip()
-    return "unknown"
+def get_client_ip(request: Request, x_forwarded_for: Annotated[str | None, Header()] = None) -> str:
+    """Use XFF only through trusted proxy hops, never from the public client.
+
+    Proxies append their address from left to right.  Once the immediate peer is
+    trusted, walk the supplied chain from the right and discard every configured
+    proxy hop.  The first remaining address is the verified client boundary.
+    This avoids accepting a spoofed left-most value when an ingress appends to,
+    rather than replaces, a client-supplied XFF header.
+    """
+
+    peer = request.client.host if request.client else "unknown"
+    try:
+        peer_address = ip_address(peer)
+        trusted = any(
+            peer_address in ip_network(cidr, strict=False)
+            for cidr in get_settings().trusted_proxy_cidrs_list
+        )
+    except ValueError:
+        trusted = False
+    if trusted and x_forwarded_for:
+        # Reject the complete header if any hop is malformed rather than
+        # recording arbitrary text in auth audit rows / Redis keys.
+        try:
+            hops = [ip_address(part.strip()) for part in x_forwarded_for.split(",")]
+        except ValueError:
+            return peer
+        if not hops:
+            return peer
+        trusted_networks = [
+            ip_network(cidr, strict=False) for cidr in get_settings().trusted_proxy_cidrs_list
+        ]
+        for hop in reversed(hops):
+            if not any(hop in network for network in trusted_networks):
+                return str(hop)
+    return peer
 
 
 ClientIPDep = Annotated[str, Depends(get_client_ip)]

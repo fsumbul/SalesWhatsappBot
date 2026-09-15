@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -15,6 +16,7 @@ from src.modules.agents.models import Agent
 from src.modules.auth.models import Tenant, User, UserRole
 from src.modules.compliance.models import OptOut, OptOutSource
 from src.modules.outreach.models import SenderProfile
+from src.workers import chat_outbound as outbound_worker
 from src.workers.chat_outbound import dispatch, send_one
 from tests.test_company_workspace import account
 from tests.test_company_workspace import client as client_fixture
@@ -226,6 +228,55 @@ async def test_worker_concurrent_claim_exactly_once_and_receipts(client, monkeyp
     assert len(sent) == 1
 
 
+async def test_batch_dispatch_uses_bounded_concurrency_and_one_catalog_per_wave(monkeypatch):
+    """The 10k path must not call Meta's catalog endpoint for every phone."""
+
+    tenant_id, batch_id = uuid4(), uuid4()
+    recipient_ids = [uuid4() for _ in range(7)]
+    snapshots: list[list[dict[str, str]]] = []
+    received_snapshots: list[list[dict[str, str]]] = []
+    running = maximum = 0
+
+    async def snapshot(_tenant_id, _batch_id):
+        catalog = [{"wave": str(len(snapshots))}]
+        snapshots.append(catalog)
+        return catalog
+
+    async def send(_tenant_id, _recipient_id, *, template_snapshot):
+        nonlocal running, maximum
+        received_snapshots.append(template_snapshot)
+        running += 1
+        maximum = max(maximum, running)
+        await asyncio.sleep(0)
+        running -= 1
+
+    monkeypatch.setattr(outbound_worker, "TEMPLATE_SNAPSHOT_WAVE_SIZE", 3)
+    monkeypatch.setattr(outbound_worker, "DISPATCH_CONCURRENCY", 2)
+    monkeypatch.setattr(outbound_worker, "_template_snapshot", snapshot)
+    monkeypatch.setattr(outbound_worker, "send_one", send)
+
+    await outbound_worker._dispatch_batch(tenant_id, batch_id, recipient_ids)
+
+    assert len(snapshots) == 3
+    assert len(received_snapshots) == len(recipient_ids)
+    assert maximum == 2
+    assert received_snapshots[:3] == [snapshots[0]] * 3
+    assert received_snapshots[3:6] == [snapshots[1]] * 3
+    assert received_snapshots[6:] == [snapshots[2]]
+
+
+def test_meta_http_rejection_is_terminal_but_transport_failure_is_ambiguous():
+    request = httpx.Request("POST", "https://graph.facebook.com/messages")
+    response = httpx.Response(400, request=request)
+    status, reason = outbound_worker._post_failure_state(
+        httpx.HTTPStatusError("Bad Request", request=request, response=response)
+    )
+
+    assert status == "failed"
+    assert "HTTP 400" in reason
+    assert outbound_worker._post_failure_state(TimeoutError())[0] == "ambiguous"
+
+
 async def test_ambiguous_send_and_crashed_sending_are_never_replayed(client, monkeypatch):
     headers, tid, uid, sender_id, sid = await setup(client, monkeypatch)
     bid = await prepare(client, headers, sid)
@@ -282,6 +333,31 @@ async def test_optout_after_queue_blocks_before_transport(client, monkeypatch):
     await send_one(tid, rid)
     async with session_scope(tid) as db:
         assert (await db.get(OutboundRecipient, rid)).status == "blocked"
+
+
+async def test_worker_rechecks_local_capacity_before_meta_post(client, monkeypatch):
+    headers, tid, uid, sender_id, sid = await setup(client, monkeypatch)
+    bid = await prepare(client, headers, sid)
+    assert (await queue(client, headers, bid)).status_code == 200
+    async with session_scope(tid) as db:
+        sender = await db.get(SenderProfile, sender_id)
+        # The batch reserved two recipients while the cap was 100. Simulate
+        # an operator or provider policy lowering capacity before dispatch.
+        sender.daily_cap = 1
+        rid = await db.scalar(
+            select(OutboundRecipient.id).where(OutboundRecipient.batch_id == UUID(bid))
+        )
+        await db.commit()
+
+    async def never(*args, **kwargs):
+        raise AssertionError("Capacity recheck must stop the Meta POST")
+
+    monkeypatch.setattr("src.integrations.whatsapp.WhatsAppClient.send_template_once", never)
+    await send_one(tid, rid)
+    async with session_scope(tid) as db:
+        row = await db.get(OutboundRecipient, rid)
+        assert row.status == "blocked"
+        assert "kapasitesi" in (row.reason or "")
 
 
 async def test_concurrent_batches_cannot_overbook_local_capacity(client, monkeypatch):
@@ -420,7 +496,8 @@ async def test_legacy_queue_never_sends_pending_jobs(client, monkeypatch):
     assert not calls
 
 
-async def test_explicit_consent_cannot_override_blacklisted_customer(client, monkeypatch):
+@pytest.mark.parametrize("status_name", ["BLACKLISTED", "BLOCKED_BY_COMPLIANCE"])
+async def test_explicit_consent_cannot_override_hard_block(client, monkeypatch, status_name):
     from src.modules.discovery.models import ContactType, Lead, LeadContact, LeadStatus
 
     headers, tid, uid, sender_id, sid = await setup(client, monkeypatch)
@@ -432,7 +509,7 @@ async def test_explicit_consent_cannot_override_blacklisted_customer(client, mon
             normalized_name="blocked",
             source="test",
             discovered_at=datetime.now(UTC),
-            status=LeadStatus.BLACKLISTED,
+            status=getattr(LeadStatus, status_name),
         )
         db.add(lead)
         await db.flush()
@@ -451,3 +528,46 @@ async def test_explicit_consent_cannot_override_blacklisted_customer(client, mon
     recipient = next(r for r in response.json()["recipients"] if r["phone"] == "+15550102030")
     assert recipient["status"] == "blocked"
     assert "engelli" in recipient["reason"]
+
+
+async def test_persisted_compliance_block_is_rechecked_before_queue(client, monkeypatch):
+    from src.modules.compliance.models import ComplianceCheck, ComplianceResult
+    from src.modules.discovery.models import ContactType, Lead, LeadContact
+
+    headers, tid, uid, sender_id, sid = await setup(client, monkeypatch)
+    bid = await prepare(client, headers, sid)
+    async with session_scope(tid) as db:
+        lead = Lead(
+            tenant_id=tid,
+            company_name="Compliance-blocked customer",
+            normalized_name="compliance-blocked",
+            source="test",
+            discovered_at=datetime.now(UTC),
+        )
+        db.add(lead)
+        await db.flush()
+        contact = LeadContact(
+            tenant_id=tid,
+            lead_id=lead.id,
+            type=ContactType.PHONE,
+            raw_value="+15550102030",
+            normalized_value="+15550102030",
+        )
+        db.add(contact)
+        await db.flush()
+        db.add(
+            ComplianceCheck(
+                tenant_id=tid,
+                lead_id=lead.id,
+                contact_id=contact.id,
+                check_type="pre_send",
+                result=ComplianceResult.BLOCK,
+                details={"reason": "test"},
+            )
+        )
+        await db.commit()
+    response = await queue(client, headers, bid)
+    assert response.status_code == 200
+    recipient = next(r for r in response.json()["recipients"] if r["phone"] == "+15550102030")
+    assert recipient["status"] == "blocked"
+    assert "Uyumluluk" in recipient["reason"]

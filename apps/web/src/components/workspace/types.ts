@@ -127,3 +127,44 @@ export async function api<T>(path: string, method = "GET", body?: unknown): Prom
     }
   }
 }
+
+/**
+ * Campaign files are the one private API body that is not JSON.  It still
+ * travels through the same-origin BFF; no browser credential or presigned
+ * object-storage URL is ever exposed here. The caller keeps the operation ID
+ * and can retry the exact upload safely if the connection is interrupted.
+ */
+export async function uploadWorkflowImport<T>(path: string, body: FormData): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch("/api/platform/" + path, {
+      method: "POST",
+      body,
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiError("Bağlantı kesildi. Aynı dosyayı yeniden deneyebilirsiniz.", 0);
+  }
+  const raw = await response.text();
+  let value: unknown;
+  try {
+    value = raw ? JSON.parse(raw) : {};
+  } catch {
+    throw new ApiError(
+      response.status === 413
+        ? "Dosya en fazla 10 MiB olabilir."
+        : "Sunucudan geçerli yanıt alınamadı. İçeri aktarma durumunu yenileyin.",
+      response.ok ? 502 : response.status,
+    );
+  }
+  if (!response.ok) {
+    const detail =
+      typeof value === "object" && value && "detail" in value ? (value as { detail?: unknown }).detail : value;
+    throw new ApiError(
+      typeof detail === "string" ? detail : JSON.stringify(detail ?? value),
+      response.status,
+      detail,
+    );
+  }
+  return value as T;
+}

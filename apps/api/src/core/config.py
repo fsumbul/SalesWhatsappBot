@@ -7,7 +7,9 @@ import math
 import re
 from collections import Counter
 from functools import lru_cache
+from ipaddress import ip_network
 from typing import Literal
+from uuid import UUID
 
 from pydantic import Field, PostgresDsn, RedisDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -111,6 +113,40 @@ class Settings(BaseSettings):
     # --- CORS ---
     cors_origins: str = "http://localhost:3000"
 
+    # Only an explicitly configured reverse proxy may supply the client IP.
+    # This is deliberately empty by default: accepting X-Forwarded-For from a
+    # direct client lets it choose another user's rate-limit bucket and corrupt
+    # the audit IP recorded at login.
+    trusted_proxy_cidrs: str = ""
+
+    # Redis is already a required runtime dependency. Keep rate limiting off
+    # for unit tests/local ad-hoc use, but require an explicit production
+    # enablement (and set it in docker-compose) rather than silently shipping
+    # unbounded costly chat/import endpoints.
+    api_rate_limit_enabled: bool = False
+
+    # --- Private campaign-import storage ---
+    # The API/worker use this S3-compatible endpoint directly. No browser
+    # presigned URL is issued in the first import slice, so the default bucket
+    # remains private.
+    minio_endpoint: str = ""
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
+    minio_bucket: str = "leadpulse-imports"
+    minio_secure: bool = False
+
+    # This is deliberately a concrete rollout guard for campaign-file
+    # outreach, not a generic feature-flag platform. Keep it off until the
+    # sandbox validation is complete; production canary config can name one
+    # tenant, one manager, and a 100-recipient ceiling.
+    campaign_imports_enabled: bool = False
+    campaign_imports_canary_tenant_ids: str = ""
+    campaign_imports_canary_manager_ids: str = ""
+    # Parsing accepts up to 10,000 rows, but the first live rollout remains
+    # deliberately capped at 100 recipients. Raising this requires an
+    # explicit post-canary deployment change, not an accidental env default.
+    campaign_imports_max_recipients: int = Field(default=100, ge=1, le=10_000)
+
     # --- External APIs (optional in early phases) ---
     whatsapp_app_secret: str = ""
     selection_rollout: Literal["disabled", "pilot", "all"] = "disabled"
@@ -182,9 +218,49 @@ class Settings(BaseSettings):
         # Kept as raw string; parsed via `cors_origins_list`
         return v
 
+    @field_validator("trusted_proxy_cidrs")
+    @classmethod
+    def _validate_trusted_proxy_cidrs(cls, v: str) -> str:
+        for raw in (item.strip() for item in v.split(",") if item.strip()):
+            try:
+                ip_network(raw, strict=False)
+            except ValueError as exc:
+                raise ValueError("TRUSTED_PROXY_CIDRS must contain IP addresses or CIDRs") from exc
+        return v
+
+    @field_validator("campaign_imports_canary_tenant_ids", "campaign_imports_canary_manager_ids")
+    @classmethod
+    def _validate_campaign_import_canary_ids(cls, v: str) -> str:
+        for raw in (item.strip() for item in v.split(",") if item.strip()):
+            try:
+                UUID(raw)
+            except ValueError as exc:
+                raise ValueError("campaign import canary IDs must be UUIDs") from exc
+        return v
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def trusted_proxy_cidrs_list(self) -> list[str]:
+        return [item.strip() for item in self.trusted_proxy_cidrs.split(",") if item.strip()]
+
+    @property
+    def campaign_imports_canary_tenant_ids_list(self) -> set[UUID]:
+        return {
+            UUID(item.strip())
+            for item in self.campaign_imports_canary_tenant_ids.split(",")
+            if item.strip()
+        }
+
+    @property
+    def campaign_imports_canary_manager_ids_list(self) -> set[UUID]:
+        return {
+            UUID(item.strip())
+            for item in self.campaign_imports_canary_manager_ids.split(",")
+            if item.strip()
+        }
 
     @property
     def web_crawl_seed_urls_list(self) -> list[str]:
@@ -224,11 +300,35 @@ class Settings(BaseSettings):
             "LLM_MODEL": self.llm_model,
             "LLM_BASE_URL": self.llm_base_url,
         }
+        # Keep the existing private API deployable while this deliberately
+        # disabled canary is not in use. Once file imports are enabled, object
+        # storage is a hard production preflight requirement rather than a
+        # runtime surprise on a manager upload.
+        if self.campaign_imports_enabled:
+            required.update(
+                {
+                    "MINIO_ENDPOINT": self.minio_endpoint,
+                    "MINIO_ACCESS_KEY": self.minio_access_key,
+                    "MINIO_SECRET_KEY": self.minio_secret_key,
+                    "MINIO_BUCKET": self.minio_bucket,
+                }
+            )
         errors.extend(f"{key} is required" for key, value in required.items() if not value.strip())
         if not self.app_secret_key_security["production_acceptable"]:
             errors.append("APP_SECRET_KEY must be a strong randomly generated value")
         if self.app_debug:
             errors.append("APP_DEBUG must be false")
+        if not self.api_rate_limit_enabled:
+            errors.append("API_RATE_LIMIT_ENABLED must be true")
+        if self.campaign_imports_enabled:
+            tenants = self.campaign_imports_canary_tenant_ids_list
+            managers = self.campaign_imports_canary_manager_ids_list
+            if len(tenants) != 1:
+                errors.append("CAMPAIGN_IMPORTS_CANARY_TENANT_IDS must name exactly one tenant")
+            if len(managers) != 1:
+                errors.append("CAMPAIGN_IMPORTS_CANARY_MANAGER_IDS must name exactly one manager")
+            if self.campaign_imports_max_recipients > 100:
+                errors.append("CAMPAIGN_IMPORTS_MAX_RECIPIENTS must be at most 100 during canary")
         if self.llm_provider not in {"ollama", "chat_compatible"}:
             errors.append("LLM_PROVIDER must be ollama or chat_compatible")
         version = self.whatsapp_graph_api_version

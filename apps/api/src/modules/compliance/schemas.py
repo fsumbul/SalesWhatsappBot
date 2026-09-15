@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .models import ComplianceResult, OptOutSource
 
@@ -15,6 +16,13 @@ class OptOutIn(BaseModel):
     phone_e164: str = Field(min_length=6, max_length=32)
     source: OptOutSource = OptOutSource.MANUAL
     reason: str | None = None
+
+    @field_validator("phone_e164")
+    @classmethod
+    def require_e164(cls, value: str) -> str:
+        if not re.fullmatch(r"\+[1-9][0-9]{7,14}", value):
+            raise ValueError("Telefon +ülke koduyla E.164 biçiminde olmalı.")
+        return value
 
 
 class OptOutOut(BaseModel):

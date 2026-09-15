@@ -30,7 +30,8 @@ from src.modules.agents.runtime_models import AgentRuntimeJob
 from src.modules.auth.models import Tenant, TenantStatus, User, UserRole
 from src.modules.outreach.channel import resolve_channel
 
-_EXPECTED_ALEMBIC_REVISION = "f67fa89bc01d"
+_EXPECTED_ALEMBIC_REVISION = "a19c4e5f6b7d"
+_EXPECTED_RUNTIME_ROLE = "leadpulse_app"
 _WORKER_NAME = "agent-runtime@ashiraai"
 _SCHEDULED_TASKS = ["AshiraaiApi", "AshiraaiAgentWorker", "AshiraaiAgentRecovery"]
 _CPU_AVERAGE_BLOCK_PERCENT = 90
@@ -141,7 +142,19 @@ async def inspect(tenant_slug: str) -> dict[str, Any]:
             await session.execute(
                 text(
                     """
-                    SELECT current_user, rolsuper, rolbypassrls
+                    SELECT
+                        current_user,
+                        rolsuper,
+                        rolbypassrls,
+                        has_schema_privilege(current_user, 'public', 'CREATE')
+                            AS can_create_public_schema,
+                        EXISTS (
+                            SELECT 1
+                            FROM pg_class relation
+                            JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+                            WHERE namespace.nspname = 'public'
+                              AND relation.relowner = pg_roles.oid
+                        ) AS owns_public_relations
                     FROM pg_roles
                     WHERE rolname = current_user
                     """
@@ -196,6 +209,8 @@ async def inspect(tenant_slug: str) -> dict[str, Any]:
             "runtime_role": role_row[0],
             "runtime_role_superuser": role_row[1],
             "runtime_role_bypassrls": role_row[2],
+            "runtime_role_can_create_public_schema": role_row[3],
+            "runtime_role_owns_public_relations": role_row[4],
             "active_waba_unique_index_present": active_waba_unique_index is not None,
             "duplicate_active_waba_bindings": duplicate_active_waba_bindings,
             "configured_waba_active_tenant_count": configured_waba_active_tenant_count,
@@ -507,8 +522,15 @@ def _failed(
         or not database.get("tenant_waba_bound")
         or database.get("alembic_revision") != _EXPECTED_ALEMBIC_REVISION
         or not database.get("runtime_table_present")
+        # ``NOSUPERUSER NOBYPASSRLS`` alone is not enough: an accidental
+        # table-owner/DDL connection can still evade the intended app-role
+        # boundary. Production API and worker processes must use the exact
+        # restricted role created by migration 0ba5bf6fe643.
+        or database.get("runtime_role") != _EXPECTED_RUNTIME_ROLE
         or database.get("runtime_role_superuser")
         or database.get("runtime_role_bypassrls")
+        or database.get("runtime_role_can_create_public_schema")
+        or database.get("runtime_role_owns_public_relations")
         or not database.get("active_waba_unique_index_present")
         or database.get("duplicate_active_waba_bindings", 1) > 0
         or database.get("configured_waba_active_tenant_count") != 1

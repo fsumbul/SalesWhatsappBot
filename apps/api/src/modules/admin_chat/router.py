@@ -1,22 +1,32 @@
-# ruff: noqa: RUF001
 """Authenticated private admin chat API, with atomic retries and turn ordering."""
 
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, text
 
-from src.core.deps import ClaimsDep, DBSessionDep
-from src.core.rbac import RequireAgent
+from src.core.deps import ClaimsDep, ClientIPDep, DBSessionDep
+from src.core.rbac import RequireAgent, RequireManager
+from src.core.request_rate_limit import enforce_request_rate_limit
 from src.integrations.llm import LLMCompletionError, LLMNotConfiguredError
 from src.modules.conversation_language import respond
 from src.modules.selection.review import authorize
 
-from . import language, outbound, planner, service, task_runner, workflow_requests
+from . import (
+    campaign_imports,
+    language,
+    outbound,
+    planner,
+    service,
+    task_runner,
+    workflow_outreach,
+    workflow_requests,
+)
 from .models import AdminChatSession, AdminChatTurn
+from .workflow_models import Workflow
 
 router = APIRouter(prefix="/admin-chat", tags=["admin chat"])
 
@@ -39,6 +49,40 @@ async def account(db: Any, claims: Any) -> Any:
 
 def public_session(row: Any) -> Any:
     return {"id": row.id, "title": row.title, "updated_at": row.updated_at}
+
+
+def safe_campaign_import_context(view: dict[str, Any]) -> dict[str, Any] | None:
+    """Project only server-owned import progress across the LLM boundary.
+
+    Headers, filenames, selected columns, examples and counts originate from a
+    user-supplied file or from UI input derived from that file.  They remain in
+    the manager card, never in an LLM prompt or evidence memory.
+    """
+
+    output = view.get("output")
+    imported = output.get("campaign_import") if isinstance(output, dict) else None
+    if not isinstance(imported, dict):
+        return None
+    return {
+        "kind": "outreach",
+        "step": view.get("step"),
+        "status": view.get("status"),
+        "import_status": imported.get("status"),
+    }
+
+
+def planner_workflow_context(view: dict[str, Any]) -> dict[str, Any]:
+    """Keep file-derived data out of the planner, even when stored in fields."""
+
+    if imported := safe_campaign_import_context(view):
+        return imported
+    return {
+        **{k: v for k, v in view.items() if k in {"kind", "step", "status", "fields"}},
+        "template_choices": next(
+            (choice["options"] for choice in view.get("controls", []) if choice["key"] == "template"),
+            {},
+        ),
+    }
 
 
 async def owned(db: Any, user: Any, session_id: Any, *, lock: Any = False) -> Any:
@@ -144,8 +188,11 @@ class TurnInput(BaseModel):
 
 
 @router.post("/sessions/{session_id}/turns")
-async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSessionDep) -> Any:
+async def turn(
+    session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSessionDep, ip: ClientIPDep
+) -> Any:
     user = await account(db, claims)
+    await enforce_request_rate_limit("chat_turn", f"{user.tenant_id}:{user.id}:{ip}")
     session = await owned(db, user, session_id, lock=True)
     previous = await db.scalar(
         select(AdminChatTurn).where(
@@ -160,6 +207,11 @@ async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSe
             raise HTTPException(409, "client_message_id already used for another message")
         return previous.response
     current_views = await workflows.list_views(db, user, session)
+    import_contexts = [
+        context
+        for view in current_views
+        if (context := safe_campaign_import_context(view)) is not None
+    ]
     history, memory = await language.recall(db, user, session)
     session.context = {**session.context, "language": {"result_scope": memory.get("result_scope", [])}}
     try:
@@ -168,14 +220,9 @@ async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSe
             history=history,
             conversation_context={"result_scope": memory.get("result_scope", [])},
             workflow_context=[
-                {
-                    **{k: v for k, v in w.items() if k in {"kind", "step", "status", "fields"}},
-                    "template_choices": next(
-                        (c["options"] for c in w.get("controls", []) if c["key"] == "template"), {}
-                    ),
-                }
-                for w in current_views
-                if w["status"] not in workflows.TERMINAL
+                planner_workflow_context(view)
+                for view in current_views
+                if view["status"] not in workflows.TERMINAL
             ],
             pending_operation=(
                 session.context.get("workspace", {}).get("pending_operation", {}).get("operation")
@@ -194,7 +241,22 @@ async def turn(session_id: UUID, payload: TurnInput, claims: ClaimsDep, db: DBSe
     try:
         intent, request_message = await workflow_requests.route_intent(db, user, session, intent)
         if intent.tool in {"reply", "clarify"}:
-            reply, cards, action, audit = "", [], None, {"tool": intent.tool}
+            reply, cards, action, audit = "", [], None, {
+                "tool": intent.tool,
+                **(
+                    {
+                        "conversation_evidence": [
+                            {
+                                "id": "campaign_import_status",
+                                "summary": "Doğrulanmış dosya içe aktarma durumu.",
+                                "data": import_contexts,
+                            }
+                        ]
+                    }
+                    if import_contexts
+                    else {}
+                ),
+            }
         elif intent.tool == "task":
             reply, cards, action, audit = await task_runner.execute(
                 db, claims, user, session, intent, payload.text, payload.client_message_id, current_views
@@ -339,7 +401,11 @@ class BatchAction(BaseModel):
 
 @router.post("/batches/{batch_id}/actions")
 async def outbound_action(
-    batch_id: UUID, payload: BatchAction, claims: RequireAgent, db: DBSessionDep
+    batch_id: UUID,
+    payload: BatchAction,
+    claims: RequireAgent,
+    db: DBSessionDep,
+    ip: ClientIPDep,
 ) -> Any:
     from sqlalchemy import update
 
@@ -348,8 +414,17 @@ async def outbound_action(
     from .outbound_models import OutboundRecipient
 
     user = await account(db, claims)
+    # This legacy v1 card can still trigger Meta template/capacity checks for
+    # manual batches. Keep it inside the same narrow expensive-action bucket
+    # as the workflow route instead of leaving an alternate unbounded path.
+    await enforce_request_rate_limit("workflow_action", f"{user.tenant_id}:{user.id}:{ip}")
     outbound.manager(user)
     batch = await outbound.own_batch(db, user, batch_id, lock=True)
+    if outbound.is_campaign_import_batch(batch) and payload.action != "cancel":
+        raise HTTPException(
+            409,
+            "Dosya kampanyası yalnız bağlı gönderim kartından değiştirilebilir veya kuyruğa alınabilir.",
+        )
     if payload.action == "cancel":
         await db.execute(
             update(OutboundRecipient)
@@ -405,13 +480,204 @@ async def workflow_list(session_id: UUID, claims: ClaimsDep, db: DBSessionDep) -
 
 @router.post("/sessions/{session_id}/workflows")
 async def workflow_start(
-    session_id: UUID, payload: WorkflowStart, claims: ClaimsDep, db: DBSessionDep
+    session_id: UUID,
+    payload: WorkflowStart,
+    claims: ClaimsDep,
+    db: DBSessionDep,
+    ip: ClientIPDep,
 ) -> Any:
     user = await account(db, claims)
+    await enforce_request_rate_limit("workflow_action", f"{user.tenant_id}:{user.id}:{ip}")
     session = await owned(db, user, session_id, lock=True)
     result = await workflows.start(db, user, session, payload)
     await db.commit()
     return result
+
+
+@router.post(
+    "/sessions/{session_id}/workflows/{workflow_id}/imports",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def upload_campaign_import(
+    session_id: UUID,
+    workflow_id: UUID,
+    file: Annotated[UploadFile, File()],
+    country_code: Annotated[str, Form()],
+    client_operation_id: Annotated[UUID, Form()],
+    expected_revision: Annotated[int, Form(ge=0)],
+    claims: RequireManager,
+    db: DBSessionDep,
+    ip: ClientIPDep,
+) -> Any:
+    """Accept one bounded private CSV/XLSX source for an outreach workflow.
+
+    The BFF keeps the browser on the authenticated application path. This
+    route validates bytes before private MinIO storage and queues a worker only
+    after the database transaction is committed.
+    """
+
+    user = await account(db, claims)
+    if not campaign_imports.campaign_imports_enabled_for(user.tenant_id, user.id):
+        # Do not advertise a live campaign surface outside the one validated
+        # canary manager. Existing import status remains readable for audit.
+        raise HTTPException(404, "Dosya kaynaklı kampanya bu hesap için henüz etkin değil.")
+    await enforce_request_rate_limit("campaign_import", f"{user.tenant_id}:{user.id}:{ip}")
+    session = await owned(db, user, session_id, lock=True)
+    workflow = await db.scalar(
+        select(Workflow)
+        .where(
+            Workflow.id == workflow_id,
+            Workflow.session_id == session.id,
+            Workflow.tenant_id == user.tenant_id,
+            Workflow.user_id == user.id,
+        )
+        .with_for_update()
+    )
+    if workflow is None or workflow.kind != "outreach":
+        raise HTTPException(404, "WhatsApp gönderim işlemi bulunamadı.")
+    same_operation = await db.scalar(
+        select(campaign_imports.CampaignImport).where(
+            campaign_imports.CampaignImport.tenant_id == user.tenant_id,
+            campaign_imports.CampaignImport.workflow_id == workflow.id,
+            campaign_imports.CampaignImport.client_operation_id == client_operation_id,
+        )
+    )
+    if same_operation is None:
+        if workflow.status in workflows.TERMINAL or workflow.state.get("batch_id"):
+            raise HTTPException(409, "Bu gönderim işleminin dosya kaynağı artık değiştirilemez.")
+        if workflow.revision != expected_revision:
+            raise HTTPException(
+                409,
+                {
+                    "message": "İşlem başka bir yerde güncellendi. Güncel kartı açın.",
+                    "workflow": workflows.view(workflow),
+                },
+            )
+        current_id = workflow.state.get("import_id")
+        if current_id:
+            current = await campaign_imports.get_campaign_import(
+                db,
+                tenant_id=user.tenant_id,
+                import_id=UUID(current_id),
+                workflow_id=workflow.id,
+            )
+            if (
+                current is not None
+                and current.client_operation_id != client_operation_id
+                and current.status != campaign_imports.CampaignImportStatus.FAILED.value
+            ):
+                raise HTTPException(
+                    409,
+                    "Bu kartta halen bir dosya içe aktarımı var. Durumunu bekleyin veya yeni işlem başlatın.",
+                )
+
+    try:
+        data = await file.read(campaign_imports.MAX_IMPORT_BYTES + 1)
+        imported, created = await campaign_imports.create_campaign_import(
+            db,
+            tenant_id=user.tenant_id,
+            workflow_id=workflow.id,
+            uploader_id=user.id,
+            client_operation_id=client_operation_id,
+            country_code=country_code,
+            filename=file.filename or "",
+            claimed_mime=file.content_type,
+            data=data,
+        )
+    except campaign_imports.CampaignImportConflictError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except campaign_imports.CampaignImportValidationError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except campaign_imports.CampaignImportStorageError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    finally:
+        await file.close()
+
+    if not created:
+        # Same operation IDs are durable receipts. Verify the bytes above, but
+        # do not rewind a workflow that has progressed while the client retried
+        # after losing its original 202 response.
+        response = {
+            "import": campaign_imports.public_import_view(imported),
+            "workflow": workflows.view(workflow),
+        }
+        await db.commit()
+        if imported.status == campaign_imports.CampaignImportStatus.QUEUED.value:
+            try:
+                campaign_imports.queue_import(imported)
+            except Exception as exc:  # pragma: no cover - broker availability boundary
+                raise HTTPException(
+                    503,
+                    "İçe aktarma kuyruğuna ulaşılamadı; aynı işlemi yeniden deneyin.",
+                ) from exc
+        return response
+
+    workflow.fields = {
+        **workflow.fields,
+        "recipient_source": "file",
+        "country_code": imported.country_code,
+    }
+    workflow.result = {}
+    workflow.step = "details"
+    workflow.status = "running"
+    workflow.state = {
+        **workflow.state,
+        "import_id": str(imported.id),
+        "import_status": imported.status,
+    }
+    await workflow_outreach.sync_import(db, user, workflow)
+    if created:
+        workflow.revision += 1
+        from src.modules.compliance.models import AuditLog
+
+        db.add(
+            AuditLog(
+                tenant_id=user.tenant_id,
+                actor_id=user.id,
+                action="campaign_import_uploaded",
+                entity="campaign_import",
+                entity_id=str(imported.id),
+                ip=ip,
+                meta={
+                    "source_hash": imported.sha256,
+                    "mime_type": imported.mime_type,
+                    "country_code": imported.country_code,
+                },
+            )
+        )
+    response = {
+        "import": campaign_imports.public_import_view(imported),
+        "workflow": workflows.view(workflow),
+    }
+    await db.commit()
+    if imported.status == campaign_imports.CampaignImportStatus.QUEUED.value:
+        # A retry of the same operation is also allowed to repair a broker
+        # failure after the durable DB commit. Duplicate parse tasks are safe:
+        # the worker locks the import and treats an already-parsing row as a
+        # no-op. Do not report 202 unless the primary enqueue succeeded.
+        try:
+            campaign_imports.queue_import(imported)
+        except Exception as exc:  # pragma: no cover - broker availability boundary
+            raise HTTPException(
+                503,
+                "İçe aktarma kuyruğuna ulaşılamadı; aynı işlemi yeniden deneyin.",
+            ) from exc
+    return response
+
+
+@router.get("/imports/{import_id}")
+async def campaign_import_status(
+    import_id: UUID, claims: RequireManager, db: DBSessionDep
+) -> Any:
+    """Managers receive only their tenant's masked import aggregates."""
+
+    user = await account(db, claims)
+    imported = await campaign_imports.get_campaign_import(
+        db, tenant_id=user.tenant_id, import_id=import_id
+    )
+    if imported is None:
+        raise HTTPException(404, "İçe aktarma bulunamadı.")
+    return campaign_imports.public_import_view(imported)
 
 
 @router.post("/sessions/{session_id}/workflows/{workflow_id}/actions")
@@ -421,9 +687,48 @@ async def workflow_action(
     payload: WorkflowCommand,
     claims: ClaimsDep,
     db: DBSessionDep,
+    ip: ClientIPDep,
 ) -> Any:
     user = await account(db, claims)
+    await enforce_request_rate_limit("workflow_action", f"{user.tenant_id}:{user.id}:{ip}")
     session = await owned(db, user, session_id, lock=True)
     result = await workflows.act(db, user, session, workflow_id, payload)
+    # Mapping a previously ambiguous file is the one import transition that
+    # happens inside the existing generic workflow-action transaction. Queue
+    # only after that durable revision commits; retries of this idempotent
+    # action safely repair the narrow commit-to-broker gap.
+    queued_import: tuple[UUID, str | None] | None = None
+    if payload.fields.get("phone_column"):
+        workflow = await db.scalar(
+            select(Workflow).where(
+                Workflow.id == workflow_id,
+                Workflow.session_id == session.id,
+                Workflow.tenant_id == user.tenant_id,
+                Workflow.user_id == user.id,
+            )
+        )
+        import_id = workflow.state.get("import_id") if workflow is not None else None
+        if import_id:
+            imported = await campaign_imports.get_campaign_import(
+                db,
+                tenant_id=user.tenant_id,
+                import_id=UUID(import_id),
+                workflow_id=workflow_id,
+            )
+            if imported is not None and imported.status == campaign_imports.CampaignImportStatus.QUEUED.value:
+                queued_import = (imported.id, imported.phone_column)
     await db.commit()
+    if queued_import is not None:
+        import_id, phone_column = queued_import
+        try:
+            campaign_imports.queue_import(
+                import_id,
+                user.tenant_id,
+                phone_column=phone_column,
+            )
+        except Exception as exc:  # pragma: no cover - broker availability boundary
+            raise HTTPException(
+                503,
+                "İçe aktarma kuyruğuna ulaşılamadı; aynı işlemi yeniden deneyin.",
+            ) from exc
     return result

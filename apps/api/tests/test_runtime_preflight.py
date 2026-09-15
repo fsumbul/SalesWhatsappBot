@@ -1,6 +1,10 @@
 """Pure hard-gate checks for the production runtime preflight."""
 
-from scripts.runtime_preflight import _failed
+from pathlib import Path
+
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from scripts.runtime_preflight import _EXPECTED_ALEMBIC_REVISION, _EXPECTED_RUNTIME_ROLE, _failed
 
 
 def _healthy_result() -> dict[str, object]:
@@ -19,10 +23,13 @@ def _healthy_result() -> dict[str, object]:
             "tenant_found": True,
             "tenant_status": "active",
             "tenant_waba_bound": True,
-            "alembic_revision": "f67fa89bc01d",
+            "alembic_revision": "a19c4e5f6b7d",
             "runtime_table_present": True,
+            "runtime_role": _EXPECTED_RUNTIME_ROLE,
             "runtime_role_superuser": False,
             "runtime_role_bypassrls": False,
+            "runtime_role_can_create_public_schema": False,
+            "runtime_role_owns_public_relations": False,
             "active_waba_unique_index_present": True,
             "duplicate_active_waba_bindings": 0,
             "configured_waba_active_tenant_count": 1,
@@ -81,6 +88,23 @@ def test_preflight_requires_active_waba_unique_index() -> None:
     assert _failed(result, require_ollama=True) is True
 
 
+def test_preflight_rejects_a_non_superuser_that_is_not_the_restricted_app_role() -> None:
+    result = _healthy_result()
+    result["database"]["runtime_role"] = "accidental_table_owner"
+
+    assert _failed(result, require_ollama=True) is True
+
+
+def test_preflight_rejects_the_app_role_if_it_gains_public_ddl_or_table_ownership() -> None:
+    result = _healthy_result()
+    result["database"]["runtime_role_can_create_public_schema"] = True
+    assert _failed(result, require_ollama=True) is True
+
+    result = _healthy_result()
+    result["database"]["runtime_role_owns_public_relations"] = True
+    assert _failed(result, require_ollama=True) is True
+
+
 def test_preflight_requires_exactly_one_active_tenant_for_configured_waba() -> None:
     result = _healthy_result()
     result["database"]["configured_waba_active_tenant_count"] = 0
@@ -105,11 +129,6 @@ def test_selection_requires_an_active_human_reviewer():
 
 
 def test_preflight_revision_matches_current_migration_head() -> None:
-    from pathlib import Path
-    from alembic.config import Config
-    from alembic.script import ScriptDirectory
-    from scripts.runtime_preflight import _EXPECTED_ALEMBIC_REVISION
-
     api = Path(__file__).resolve().parents[1]
     config = Config(str(api / "alembic.ini"))
     config.set_main_option("script_location", str(api / "alembic"))

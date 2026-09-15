@@ -19,6 +19,7 @@ from src.core.errors import DomainError
 from src.core.logging import configure_logging
 from src.core.security import JWTError, decode_token
 from src.integrations.llm import LLMMessage, LLMNotConfiguredError, get_llm_client
+from src.integrations.rate_limit import close_token_bucket_clients
 from src.modules.admin_chat.router import router as admin_chat_router
 from src.modules.agents.router import router as agents_router
 from src.modules.agents.workspace import router as workspace_router
@@ -39,8 +40,8 @@ from src.modules.outreach.router import (
 from src.modules.outreach.webhooks import router as whatsapp_webhook_router
 from src.modules.reports.router import router as reports_router
 from src.modules.sectors.router import router as sectors_router
-from src.modules.selection.router import router as selection_router
 from src.modules.selection.customer_form import router as customer_form_router
+from src.modules.selection.router import router as selection_router
 
 
 @asynccontextmanager
@@ -57,6 +58,7 @@ async def lifespan(_: FastAPI) -> Any:
     try:
         yield
     finally:
+        await close_token_bucket_clients()
         await dispose_engine()
         logger.info("app_shutdown")
 

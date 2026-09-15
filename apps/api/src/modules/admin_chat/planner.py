@@ -331,6 +331,8 @@ completes an existing ready create_template. Human-readable assistant text is no
 Legacy workspace confirm/cancel only refers to an existing preview. No model operation_id.
 Legacy reads: analytics (request totals), search/quotes, summary/missing/files/conversation/delivery,
 capacity/templates. Delivery reads receipts; it never sends. No live inventory or sale price tool.
+Saved outreach import progress is server-derived status only. It never includes any file content,
+header, filename, selected column, example or count, and never authorizes preparation, queueing or sending.
 Only status/analytics/search/quotes accept status; only assign accepts assignee; only note accepts note.
 """
 

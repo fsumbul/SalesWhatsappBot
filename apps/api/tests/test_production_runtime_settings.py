@@ -23,6 +23,11 @@ def _settings(**overrides: object) -> Settings:
         "llm_provider": "ollama",
         "llm_model": "qwen3:8b",
         "llm_base_url": "http://127.0.0.1:11434/v1",
+        "api_rate_limit_enabled": True,
+        "minio_endpoint": "minio.internal:9000",
+        "minio_access_key": "test-minio-access",
+        "minio_secret_key": "test-minio-secret",
+        "minio_bucket": "leadpulse-imports",
     }
     values.update(overrides)
     return Settings(**values)
@@ -92,3 +97,18 @@ def test_invalid_graph_api_version_is_rejected() -> None:
     errors = _settings(whatsapp_graph_api_version="latest").production_runtime_errors()
 
     assert "WHATSAPP_GRAPH_API_VERSION must look like v20.0" in errors
+
+
+def test_enabled_campaign_import_canary_requires_exact_targets_and_100_recipient_cap() -> None:
+    errors = _settings(campaign_imports_enabled=True).production_runtime_errors()
+
+    assert "CAMPAIGN_IMPORTS_CANARY_TENANT_IDS must name exactly one tenant" in errors
+    assert "CAMPAIGN_IMPORTS_CANARY_MANAGER_IDS must name exactly one manager" in errors
+
+    accepted = _settings(
+        campaign_imports_enabled=True,
+        campaign_imports_canary_tenant_ids="11111111-1111-4111-8111-111111111111",
+        campaign_imports_canary_manager_ids="22222222-2222-4222-8222-222222222222",
+        campaign_imports_max_recipients=100,
+    )
+    assert accepted.production_runtime_errors() == []

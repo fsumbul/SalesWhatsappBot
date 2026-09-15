@@ -18,7 +18,7 @@ from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.integrations.iys import IYSClient, IYSDecision
@@ -180,6 +180,13 @@ class ComplianceService:
     async def add_opt_out(
         self, tenant_id: UUID, data: OptOutIn, *, actor_id: UUID | None = None
     ) -> OptOut:
+        # Share the exact per-number transaction lock held by campaign queueing
+        # and the Meta worker.  A newly recorded opt-out therefore cannot race
+        # between their last eligibility check and a provider POST.
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:identity, 0))"),
+            {"identity": f"{tenant_id}:{data.phone_e164}"},
+        )
         # idempotent
         existing = (
             await self.session.execute(

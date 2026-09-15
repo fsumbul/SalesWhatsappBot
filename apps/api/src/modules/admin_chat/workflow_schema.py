@@ -33,7 +33,7 @@ WorkflowKind = Literal[
 class WorkflowField(BaseModel):
     key: str
     label: str
-    control: Literal["text", "email", "tel", "select", "textarea", "file"] = "text"
+    control: Literal["text", "email", "tel", "select", "textarea", "file", "checkbox"] = "text"
     required: bool = False
     options: dict[str, str] = Field(default_factory=dict)
 

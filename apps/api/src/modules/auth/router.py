@@ -11,6 +11,7 @@ from fastapi.responses import Response
 from src.core.deps import ClaimsDep, ClientIPDep, DBSessionDep
 from src.core.errors import ConflictError, ForbiddenError, NotFoundError
 from src.core.rbac import RequireOwner, RequireSuperAdmin
+from src.core.request_rate_limit import enforce_request_rate_limit
 
 from .repository import TenantRepo, UserRepo
 from .schemas import (
@@ -50,6 +51,10 @@ async def login(
     ip: ClientIPDep,
     user_agent: Annotated[str | None, Header()] = None,
 ) -> TokenPair:
+    await enforce_request_rate_limit("login_source", ip)
+    await enforce_request_rate_limit(
+        "login_account", f"{payload.tenant_slug.casefold()}:{payload.email.casefold()}"
+    )
     service = AuthService(db)
     _user, tokens = await service.login(payload, user_agent=user_agent, ip=ip)
     return tokens

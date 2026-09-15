@@ -24,6 +24,15 @@ class OutboundBatch(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     template: Mapped[dict[str, Any]] = mapped_column(JSONB)
     variables: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     consent_evidence: Mapped[str | None] = mapped_column(Text)
+    campaign_import_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("chat_campaign_imports.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    consent_source: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    consent_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class OutboundRecipient(Base, UUIDPrimaryKey, TenantScoped, Timestamped):

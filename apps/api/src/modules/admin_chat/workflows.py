@@ -26,6 +26,7 @@ from src.modules.auth.service import AuthService
 from src.modules.discovery.models import ContactType, Lead, LeadContact
 
 from . import (
+    campaign_imports,
     workflow_agents,
     workflow_inbox,
     workflow_members,
@@ -213,63 +214,62 @@ def view(row: Any) -> dict[str, Any]:
             ("Konuşmayı yenile" if row.kind == "conversation" else "Kayıtları ara"),
         )
     return WorkflowView(
-        id=row.id,
-        session_id=row.session_id,
-        kind=row.kind,
-        anchor_sequence=getattr(row, "anchor_sequence", 0),
-        revision=row.revision,
-        title=workflow_records.CATEGORIES.get(row.fields.get("category"), "Kayıtlar")
-        if row.kind == "records"
-        else TITLES[row.kind],
-        step=row.step,
-        steps=[]
-        if row.kind in {"records", "conversation"}
-        else (
-            ["details", "compose", "review", "result"]
-            if row.kind == "outreach"
-            else ["details", "review", "result"]
-        ),
-        status=row.status,
-        fields=row.fields,
-        records=(row.state or {}).get("records", []),
-        record_actions=(row.state or {}).get("record_actions", []),
-        page=(row.state or {}).get("page", 1),
-        has_more=(row.state or {}).get("has_more", False),
-        scope=(row.state or {}).get("scope"),
-        controls=(
-            workflow_templates.controls(row)
-            if row.kind == "create_template"
-            else
-            workflow_owners.controls(row)
-            if row.kind == "owner_invite"
-            else workflow_requests.controls(row)
-            if row.kind == "request_update"
-            else workflow_inbox.controls(row)
-            if row.kind in workflow_inbox.KINDS
-            else workflow_outreach.controls(row)
-            if row.kind == "outreach"
-            else workflow_members.controls(row)
-            if row.kind == "member"
+            id=row.id,
+            session_id=row.session_id,
+            kind=row.kind,
+            anchor_sequence=getattr(row, "anchor_sequence", 0),
+            revision=row.revision,
+            title=workflow_records.CATEGORIES.get(row.fields.get("category"), "Kayıtlar")
+            if row.kind == "records"
+            else TITLES[row.kind],
+            step=row.step,
+            steps=[]
+            if row.kind in {"records", "conversation"}
             else (
-                workflow_records.controls(row)
-                if row.kind == "records"
+                ["details", "compose", "review", "result"]
+                if row.kind == "outreach"
+                else ["details", "review", "result"]
+            ),
+            status=row.status,
+            fields=row.fields,
+            records=(row.state or {}).get("records", []),
+            record_actions=(row.state or {}).get("record_actions", []),
+            page=(row.state or {}).get("page", 1),
+            has_more=(row.state or {}).get("has_more", False),
+            scope=(row.state or {}).get("scope"),
+            controls=(
+                workflow_templates.controls(row)
+                if row.kind == "create_template"
+                else workflow_owners.controls(row)
+                if row.kind == "owner_invite"
+                else workflow_requests.controls(row)
+                if row.kind == "request_update"
+                else workflow_inbox.controls(row)
+                if row.kind in workflow_inbox.KINDS
+                else workflow_outreach.controls(row)
+                if row.kind == "outreach"
+                else workflow_members.controls(row)
+                if row.kind == "member"
                 else (
-                    workflow_agents.controls(row)
-                    if row.kind in workflow_agents.KINDS
-                    else CONTROLS[row.kind]
+                    workflow_records.controls(row)
+                    if row.kind == "records"
+                    else (
+                        workflow_agents.controls(row)
+                        if row.kind in workflow_agents.KINDS
+                        else CONTROLS[row.kind]
+                    )
                 )
-            )
-        ),
-        changes=(row.state or {}).get("changes", []),
-        output=workflow_templates.preview(row.fields)
-        if row.kind == "create_template" and row.step != "result"
-        else workflow_outreach.output(row)
-        if row.kind == "outreach"
-        else (row.state or {}).get("output", {}),
-        errors=errors,
-        primary_action=primary,
-        primary_label=label,
-        result=row.result,
+            ),
+            changes=(row.state or {}).get("changes", []),
+            output=workflow_templates.preview(row.fields)
+            if row.kind == "create_template" and row.step != "result"
+            else workflow_outreach.output(row)
+            if row.kind == "outreach"
+            else (row.state or {}).get("output", {}),
+            errors=errors,
+            primary_action=primary,
+            primary_label=label,
+            result=row.result,
     ).model_dump(mode="json")
 
 
@@ -285,9 +285,20 @@ async def list_views(db: Any, user: Any, session: Any) -> list[dict[str, Any]]:
     )
     result = []
     for row in rows:
-        if row.kind == "outreach" and row.status in ACTIVE and "templates" not in row.state and not row.state.get("batch_id"):
+        if (
+            row.kind == "outreach"
+            and row.status in ACTIVE
+            and "templates" not in row.state
+            and not row.state.get("batch_id")
+            and not row.state.get("import_id")
+        ):
             await workflow_outreach.initialize(db, user, row)
             row.revision += 1
+        if row.kind == "outreach" and row.state.get("import_id"):
+            before = (row.state, row.status, row.result)
+            await workflow_outreach.sync_import(db, user, row)
+            if before != (row.state, row.status, row.result):
+                row.revision += 1
         if row.kind == "outreach" and row.state.get("batch_id"):
             before = (row.state, row.status, row.result)
             await workflow_outreach.sync(db, user, row)
@@ -353,12 +364,20 @@ async def pause_others(db: Any, user: Any, session: Any, except_id: UUID | None 
 
 def patch(row: Any, fields: dict[str, str]) -> None:
     allowed = {c.key for c in CONTROLS[row.kind]}
+    if row.kind == "outreach" and "campaign_file" in fields:
+        raise HTTPException(422, "Dosya yalnız güvenli içe aktarma uç noktasından yüklenebilir.")
+    if row.kind == "outreach":
+        workflow_outreach.validate_patch(row, fields)
     if row.kind == "create_template":
-        allowed.update("example_" + key for key in workflow_templates.variables({**row.fields, **fields}))
+        allowed.update(
+            "example_" + key for key in workflow_templates.variables({**row.fields, **fields})
+        )
         allowed.update(c.key for c in workflow_templates.controls(row))
     if row.kind == "outreach":
         allowed.update(c.key for c in workflow_outreach.controls(row))
-        allowed.update("var_" + key for t in row.state.get("templates", []) for key in t["variables"])
+        allowed.update(
+            "var_" + key for t in row.state.get("templates", []) for key in t["variables"]
+        )
     if set(fields) - allowed:
         raise HTTPException(422, "Bilinmeyen veya çok uzun işlem alanı.")
     limits = {
@@ -369,9 +388,15 @@ def patch(row: Any, fields: dict[str, str]) -> None:
         "language": 10,
         "template_category": 20,
         "recipients": 2500,
+        "recipient_source": 10,
+        "country_code": 2,
+        "phone_column": 255,
         "purpose": 1000,
         "template": 160,
         "consent_evidence": 2000,
+        "consent_source": 120,
+        "consent_note": 2000,
+        "consent_confirmed": 5,
         "member": 254,
         "active": 5,
         "category": 30,
@@ -409,12 +434,38 @@ def patch(row: Any, fields: dict[str, str]) -> None:
     values = {**row.fields, **{k: v.strip() for k, v in fields.items()}}
     if row.kind == "create_template":
         current_examples = {"example_" + key for key in workflow_templates.variables(values)}
-        values = {k: v for k, v in values.items() if not k.startswith("example_") or k in current_examples}
+        values = {
+            k: v for k, v in values.items() if not k.startswith("example_") or k in current_examples
+        }
     if row.kind == "outreach" and "template" in fields:
-        selected = next((t for t in row.state.get("templates", []) if values["template"] in {t["id"], t["name"]}), None)
+        selected = next(
+            (
+                t
+                for t in row.state.get("templates", [])
+                if values["template"] in {t["id"], t["name"]}
+            ),
+            None,
+        )
         if selected:
             current_variables = {"var_" + key for key in selected["variables"]}
-            values = {k: v for k, v in values.items() if not k.startswith("var_") or k in current_variables}
+            values = {
+                k: v
+                for k, v in values.items()
+                if not k.startswith("var_") or k in current_variables
+            }
+    if row.kind == "outreach" and values.get("recipient_source") != "file":
+        values = {
+            k: v
+            for k, v in values.items()
+            if k
+            not in {
+                "country_code",
+                "phone_column",
+                "consent_source",
+                "consent_note",
+                "consent_confirmed",
+            }
+        }
     if (
         row.kind == "records"
         and "page" not in fields
@@ -433,6 +484,12 @@ def patch(row: Any, fields: dict[str, str]) -> None:
     if values.get("email"):
         values["email"] = values["email"].lower()
     row.fields = values
+    if row.kind == "outreach" and values.get("recipient_source", "manual") != "file":
+        row.state = {
+            key: value
+            for key, value in row.state.items()
+            if key not in {"import_id", "import_status", "campaign_import"}
+        }
     if fields:
         row.result = {}
         row.step = (
@@ -488,8 +545,12 @@ async def start(
         status="awaiting_input",
         revision=0,
     )
-    patch(row, {"language": "tr", "template_category": "MARKETING", **payload.fields}
-          if row.kind == "create_template" else payload.fields)
+    patch(
+        row,
+        {"language": "tr", "template_category": "MARKETING", **payload.fields}
+        if row.kind == "create_template"
+        else payload.fields,
+    )
     if row.kind == "outreach":
         await workflow_outreach.initialize(db, user, row)
     if row.kind == "owner_invite":
@@ -641,11 +702,17 @@ async def act(
             and row.state.get("background_running")
             and payload.action not in {"resume", "cancel"}
         )
-        or (row.kind == "create_template" and row.state.get("background_running") and payload.action != "resume")
+        or (
+            row.kind == "create_template"
+            and row.state.get("background_running")
+            and payload.action != "resume"
+        )
     ):
         raise HTTPException(409, "Bu işlem artık düzenlenemez.")
     action = payload.action
     if action == "launch":
+        kind: str
+        values: dict[str, str]
         if row.kind not in {"records", "conversation", "outreach"}:
             raise HTTPException(422, "Bu işlem bu eylemi desteklemiyor.")
         if row.kind == "outreach":
@@ -680,6 +747,8 @@ async def act(
         action in {"back", "cancel"} or (payload.fields and action in {"update", "continue"})
     ):
         await workflow_agents.invalidate(db, user, row)
+    if row.kind == "outreach" and payload.fields:
+        workflow_outreach.validate_patch(row, payload.fields)
     if row.kind == "outreach" and (action == "back" or payload.fields):
         await workflow_outreach.invalidate(db, user, row)
     if row.kind in {"reply", "resume_bot", "request_update", "owner_invite"} and (
@@ -690,7 +759,11 @@ async def act(
         row.state = {"member_choices": row.state.get("member_choices", {})}
     if action == "resume":
         await pause_others(db, user, session, row.id)
-        if row.kind == "outreach" and not row.state.get("batch_id"):
+        if (
+            row.kind == "outreach"
+            and not row.state.get("batch_id")
+            and not row.state.get("import_id")
+        ):
             await workflow_outreach.initialize(db, user, row)
         row.status = (
             "running"
@@ -722,6 +795,13 @@ async def act(
             await workflow_agents.refresh_versions(db, user, row)
         if row.kind == "outreach":
             row.state = {k: v for k, v in row.state.items() if k != "errors"}
+            if (
+                "phone_column" in payload.fields
+                and row.fields.get("recipient_source") == "file"
+                and row.state.get("import_status")
+                == campaign_imports.CampaignImportStatus.AWAITING_MAPPING.value
+            ):
+                await workflow_outreach.select_import_phone_column(db, user, row)
             if action == "continue" and not workflow_outreach.errors(row):
                 previous_step = row.step
                 try:
@@ -782,7 +862,15 @@ async def act(
                             "output": {"summary": message},
                         }
     elif action == "complete":
-        if row.status != "ready" or row.step != "review" or validate(row.kind, row.fields):
+        if (
+            row.status != "ready"
+            or row.step != "review"
+            or (
+                workflow_outreach.errors(row)
+                if row.kind == "outreach"
+                else validate(row.kind, row.fields)
+            )
+        ):
             raise HTTPException(409, "Önce eksik bilgileri tamamlayıp inceleyin.")
         if row.kind == "reply":
             return await workflow_inbox.send(db, user, session, row, payload, request)
@@ -915,6 +1003,22 @@ async def execute_intent(db: Any, user: Any, session: Any, intent: Any, client_i
                 {"tool": "workflow", "status": "selection_required"},
             )
         row = candidates[0]
+        # A campaign file is deliberately opaque to the model. The model may
+        # open an outreach workflow or report its server-owned status, but it
+        # cannot select a source column, attest consent, or queue a reviewed
+        # file campaign by translating conversational prose into an action.
+        # Those changes require the manager's revision-bound card action.
+        if row.kind == "outreach" and row.state.get("import_id"):
+            return (
+                "Dosya kampanyasını değiştirmek veya göndermek için karttaki yönetici denetimlerini kullanın.",
+                [],
+                None,
+                {
+                    "tool": "workflow",
+                    "status": "campaign_import_ui_confirmation_required",
+                    "workflow_id": str(row.id),
+                },
+            )
         result = await act(
             db,
             user,

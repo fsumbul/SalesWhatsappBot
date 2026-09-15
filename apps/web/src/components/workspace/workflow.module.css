@@ -64,6 +64,12 @@
   color: inherit;
   font: inherit;
 }
+.card .fields input.checkbox {
+  width: auto;
+  min-width: 0;
+  margin: 2px 0 0;
+  accent-color: var(--wf-accent);
+}
 .card .fields :disabled {
   opacity: 1;
   background: #f8f9fa;
@@ -226,6 +232,11 @@
   grid-row: 1;
   min-width: 0;
 }
+.messageLayout > .importSummary {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+}
 .card .reviewSummary h4 {
   margin: 0 0 12px;
   font-size: 13px;
@@ -248,6 +259,37 @@
   line-height: 1.5;
   margin: 0;
   white-space: pre-wrap;
+}
+.importSummary {
+  border: 1px solid #dfe5e1;
+  border-radius: 10px;
+  padding: 12px;
+  background: #fbfcfb;
+}
+.importSummary h4,
+.importSummary p {
+  margin: 0 0 8px;
+}
+.importSummary dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  margin: 10px 0;
+}
+.importSummary dl > div {
+  margin: 0;
+}
+.importSummary dd {
+  font-weight: 600;
+}
+.importSummary summary {
+  cursor: pointer;
+}
+.importSummary ul {
+  padding-left: 18px;
+  margin: 8px 0 0;
+  color: var(--wf-muted);
+  font-size: 12px;
 }
 .card .messageLayout form > p {
   font-size: 12px;
@@ -388,9 +430,13 @@
     grid-column: 1;
     grid-row: 1;
   }
-  .messageLayout > form {
+  .messageLayout > .importSummary {
     grid-column: 1;
     grid-row: 2;
+  }
+  .messageLayout > form {
+    grid-column: 1;
+    grid-row: 3;
   }
   .messagePreview {
     max-width: 380px;

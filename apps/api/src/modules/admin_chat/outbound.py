@@ -4,7 +4,6 @@
 import asyncio
 import json
 import re
-from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -16,16 +15,32 @@ from src.core.errors import ConflictError
 from src.core.rbac import Role, role_at_least
 from src.integrations.llm import LLMMessage, get_llm_client
 from src.integrations.whatsapp import WhatsAppClient
-from src.modules.compliance.models import OptOut
+from src.modules.compliance.models import ComplianceCheck, ComplianceResult, OptOut
 from src.modules.discovery.models import ConsentStatus, ContactType, Lead, LeadContact, LeadStatus
 from src.modules.outreach.channel import resolve_channel
 from src.modules.outreach.models import OutreachJob, OutreachJobStatus, SenderProfile
 
+from . import campaign_imports
 from .outbound_models import OutboundBatch, OutboundRecipient
 
 TOOLS = {"outreach", "send_outreach", "cancel_outreach", "outreach_status", "capacity", "templates"}
 LIMITS = {"TIER_50": 50, "TIER_250": 250, "TIER_2K": 2000, "TIER_10K": 10000, "TIER_100K": 100000}
 ACTIVE = {"queued", "sending", "ambiguous", "accepted", "sent", "delivered", "read"}
+IMPORTED_RECIPIENT_SAMPLE = 10
+
+
+def is_campaign_import_batch(batch: Any) -> bool:
+    """Keep import provenance after the 30-day FK target is deleted.
+
+    ``campaign_import_id`` intentionally becomes NULL when raw import rows are
+    retained no longer than 30 days.  ``source_hash`` is written only by the
+    import workflow and remains with the durable outbound receipt, so it is the
+    stable classifier for UI privacy and canary enforcement.
+    """
+
+    return bool(
+        getattr(batch, "campaign_import_id", None) or getattr(batch, "source_hash", None)
+    )
 
 
 def phones(values: list[str]) -> list[str]:
@@ -119,7 +134,7 @@ async def meta_templates(sender: Any) -> list[dict[str, Any]]:
     raise ValueError("Template catalog exceeds supported page limit")
 
 
-async def capacity(db: Any, tenant_id: Any) -> dict[str, Any]:
+async def capacity(db: Any, tenant_id: Any, *, include_meta: bool = True) -> dict[str, Any]:
     card: dict[str, Any] = {
         "type": "capacity",
         "title": "WhatsApp kapasitesi",
@@ -163,6 +178,13 @@ async def capacity(db: Any, tenant_id: Any) -> dict[str, Any]:
     )
     card.update(local_used=int(local_count or 0) + int(legacy_count or 0))
     card["local_remaining"] = max(0, sender.daily_cap - card["local_used"])
+    if not include_meta:
+        # Workers must revalidate the local reservation immediately before a
+        # Meta POST, but polling Meta's account endpoint once per recipient
+        # would itself become a 10,000-request campaign bottleneck. The
+        # queue-time check remains responsible for the remote tier snapshot.
+        card.update(meta_available=None)
+        return card
     try:
         raw = await WhatsAppClient().business_read(
             sender.business_account_id or "", "whatsapp_business_manager_messaging_limit"
@@ -222,8 +244,28 @@ async def eligibility(
         return "Numara geçersiz veya müşteri iletişimi durdurmuş."
     if contact:
         lead = await db.get(Lead, contact.lead_id)
-        if lead and lead.status == LeadStatus.BLACKLISTED:
+        if lead and lead.status in {LeadStatus.BLACKLISTED, LeadStatus.BLOCKED_BY_COMPLIANCE}:
             return "Müşteri şirketin engelli listesinde."
+        latest_check = await db.scalar(
+            select(ComplianceCheck)
+            .where(
+                ComplianceCheck.tenant_id == tenant_id,
+                ComplianceCheck.contact_id == contact.id,
+            )
+            .order_by(ComplianceCheck.created_at.desc())
+            .limit(1)
+        )
+        if latest_check and latest_check.result == ComplianceResult.BLOCK:
+            return "Uyumluluk kontrolü bu alıcıyı engelliyor."
+        if (
+            latest_check
+            and latest_check.result == ComplianceResult.DEFER
+            and (
+                latest_check.next_allowed_at is None
+                or latest_check.next_allowed_at > datetime.now(UTC)
+            )
+        ):
+            return "Uyumluluk kontrolü bu alıcı için henüz bekleme istiyor."
         legacy = await db.scalar(
             select(OutreachJob.id).where(
                 OutreachJob.tenant_id == tenant_id,
@@ -302,25 +344,55 @@ def template_components(batch: Any, recipient_id: Any) -> list[dict[str, Any]]:
     return components
 
 
-async def batch_card(db: Any, batch: Any) -> dict[str, Any]:
-    rows = list(
-        (
-            await db.scalars(
-                select(OutboundRecipient)
-                .where(
-                    OutboundRecipient.tenant_id == batch.tenant_id,
-                    OutboundRecipient.batch_id == batch.id,
-                )
-                .order_by(OutboundRecipient.created_at, OutboundRecipient.id)
-            )
-        ).all()
+async def batch_card(
+    db: Any, batch: Any, *, recipient_limit: int | None = None
+) -> dict[str, Any]:
+    """Return delivery totals plus a bounded manager-visible recipient sample.
+
+    Manual workflows are capped at 100 and retain the historical full card.
+    File imports may contain 10,000 rows, so their workflow poll never
+    serializes the entire outbox repeatedly.
+    """
+
+    imported_batch = is_campaign_import_batch(batch)
+    # Never let an old import batch turn into a full raw-recipient response
+    # when its FK becomes NULL during retention cleanup. This protects direct
+    # batch endpoints as well as workflow polling.
+    if imported_batch:
+        recipient_limit = min(recipient_limit or IMPORTED_RECIPIENT_SAMPLE, IMPORTED_RECIPIENT_SAMPLE)
+    statement = (
+        select(OutboundRecipient)
+        .where(
+            OutboundRecipient.tenant_id == batch.tenant_id,
+            OutboundRecipient.batch_id == batch.id,
+        )
+        .order_by(OutboundRecipient.created_at, OutboundRecipient.id)
     )
+    if recipient_limit is not None:
+        statement = statement.limit(recipient_limit)
+    rows = list((await db.scalars(statement)).all())
+    count_rows = await db.execute(
+        select(OutboundRecipient.status, func.count())
+        .where(
+            OutboundRecipient.tenant_id == batch.tenant_id,
+            OutboundRecipient.batch_id == batch.id,
+        )
+        .group_by(OutboundRecipient.status)
+    )
+    counts = {str(status): int(count) for status, count in count_rows}
+    total = sum(counts.values())
     recipients = []
     for row in rows:
         reason = row.reason
         if batch.status == "draft":
             reason = await eligibility(db, batch.tenant_id, row.phone, batch.consent_evidence)
-        recipients.append({"phone": row.phone, "status": row.status, "reason": reason})
+        recipients.append(
+            {
+                "phone": campaign_imports.mask_phone(row.phone) if imported_batch else row.phone,
+                "status": row.status,
+                "reason": reason,
+            }
+        )
     return {
         "type": "outbound",
         "batch_id": str(batch.id),
@@ -328,8 +400,8 @@ async def batch_card(db: Any, batch: Any) -> dict[str, Any]:
         "status": (
             "completed"
             if batch.status == "queued"
-            and rows
-            and all(r.status not in {"queued", "sending"} for r in rows)
+            and total
+            and not ({"queued", "sending"} & set(counts))
             else batch.status
         ),
         "summary": rendered(batch),
@@ -349,7 +421,9 @@ async def batch_card(db: Any, batch: Any) -> dict[str, Any]:
         "values": batch.variables,
         "consent_evidence": batch.consent_evidence or "",
         "recipients": recipients,
-        "counts": dict(Counter(r["status"] for r in recipients)),
+        "counts": counts,
+        "recipient_sample_truncated": recipient_limit is not None and total > len(recipients),
+        "recipient_total": total,
     }
 
 
@@ -357,6 +431,16 @@ async def queue_batch(db: Any, user: Any, batch: Any) -> None:
     manager(user)
     if batch.status != "draft":
         return  # A retry of this batch never creates new recipients.
+    if is_campaign_import_batch(batch):
+        if not campaign_imports.campaign_imports_enabled_for(user.tenant_id, user.id):
+            raise HTTPException(409, "Dosya kampanyası bu hesap için artık etkin değil.")
+        # The durable campaign-outbox worker performs the one batch-level
+        # sender/template/capacity validation after this transaction commits.
+        # Its final delivery worker still rechecks each recipient immediately
+        # before Meta, without making this confirmation request scan 10,000 rows.
+        batch.status = "queueing"
+        await db.flush()
+        return
     sender = await resolve_channel(db, user.tenant_id)
     await db.execute(select(SenderProfile).where(SenderProfile.id == sender.id).with_for_update())
     if sender.id != batch.sender_id:

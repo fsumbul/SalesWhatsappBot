@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { MotionRegion } from "../../lib/motion/components";
-import { api, ApiError } from "./types";
+import { api, ApiError, uploadWorkflowImport } from "./types";
 import { ChangeSummary, WorkflowOutput, type WorkflowChange } from "./workflow-details";
 import RecordList, { type WorkflowRecord } from "./workflow-records";
 import styles from "./workflow.module.css";
@@ -52,6 +52,65 @@ const steps: Record<string, string> = {
   review: "İnceleme",
   result: "Sonuç",
 };
+type CampaignImportOutput = {
+  id?: string;
+  filename?: string;
+  status?: string;
+  phone_column?: string | null;
+  counts?: Partial<Record<"total" | "eligible" | "invalid" | "duplicate" | "blocked", number>>;
+  examples?: { row_number?: number; phone?: string | null; status?: string; reason?: string | null }[];
+  failure_reason?: string | null;
+};
+const importStatuses: Record<string, string> = {
+  queued: "Ayrıştırma kuyruğunda",
+  parsing: "Dosya ayrıştırılıyor",
+  awaiting_mapping: "Telefon sütunu seçilmeli",
+  ready: "Gönderim incelemesine hazır",
+  failed: "İçe aktarma başarısız",
+};
+function campaignImport(output?: Record<string, unknown>): CampaignImportOutput | null {
+  const value = output?.campaign_import;
+  return value && typeof value === "object" ? (value as CampaignImportOutput) : null;
+}
+function CampaignImportSummary({ value }: { value: CampaignImportOutput }) {
+  const counts = value.counts ?? {};
+  const rows = [
+    ["Toplam satır", counts.total],
+    ["Gönderime uygun", counts.eligible],
+    ["Engelli", counts.blocked],
+    ["Geçersiz", counts.invalid],
+    ["Tekrar", counts.duplicate],
+  ] as const;
+  return (
+    <section className={styles.importSummary} aria-label="Dosya içe aktarma özeti">
+      <h4>Dosya içe aktarma</h4>
+      <p>
+        {[value.filename, value.status ? importStatuses[value.status] ?? value.status : ""].filter(Boolean).join(" · ")}
+      </p>
+      <dl>
+        {rows.map(([label, count]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{typeof count === "number" ? count : "—"}</dd>
+          </div>
+        ))}
+      </dl>
+      {value.failure_reason && <p role="alert">{value.failure_reason}</p>}
+      {!!value.examples?.length && (
+        <details>
+          <summary>İlk sorunlu satırlar</summary>
+          <ul>
+            {value.examples.map((example, index) => (
+              <li key={`${example.row_number ?? index}-${example.phone ?? ""}`}>
+                Satır {example.row_number ?? "—"}: {example.phone ?? "—"} · {example.reason ?? example.status ?? "Kontrol edin"}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
+}
 export default function WorkflowCard({
   view,
   refresh,
@@ -81,6 +140,11 @@ export default function WorkflowCard({
   const previousFields = useRef(view.fields);
   const submittedFields = useRef<Record<string, string> | null>(null);
   const flushLatest = useRef<() => Promise<boolean>>(async () => true);
+  const uploadRetry = useRef<{
+    file: File;
+    countryCode: string;
+    clientOperationId: string;
+  } | null>(null);
   useEffect(() => {
     if (observedRevision.current === view.revision) return;
     observedRevision.current = view.revision;
@@ -101,6 +165,60 @@ export default function WorkflowCard({
     view.status !== "paused" &&
     ["details", "compose"].includes(view.step) &&
     view.status !== "running";
+  const imported = campaignImport(view.output);
+  async function uploadCampaignFile(file: File) {
+    if (view.kind !== "outreach") return;
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Dosya en fazla 10 MiB olabilir.");
+      return;
+    }
+    const countryCode = (fields.country_code ?? "").trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(countryCode)) {
+      setError("Dosya için iki harfli ülke kodunu seçin (ör. TR).");
+      return;
+    }
+    const retryable = uploadRetry.current;
+    const upload =
+      retryable && retryable.file === file && retryable.countryCode === countryCode
+        ? retryable
+        : { file, countryCode, clientOperationId: crypto.randomUUID() };
+    uploadRetry.current = upload;
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    setSaved(false);
+    try {
+      const form = new FormData();
+      form.set("file", upload.file);
+      form.set("country_code", upload.countryCode);
+      form.set("client_operation_id", upload.clientOperationId);
+      form.set("expected_revision", String(view.revision));
+      await uploadWorkflowImport(
+        `admin-chat/sessions/${view.session_id}/workflows/${view.id}/imports`,
+        form,
+      );
+      uploadRetry.current = null;
+      await refresh();
+      setSaved(true);
+    } catch (e) {
+      if (
+        e instanceof ApiError &&
+        e.status === 409 &&
+        e.detail &&
+        typeof e.detail === "object" &&
+        "workflow" in e.detail
+      ) {
+        await refresh();
+        setError("Kart güncellendi. Dosyayı yeniden seçip tekrar deneyin.");
+      } else {
+        setError(e instanceof ApiError ? e.message : "Dosya yüklenemedi. Aynı dosyayı yeniden deneyin.");
+      }
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
   async function act(action: string, overrides?: Record<string, string>, automatic = false) {
     if (lock.current) return false;
     lock.current = true;
@@ -215,6 +333,7 @@ export default function WorkflowCard({
       </header>
       <MotionRegion className={messaging && !terminal ? styles.messageLayout : undefined}>
         {!terminal && view.output && <WorkflowOutput output={view.output} />}
+        {!terminal && imported && <CampaignImportSummary value={imported} />}
         {!terminal &&
           (!messaging || view.status === "failed" || Object.keys(view.errors).length > 0) &&
           view.result.message && <p role="status">{view.result.message}</p>}
@@ -361,6 +480,40 @@ export default function WorkflowCard({
                             </option>
                           ))}
                         </select>
+                      ) : c.control === "checkbox" ? (
+                        <input
+                          id={`${view.id}-${c.key}`}
+                          className={styles.checkbox}
+                          type="checkbox"
+                          checked={fields[c.key] === "true"}
+                          aria-required={c.required}
+                          aria-invalid={!!view.errors[c.key]}
+                          aria-describedby={
+                            view.errors[c.key] ? `${view.id}-${c.key}-error` : undefined
+                          }
+                          onChange={(e) => {
+                            setFields({ ...fields, [c.key]: e.target.checked ? "true" : "false" });
+                            setSaved(false);
+                            setError("");
+                          }}
+                        />
+                      ) : c.control === "file" ? (
+                        <input
+                          id={`${view.id}-${c.key}`}
+                          type="file"
+                          accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                          aria-required={c.required}
+                          aria-invalid={!!view.errors[c.key]}
+                          aria-describedby={
+                            view.errors[c.key] ? `${view.id}-${c.key}-error` : undefined
+                          }
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) void uploadCampaignFile(file);
+                            // Selecting the same local file after a failed request should fire change again.
+                            e.currentTarget.value = "";
+                          }}
+                        />
                       ) : c.control === "textarea" ? (
                         <textarea
                           id={`${view.id}-${c.key}`}
