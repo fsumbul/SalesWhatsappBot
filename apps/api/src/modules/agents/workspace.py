@@ -487,9 +487,22 @@ async def test_turn(
     turn, selection_state, resume_prompt = preview_selection(config, saved, payload.text)
     handoff_requested = False
     if turn is None:
-        turn = await CompanyAgentRuntime(config, get_llm_client()).reply(
-            payload.text, history=history, context_fact_ids=context
+        # Same GraphRAG retriever as the WhatsApp worker (ADR-002) so the web
+        # test chat exercises the exact production candidate path. Test
+        # sessions have no customer identity, so no memory graph is consulted.
+        from src.modules.agents.grounded_audit import build_entailment_verifier
+        from src.modules.knowledge.service import (
+            build_scoped_evidence_retriever,
+            build_scoped_retriever,
         )
+
+        turn = await CompanyAgentRuntime(
+            config,
+            get_llm_client(),
+            fact_retriever=build_scoped_retriever(tenant_id=tid, agent_version_id=version.id),
+            evidence_retriever=build_scoped_evidence_retriever(tenant_id=tid),
+            entailment_verifier=build_entailment_verifier(),
+        ).reply(payload.text, history=history, context_fact_ids=context)
         if resume_prompt:
             resume = as_turn(resume_prompt)
             handoff_requested = turn.action == CustomerReplyAction.HANDOFF

@@ -14,6 +14,7 @@ from src.modules.agents import workspace_models as _workspace_models
 from src.modules.auth import models as _auth_models
 from src.modules.compliance import models as _compliance_models
 from src.modules.discovery import models as _discovery_models
+from src.modules.knowledge import models as _knowledge_models
 from src.modules.outreach import models as _outreach_models
 from src.modules.sectors import models as _sectors_models
 from src.modules.selection import models as _selection_models

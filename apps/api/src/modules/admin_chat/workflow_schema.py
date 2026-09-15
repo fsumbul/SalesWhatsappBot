@@ -27,6 +27,8 @@ WorkflowKind = Literal[
     "configure",
     "publish",
     "test",
+    "knowledge",
+    "knowledge_review",
 ]
 
 

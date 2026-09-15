@@ -1,4 +1,4 @@
-.PHONY: help up down install dev test lint format migrate migration api web api-shell db-shell clean
+.PHONY: help up down install dev test lint format migrate migration api web api-shell db-shell clean agent-worker knowledge-index knowledge-search
 
 help:
 	@echo "LeadPulse - Make targets"
@@ -17,6 +17,9 @@ help:
 	@echo "  api-shell   Open API container shell"
 	@echo "  db-shell    Open psql shell"
 	@echo "  clean       Remove build artifacts"
+	@echo "  agent-worker      Run the WhatsApp reply + knowledge Celery worker"
+	@echo "  knowledge-index   Build the GraphRAG index for a tenant (TENANT=kasnak)"
+	@echo "  knowledge-search  Evaluate retrieval on the golden set (TENANT_ID=.. VERSION_ID=..)"
 
 up:
 	docker compose -f infra/docker-compose.yml up -d
@@ -72,3 +75,12 @@ clean:
 	find . -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .mypy_cache -exec rm -rf {} + 2>/dev/null || true
 	rm -rf apps/web/.next apps/web/node_modules/.cache
+
+agent-worker:
+	cd apps/api && poetry run celery -A src.core.agent_celery_app.agent_celery_app worker -l info -Q agent_runtime,knowledge --pool=solo
+
+knowledge-index:
+	cd apps/api && poetry run python scripts/knowledge_index.py --tenant-slug $(or $(TENANT),kasnak)
+
+knowledge-search:
+	cd apps/api && poetry run python scripts/knowledge_search.py --tenant-id $(TENANT_ID) --version-id $(VERSION_ID) --golden config/knowledge_golden.arti_kasnak.json

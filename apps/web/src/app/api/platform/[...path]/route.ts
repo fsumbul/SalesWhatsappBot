@@ -56,6 +56,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       "senders",
       "admin-chat",
       "selection-requests",
+      "knowledge",
     ].includes(path[0])
   )
     return NextResponse.json({}, { status: 404 });
@@ -66,7 +67,10 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     if (request.headers.get("origin") !== expected)
       return NextResponse.json({ detail: "Origin rejected" }, { status: 403 });
   }
-  if (Number(request.headers.get("content-length") ?? "0") > 600000)
+  // Knowledge documents (PDF/XLSX catalogues) are the only large uploads.
+  const upload = route === "knowledge/documents" && request.method === "POST";
+  const bodyLimit = upload ? 21 * 1024 * 1024 : 600000;
+  if (Number(request.headers.get("content-length") ?? "0") > bodyLimit)
     return NextResponse.json({}, { status: 413 });
   const publicRoute = route === "auth/login" || route === "auth/accept-invite";
   if (route === "auth/register-tenant" || route === "auth/refresh")
@@ -95,13 +99,23 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     clearTokens(response);
     return response;
   }
-  const body = request.method === "GET" ? undefined : await request.text();
-  if (body && Buffer.byteLength(body) > 600000) return NextResponse.json({}, { status: 413 });
+  const incomingType = request.headers.get("content-type") ?? "";
+  const multipart = upload && incomingType.startsWith("multipart/form-data");
+  const body: BodyInit | undefined =
+    request.method === "GET"
+      ? undefined
+      : multipart
+        ? Buffer.from(await request.arrayBuffer())
+        : await request.text();
+  if (typeof body === "string" && Buffer.byteLength(body) > 600000)
+    return NextResponse.json({}, { status: 413 });
+  if (body instanceof Buffer && body.byteLength > bodyLimit)
+    return NextResponse.json({}, { status: 413 });
   const invoke = () =>
     fetch(API + "/api/v1/" + route + request.nextUrl.search, {
       method: request.method,
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": multipart ? incomingType : "application/json",
         ...(access ? { Authorization: "Bearer " + access } : {}),
       },
       body,

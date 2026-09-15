@@ -28,6 +28,7 @@ from src.modules.discovery.models import ContactType, Lead, LeadContact
 from . import (
     workflow_agents,
     workflow_inbox,
+    workflow_knowledge,
     workflow_members,
     workflow_outreach,
     workflow_owners,
@@ -55,6 +56,8 @@ TITLES = {
     "rollback": "Önceki sürüme dön",
     "publish": "Sürümü yayınla",
     "test": "Müşteri testi",
+    "knowledge": "Web sitesini bilgi kaynağı yap",
+    "knowledge_review": "Bulunan bilgileri onayla",
     "create_company": "Şirket oluştur",
     "create_agent": "Asistan oluştur",
     "person": "Kişi ekle",
@@ -70,6 +73,7 @@ CONTROLS = {
     "member": workflow_members.CONTROLS,
     "records": workflow_records.CONTROLS,
     **workflow_agents.CONTROLS,
+    **workflow_knowledge.CONTROLS,
     "create_company": [
         WorkflowField(key="name", label="Şirket adı", required=True),
         WorkflowField(key="slug", label="Şirket kodu", required=True),
@@ -128,6 +132,8 @@ def authorize(user: Any, kind: str) -> None:
         "rollback": Role.SALES_MANAGER,
         "publish": Role.SALES_MANAGER,
         "test": Role.SALES_MANAGER,
+        "knowledge": Role.SALES_MANAGER,
+        "knowledge_review": Role.SALES_MANAGER,
         "invite": Role.TENANT_OWNER,
         "owner_invite": Role.SUPER_ADMIN,
         "create_company": Role.SUPER_ADMIN,
@@ -199,6 +205,8 @@ def view(row: Any) -> dict[str, Any]:
                 "rollback": "Seçilen sürümü yeniden yayınla",
                 "publish": "Sürümü yayınla",
                 "test": "Müşteri testini çalıştır",
+                "knowledge": "Kaynağı ekle ve taramayı başlat",
+                "knowledge_review": "Kararı uygula",
                 "invite": "Davet bağlantısı oluştur",
                 "contact": "Kişiyi kaydet",
                 "create_company": "Şirket ve sahip daveti oluştur",
@@ -255,6 +263,8 @@ def view(row: Any) -> dict[str, Any]:
                 else (
                     workflow_agents.controls(row)
                     if row.kind in workflow_agents.KINDS
+                    else workflow_knowledge.controls(row)
+                    if row.kind in workflow_knowledge.KINDS
                     else CONTROLS[row.kind]
                 )
             )
@@ -503,6 +513,8 @@ async def start(
         await workflow_records.initialize(db, user, session, row)
     if row.kind in workflow_agents.KINDS:
         await workflow_agents.initialize(db, user, session, row)
+    if row.kind in workflow_knowledge.KINDS:
+        await workflow_knowledge.initialize(db, user, session, row)
     db.add(row)
     await db.flush()
     return record(db, user, session, row, payload.client_operation_id, request)
@@ -719,6 +731,8 @@ async def act(
             await workflow_records.refresh(db, user, row)
         if row.kind in workflow_agents.KINDS:
             await workflow_agents.refresh_versions(db, user, row)
+        if row.kind in workflow_knowledge.KINDS:
+            await workflow_knowledge.refresh(db, user, row)
         if row.kind == "outreach":
             row.state = {k: v for k, v in row.state.items() if k != "errors"}
             if action == "continue" and not workflow_outreach.errors(row):
@@ -761,6 +775,8 @@ async def act(
                     await workflow_members.prepare(db, user, row)
                 if row.kind == "create_template":
                     await workflow_templates.prepare(db, user, row)
+                if row.kind in workflow_knowledge.KINDS:
+                    await workflow_knowledge.prepare(db, user, row)
                 if row.kind in workflow_agents.KINDS:
                     try:
                         async with db.begin_nested():
@@ -801,6 +817,8 @@ async def act(
             await workflow_members.complete(db, user, row)
         elif row.kind in workflow_agents.KINDS:
             await workflow_agents.complete(db, user, session, row)
+        elif row.kind in workflow_knowledge.KINDS:
+            await workflow_knowledge.complete(db, user, session, row)
         elif row.kind == "contact":
             row.result = await save_contact(db, user, row)
         elif row.kind == "invite":

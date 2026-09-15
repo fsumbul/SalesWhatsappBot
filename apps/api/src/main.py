@@ -28,6 +28,8 @@ from src.modules.auth.router import users_router
 from src.modules.compliance.router import opt_outs_router
 from src.modules.compliance.router import router as compliance_router
 from src.modules.discovery.router import campaigns_router, leads_router
+from src.modules.knowledge.router import public_router as knowledge_media_router
+from src.modules.knowledge.router import router as knowledge_router
 from src.modules.legal.router import router as legal_router
 from src.modules.outreach.inbox_control import router as inbox_control_router
 from src.modules.outreach.router import (
@@ -39,8 +41,8 @@ from src.modules.outreach.router import (
 from src.modules.outreach.webhooks import router as whatsapp_webhook_router
 from src.modules.reports.router import router as reports_router
 from src.modules.sectors.router import router as sectors_router
-from src.modules.selection.router import router as selection_router
 from src.modules.selection.customer_form import router as customer_form_router
+from src.modules.selection.router import router as selection_router
 
 
 @asynccontextmanager
@@ -171,6 +173,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_chat_router, prefix=api_prefix)
     app.include_router(auth_router, prefix=api_prefix)
     app.include_router(workspace_router, prefix=api_prefix)
+    app.include_router(knowledge_router, prefix=api_prefix)
     app.include_router(agents_router, prefix=api_prefix)
     app.include_router(users_router, prefix=api_prefix)
     app.include_router(platform_router, prefix=api_prefix)
@@ -188,6 +191,8 @@ def create_app() -> FastAPI:
 
     # Public webhook (no prefix; Meta needs a fixed URL)
     app.include_router(whatsapp_webhook_router)
+    # Published product images: /media/k/<tenant>/<sha>.<ext> (immutable, public)
+    app.include_router(knowledge_media_router)
     app.include_router(legal_router)
 
     return app

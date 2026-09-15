@@ -20,7 +20,7 @@ agent_celery_app = Celery(
     "leadpulse_agent_runtime",
     broker=str(_settings.celery_broker_url),
     backend=str(_settings.celery_result_backend),
-    include=["src.workers.agent_runtime"],
+    include=["src.workers.agent_runtime", "src.workers.knowledge"],
 )
 
 agent_celery_app.conf.update(
@@ -35,7 +35,12 @@ agent_celery_app.conf.update(
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=500,
     task_default_queue="agent_runtime",
-    task_routes={"src.workers.agent_runtime.*": {"queue": "agent_runtime"}},
+    task_routes={
+        "src.workers.agent_runtime.*": {"queue": "agent_runtime"},
+        # Knowledge indexing and memory enrichment never block a customer
+        # reply: they run on their own queue (``-Q agent_runtime,knowledge``).
+        "src.workers.knowledge.*": {"queue": "knowledge"},
+    },
 )
 
 agent_celery_app.conf.beat_schedule = {

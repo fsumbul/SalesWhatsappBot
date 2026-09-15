@@ -34,6 +34,7 @@ Multi-tenant SaaS. Sektör bazlı B2B potansiyel müşteri keşfi + WhatsApp Bus
 | Worker | Celery + Redis | Discovery / Enrichment / Outreach dispatch / Maintenance |
 | DB     | PostgreSQL 16 + Row-Level Security | Tenant-isolated veri |
 | Cache/broker | Redis 7 | Celery broker, token buckets, IYS cache |
+| Bilgi grafı | FalkorDB | GraphRAG indeksi (vektör + Türkçe full-text + graf) ve müşteri hafıza grafiği — bkz. ADR-002 |
 | Storage | (opsiyonel S3) | Ek doküman / medya için yer tutucu |
 
 ## Bounded Context'ler
@@ -138,6 +139,23 @@ bir ürün kararı. Model sunucusu ayarları için
 - Canlı runtime: LIVE versiyonun inbound mesajlara otomatik cevap vermesi, düşük güvenilirlikte insana devretme (Inbox assignment) — yok.
 - Kullanım/maliyet metering (billing için ön koşul) — yok.
 - Prompt-injection sertleştirmesi, agent cevaplarının compliance filtresinden geçmesi — henüz yapılmadı; runtime yazılmadan önce bu güvenlik incelemesi ayrıca ele alınmalı.
+
+## GraphRAG retrieval ve müşteri hafızası (ADR-002)
+
+Runtime'ın "model seçer, sunucu render eder" sözleşmesi değişmeden, aday fact seçimi
+FalkorDB üzerinde hibrit retrieval'a taşındı: `exact` (ürün/rulman kodları, ölçüler) +
+`vector` (BGE-M3, Ollama) + `fulltext` (RediSearch Türkçe stemmer) + `graph`
+(konu çapaları ve `is_variant_of`/`part_of` soy zinciri) → RRF → `bge-reranker-v2-m3`.
+Her müşteri turundan sonra `knowledge` kuyruğundaki worker, onaylı sözlükle kısıtlanmış
+bir hafıza özetini `mem_<tenant>` grafiğine yazar; hafıza yalnızca karar girdisidir.
+`KNOWLEDGE_BACKEND=lexical` ile tamamen kapatılır. Ayrıntı, güven sınırları ve ölçümler:
+[ADR-002](adr/ADR-002-falkordb-graphrag-retrieval.md).
+
+```
+inbound → worker → [retriever: FalkorDB kb_<tenant>_<version>] → aday fact ID'leri
+        → Qwen3 (action + fact_ids) → literal customer_text → Meta POST
+        → (commit sonrası) knowledge kuyruğu → Qwen3 yapısal özet → mem_<tenant>
+```
 
 ## Deployment
 

@@ -39,6 +39,26 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  # Graph + vector + full-text engine for the GraphRAG knowledge index and
+  # per-customer conversation memory (see docs/adr/ADR-002-falkordb-graphrag.md).
+  # Host ports are offset (6381 / 3001) so they never collide with the Redis
+  # broker on 6379 or the Next.js dev server on 3000.
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: leadpulse-falkordb
+    restart: unless-stopped
+    ports:
+      - "6381:6379"
+      - "3001:3000"
+    volumes:
+      - falkordb_data:/var/lib/falkordb/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   postgres_data:
   redis_data:
+  falkordb_data:

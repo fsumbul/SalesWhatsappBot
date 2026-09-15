@@ -28,11 +28,14 @@ from src.modules.agents.company_runtime import (
     RuntimeTurn,
     RuntimeWhatsAppCapabilities,
 )
+from src.modules.agents.grounded_types import EntailmentVerifier
 from src.modules.agents.models import Agent, AgentVersion, AgentVersionStatus
 from src.modules.agents.runtime_models import AgentRuntimeJob, AgentRuntimeJobStatus
 from src.modules.auth.models import Tenant, TenantStatus, User, UserRole
 from src.modules.compliance.models import OptOut
 from src.modules.discovery.models import ConsentStatus, LeadContact
+from src.modules.knowledge.memory import CustomerMemory
+from src.modules.knowledge.ports import EvidenceSearch, KnowledgeRetriever
 from src.modules.outreach.models import (
     Conversation,
     ConversationStatus,
@@ -429,6 +432,65 @@ async def _process_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
         }
 
 
+async def _knowledge_inputs(
+    tenant_id: UUID,
+    agent_version_id: UUID,
+    contact_identity: str,
+) -> tuple[KnowledgeRetriever | None, CustomerMemory | None, EvidenceSearch | None, EntailmentVerifier | None]:
+    """GraphRAG retriever bound to the LIVE version, the customer's memory, and
+    the hybrid-mode evidence search + verifier (ADR-002/ADR-003).
+
+    All are optional decision inputs. Any failure here degrades to the lexical
+    retriever / literal answers; it never blocks the reply.
+    """
+
+    from src.modules.agents.grounded_audit import build_entailment_verifier
+    from src.modules.knowledge.service import (
+        build_memory_store,
+        build_scoped_evidence_retriever,
+        build_scoped_retriever,
+        memory_key,
+    )
+
+    retriever = build_scoped_retriever(tenant_id=tenant_id, agent_version_id=agent_version_id)
+    evidence = build_scoped_evidence_retriever(tenant_id=tenant_id)
+    verifier: EntailmentVerifier | None
+    try:
+        verifier = build_entailment_verifier()
+    except Exception as exc:
+        logger.warning("knowledge.verifier.unavailable", error=type(exc).__name__)
+        verifier = None
+    memory: CustomerMemory | None = None
+    memory_store = build_memory_store()
+    if memory_store is not None:
+        try:
+            memory = await memory_store.customer_memory(
+                tenant_id=tenant_id,
+                key=memory_key(tenant_id, contact_identity),
+            )
+        except Exception as exc:
+            logger.warning("knowledge.memory.unavailable", error=type(exc).__name__)
+            memory = None
+    return retriever, memory, evidence, verifier
+
+
+def _enqueue_memory_enrichment(tenant_id: UUID, job_id: UUID) -> bool:
+    """Best-effort background enrichment after the turn is durable."""
+
+    from src.modules.knowledge.service import build_memory_store
+
+    if build_memory_store() is None:
+        return False
+    try:
+        from src.workers.knowledge import enrich_conversation_memory
+
+        enrich_conversation_memory.delay(str(tenant_id), str(job_id))
+        return True
+    except Exception as exc:  # broker down: memory is an optimization, not correctness
+        logger.warning("knowledge.memory.enqueue_failed", error=type(exc).__name__)
+        return False
+
+
 async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
     async with session_scope(tenant_id) as session:
         tenant = await session.get(Tenant, tenant_id)
@@ -547,6 +609,7 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             selection_request = None
             selection_confirmed = False
             turn = None
+            customer_memory: CustomerMemory | None = None
             resume_prompt = None
             selection_side_handoff = False
             selection_processing_ms = None
@@ -561,10 +624,19 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 selection_processing_ms = round((perf_counter() - selection_started) * 1000, 2)
             selection_deterministic = turn is not None
             if turn is None:
+                fact_retriever, customer_memory, evidence_search, verifier = await _knowledge_inputs(
+                    tenant_id,
+                    version.id,
+                    contact.normalized_value,
+                )
                 turn = await CompanyAgentRuntime(
                     config,
                     get_llm_client(),
                     whatsapp_capabilities=_tenant_whatsapp_capabilities(tenant_id),
+                    fact_retriever=fact_retriever,
+                    customer_memory=customer_memory,
+                    evidence_retriever=evidence_search,
+                    entailment_verifier=verifier,
                 ).reply(inbound.body, history=history, context_fact_ids=context_fact_ids)
                 if resume_prompt is not None and turn.action in {
                     CustomerReplyAction.REPLY,
@@ -709,6 +781,16 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 "planned_reply": turn.reply,
                 "planned_interaction": _interaction_audit(turn),
                 "request_resolutions": list(turn.request_resolutions),
+                "retrieval": turn.retrieval,
+                "answer_origin": turn.answer_origin,
+                "answer_verified": turn.answer_verified,
+                "evidence_ids": list(turn.evidence_ids),
+                "generation": turn.generation,
+                "customer_memory": (
+                    {"subjects": list(customer_memory.subject_ids), "turns": customer_memory.turns}
+                    if customer_memory is not None and not customer_memory.empty
+                    else None
+                ),
                 "send_started_at": datetime.now(UTC).isoformat(),
                 "external_send_attempts": 1,
             }
@@ -757,6 +839,8 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                     "fact_ids": list(turn.fact_ids),
                     "used_fallback": turn.used_fallback,
                     "response_source": turn.response_source,
+                    "answer_origin": turn.answer_origin,
+                    "evidence_ids": list(turn.evidence_ids),
                     "transport_type": transport_type,
                     "interaction": _interaction_audit(turn),
                     "request_resolutions": list(turn.request_resolutions),
@@ -786,6 +870,9 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                     "Bot bu talebi otomatik yanıtlayamadı. İnsan incelemesi ve gerekirse manuel yanıt gerekli.",
                 )
             await session.commit()
+            # The turn is durable: enrich the customer's memory graph off the
+            # critical path (knowledge queue), never before the Meta POST.
+            _enqueue_memory_enrichment(tenant_id, job.id)
             return {"status": job.status, "wa_message_id": wa_id}
 
 

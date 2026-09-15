@@ -1,0 +1,14 @@
+[
+  {"question": "6211 rulman hangi mil çapına uygundur?", "expected_fact_ids": ["bearing_compatibility"]},
+  {"question": "TS180118 kaç halat için?", "expected_fact_ids": ["traction_sheave_available_dimensions"]},
+  {"question": "Palanga kasnağının malzemesi ve çalışma özellikleri nedir?", "expected_fact_ids": ["palanga_pulley_details"]},
+  {"question": "Captormal kasnakların standart çap seçenekleri nelerdir?", "expected_fact_ids": ["mc_nylon_standard_dimensions", "mc_nylon_eco_dimensions"]},
+  {"question": "Döküm kasnakta 320 mm çap seçeneği var mı?", "expected_fact_ids": ["cast_standard_dimensions", "cast_eco_dimensions"]},
+  {"question": "Yan desteklerde hangi mil çapları var?", "expected_fact_ids": ["side_support_standard_dimensions"]},
+  {"question": "Özel ölçü üretim yapıyor musunuz?", "expected_fact_ids": ["customization_and_order_flexibility", "drawing_based_production"]},
+  {"question": "İhracat ekibine nasıl ulaşabilirim?", "expected_fact_ids": ["contact_information"]},
+  {"question": "kasnaklarınız sessiz mi çalışıyo", "expected_fact_ids": ["plastic_pulley_performance", "cast_pulley_performance"]},
+  {"question": "halatın yönünü değiştiren parça hakkında bilgi", "expected_fact_ids": ["cast_pulley_role_and_types"]},
+  {"question": "ölçüleri neler", "anchor_subject_ids": ["deflection_pulley"], "expected_fact_ids": ["cast_standard_dimensions", "cast_eco_dimensions"]},
+  {"question": "kaç ülkeye satıyorsunuz", "expected_fact_ids": ["company_history_and_reach"]}
+]

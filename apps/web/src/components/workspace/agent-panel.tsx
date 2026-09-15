@@ -10,6 +10,7 @@ import {
   type Turn,
   type CompanyConfig,
 } from "./types";
+import KnowledgePanel from "./knowledge-panel";
 import styles from "./workspace.module.css";
 
 export default function AgentPanel({
@@ -194,11 +195,12 @@ export default function AgentPanel({
           <nav className={styles.tabs} aria-label="Asistan bölümleri">
             {[
               ["knowledge", "Bilgiler"],
+              ["sources", "Bilgi kaynakları"],
               ["builder", "Yapılandırma sohbeti"],
               ["test", "Müşteri testi"],
               ["versions", "Sürümler"],
             ]
-              .filter(([id]) => canEdit || id === "knowledge" || id === "versions")
+              .filter(([id]) => canEdit || ["knowledge", "sources", "versions"].includes(id))
               .map(([id, title]) => (
                 <button
                   key={id}
@@ -209,6 +211,13 @@ export default function AgentPanel({
                 </button>
               ))}
           </nav>
+          {view === "sources" && (
+            <KnowledgePanel
+              agentId={aid}
+              canEdit={canEdit}
+              isOwner={["super_admin", "tenant_owner"].includes(me.user.role)}
+            />
+          )}
           {view === "knowledge" && (
             <div className={styles.grid}>
               <div className={styles.card}>
@@ -710,9 +719,25 @@ export function Transcript({
                   {m.interaction.button_text}
                 </a>
               )}
+              {m.interaction.header_media?.url && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={m.interaction.header_media.url}
+                  alt="Ürün görseli"
+                  style={{ maxWidth: 240, borderRadius: 8, display: "block" }}
+                />
+              )}
               {m.interaction.carousel_cards?.map((c) => (
-                <a key={c.id} href={c.url} target="_blank" rel="noreferrer">
-                  {c.title}
+                <a key={c.offering_id} href={c.url} target="_blank" rel="noreferrer">
+                  {c.header_media?.url && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={c.header_media.url}
+                      alt={c.offering_id}
+                      style={{ maxWidth: 160, borderRadius: 8, display: "block" }}
+                    />
+                  )}
+                  {c.body_text} · {c.button_text}
                 </a>
               ))}
             </div>
@@ -726,6 +751,16 @@ export function Transcript({
                   : `Model: ${m.model}`}
               {m.fallback_reason ? ` (${m.fallback_reason})` : ""} · v{m.version} · {m.latency_ms}{" "}
               ms{m.fact_ids?.length ? " · " + m.fact_ids.join(", ") : ""}
+              {m.answer_origin === "generated"
+                ? " · Üretilmiş yanıt (kanıtlı, doğrulandı)"
+                : m.answer_origin === "mixed"
+                  ? " · Karma yanıt (onaylı metin + doğrulanmış üretim)"
+                  : m.answer_origin === "literal"
+                    ? " · Onaylı metin"
+                    : ""}
+              {m.evidence_ids?.some((e) => e.startsWith("chunk:"))
+                ? " · doküman kanıtı kullanıldı"
+                : ""}
             </small>
           )}
         </article>

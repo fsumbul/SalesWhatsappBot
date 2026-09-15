@@ -5,8 +5,8 @@
 Ön koşullar: Docker Desktop, Python 3.12 (`brew install python@3.12`), Poetry (`brew install poetry`), Node 20, pnpm.
 
 ```bash
-# 1. Altyapı (Postgres + Redis)
-docker compose up -d postgres redis
+# 1. Altyapı (Postgres + Redis + FalkorDB)
+make up            # infra/docker-compose.yml: postgres, redis, mailhog, falkordb (6381, UI 3001)
 
 # 2. API
 cd apps/api
@@ -19,6 +19,9 @@ poetry run uvicorn src.main:app --reload --port 8000
 cd apps/api
 poetry run celery -A src.core.celery_app.celery_app worker -l info
 
+# 3b. WhatsApp ajan + bilgi kuyruğu worker'ı (yeni terminal; GraphRAG için `knowledge` kuyruğu şart)
+make agent-worker  # celery -A src.core.agent_celery_app.agent_celery_app worker -Q agent_runtime,knowledge --pool=solo
+
 # 4. Celery beat (yeni terminal)
 cd apps/api
 poetry run celery -A src.core.celery_app.celery_app beat -l info
@@ -30,7 +33,62 @@ pnpm install
 pnpm dev
 ```
 
-Erişim: <http://localhost:3000> (Web), <http://localhost:8000/docs> (API Swagger).
+Erişim: <http://localhost:3000> (Web), <http://localhost:8000/docs> (API Swagger),
+<http://localhost:3001> (FalkorDB Browser).
+
+## GraphRAG retrieval ve müşteri hafızası (ADR-002)
+
+Yerel model sunucusu olarak Ollama kullanılıyorsa embedding modelini de çekin:
+
+```bash
+ollama pull qwen3:8b
+ollama pull bge-m3
+```
+
+`.env` içinde `KNOWLEDGE_BACKEND=falkordb`, `EMBEDDING_PROVIDER=ollama` ve isteğe bağlı
+`RERANKER_ENABLED=true` (ilk çalıştırmada `BAAI/bge-reranker-v2-m3` ~2,2 GB indirir;
+worker başlangıcında ısıtılır). Ayarlar boşken runtime eski sözcüksel seçiciyle çalışır.
+
+```bash
+# LIVE sürümün indeksini kur / doğrula (idempotent, parmak izi değişmediyse yeniden kurmaz)
+make knowledge-index TENANT=kasnak
+# veya DB olmadan bir config dosyasını indeksle
+cd apps/api && poetry run python scripts/knowledge_index.py --config config/arti_kasnak.production.json \
+  --tenant-id 00000000-0000-0000-0000-00000000aaaa --version-id 00000000-0000-0000-0000-00000000bbbb
+
+# Retrieval'ı sorgula / golden set ile ölç (recall@k, MRR)
+cd apps/api && poetry run python scripts/knowledge_search.py --tenant-id <uuid> --version-id <uuid> "6211 rulman hangi mile uygun?"
+make knowledge-search TENANT_ID=<uuid> VERSION_ID=<uuid>
+
+# PDF/Markdown'dan aday fact üret (yönetici onayı olmadan runtime'a girmez)
+cd apps/api && poetry run python scripts/ingest_documents.py --config config/arti_kasnak.production.json \
+  --input katalog.pdf --out candidates.json --draft-config config/arti_kasnak.draft.json
+```
+
+`promote_to_live`/`rollback_to` yeni LIVE sürüm için `index_agent_version` görevini
+`knowledge` kuyruğuna atar; kuyruk tüketilmiyorsa retriever indeksi bulamaz ve
+sözcüksel seçiciye düşer (`agent_runtime_jobs.audit.retrieval.status = fallback_lexical`).
+Hafıza silme (KVKK): `ConversationMemoryStore.forget(tenant_id=…, key=memory_key(tenant_id, telefon))`.
+
+### Self-servis bilgi kaynakları ve hibrit cevaplar (ADR-003)
+
+- Panel → asistan → **Bilgi kaynakları** sekmesi: web sitesi ekle, PDF/XLSX/CSV/Markdown yükle, adayları onayla/reddet/kaldır, görselleri onayla. Sohbette: "web sitemi bilgi kaynağı yap" (`knowledge` iş akışı), "bulunan bilgileri onayla" (`knowledge_review`).
+- API: `POST /api/v1/knowledge/sources`, `POST /api/v1/knowledge/documents` (multipart), `GET /knowledge/candidates?agent_id=`, `POST /knowledge/candidates/{id}/accept|reject|revoke`, `GET /knowledge/media?agent_id=`, `GET /knowledge/agents/{id}/summary`.
+- Görseller `KNOWLEDGE_PUBLIC_MEDIA_BASE_URL` (boşsa `APP_BASE_URL`) + `/media/k/<tenant>/<sha>.<ext>` adresinden sunulur; Meta bu adrese erişebilmelidir (public HTTPS).
+- Hibrit mod: config'de `agent.response_mode = "hybrid"` ve `agent.grounded_generation = {...}`; `HYBRID_GENERATION_ENABLED=false` anında strict'e döndürür; `LLM_NUM_CTX=8192` çok chunk kullanılıyorsa.
+- Denetim: `agent_runtime_jobs.audit.answer_origin/generation` ve `messages.raw.answer_origin`. Örnek metrik:
+
+```sql
+SELECT count(*) FILTER (WHERE audit->>'answer_origin' IN ('generated','mixed'))::float / count(*) AS generated_share,
+       count(*) FILTER (WHERE audit->'generation'->>'status' LIKE 'failed:%') AS generation_failures
+FROM agent_runtime_jobs WHERE created_at > now() - interval '1 day' AND audit ? 'generation';
+```
+
+Sık sorunlar:
+
+- `knowledge index is missing` → `make knowledge-index` çalıştırın veya `knowledge` kuyruğunu tüketen worker açın.
+- `EMBEDDING_PROVIDER must be ollama when KNOWLEDGE_BACKEND=falkordb` → üretim boot kapısı; iki ayarı birlikte verin.
+- macOS'ta aynı makinede Docker içinde bir Ollama da çalışıyorsa `localhost:11434` IPv6 üzerinden konteynere gidebilir; `http://127.0.0.1:11434` kullanın.
 
 ## Taşınabilir model sunucusu kurulumu
 
@@ -136,7 +194,8 @@ otomasyonunu açmaz:
 - `AshiraaiAgentWorker`
 - `AshiraaiAgentRecovery`
 
-Agent worker bilerek `--pool=solo --concurrency=1` çalışır. Opt-out gönderim
+Agent worker bilerek `--pool=solo --concurrency=1` çalışır ve `-Q agent_runtime,knowledge`
+ile hem müşteri cevabı hem bilgi kuyruğunu tüketmelidir (ya da `knowledge` için ayrı bir worker). Opt-out gönderim
 sınırı iş başına bir ana ve bir guard DB bağlantısı kullanır. Aynı process'te
 async/thread/gevent concurrency `16+` yapılmadan önce bu kilit/havuz tasarımı
 yeniden değerlendirilmelidir.

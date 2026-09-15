@@ -1,6 +1,6 @@
 # Çok Şirketli Vector Retrieval Mimarisi
 
-- **Durum:** Önerilen
+- **Durum:** Uygulandı — backend olarak pgvector yerine FalkorDB seçildi, bkz. [ADR-002](adr/ADR-002-falkordb-graphrag-retrieval.md). Güven sınırları, retrieval kanalları, RRF, versiyonlama ve kabul testleri bu belgedeki gibi uygulanmıştır.
 - **Kapsam:** WhatsApp müşteri botu, şirket bilgi senkronizasyonu ve RAG
 - **Ana karar:** PostgreSQL 16, pgvector ve PostgreSQL full text search ile tenant güvenli hybrid retrieval
 

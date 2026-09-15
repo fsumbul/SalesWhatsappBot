@@ -9,13 +9,17 @@ the boundary; a missing price never removes an answerable specification.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import replace
 from typing import Any, Literal
 
 from pydantic import Field
 
+from src.core.config import get_settings
 from src.integrations.llm import LLMClient, LLMMessage
+from src.modules.knowledge.memory import CustomerMemory
+from src.modules.knowledge.ports import EvidenceSearch, KnowledgeRetriever, RetrievalResult
 
 from .company_config import CompanyAgentConfig, Fact, StrictModel
 from .company_runtime import (
@@ -30,6 +34,7 @@ from .company_runtime import (
     _search_tokens,
     _suggest_interaction,
 )
+from .grounded_types import EntailmentVerifier, GeneratedAnswer
 
 Topic = Literal[
     "details", "price", "stock", "delivery", "suitability", "warranty",
@@ -72,9 +77,19 @@ def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
-def planner_context(config: CompanyAgentConfig, context_fact_ids: tuple[str, ...]) -> dict[str, Any]:
+def planner_context(
+    config: CompanyAgentConfig,
+    context_fact_ids: tuple[str, ...],
+    customer_memory: CustomerMemory | None = None,
+) -> dict[str, Any]:
     assert config.agent is not None
+    memory = (
+        {"customer_memory": customer_memory.as_prompt_context(config)}
+        if customer_memory is not None and not customer_memory.empty
+        else {}
+    )
     return {
+        **memory,
         "subjects": {
             (config.organization.id if config.organization else "company"): "The company itself",
             "unknown": "Unidentified or ambiguous subject; never guess a distinct product",
@@ -97,8 +112,10 @@ async def interpret_requests(
     message: str,
     history: list[LLMMessage],
     context_fact_ids: tuple[str, ...],
+    *,
+    customer_memory: CustomerMemory | None = None,
 ) -> RequestPlan:
-    context = planner_context(config, context_fact_ids)
+    context = planner_context(config, context_fact_ids, customer_memory)
     schema = RequestPlan.model_json_schema()
     schema["$defs"]["Request"]["properties"]["subject_id"]["enum"] = list(context["subjects"])
     raw = await llm.complete(
@@ -121,6 +138,9 @@ ambiguous use unknown; do not map an unknown product to a familiar one.
 Use history/recent_facts to resolve 'its', 'this', follow-ups, an accepted offer,
 or a correction. A new named product replaces the old one. Do not repeat already
 answered requests or add requests the customer did not make.
+customer_memory (if present) lists products and requirement values this customer
+gave in earlier conversations; use it only to resolve a vague follow-up, never
+as a request the customer did not make now.
 Topics: details=product/company information; price=amount/discount/cost;
 stock=current availability; delivery=delivery timing; suitability=final selection
 or compatibility; warranty; certification; quote=request to prepare/continue an
@@ -140,8 +160,17 @@ requests only. A purely social turn has one social request with the configured c
     return plan
 
 
-def request_candidates(config: CompanyAgentConfig, request: Request) -> list[Fact]:
-    """Retrieve within validated subject lineage, then gate that request's evidence."""
+def request_candidates(
+    config: CompanyAgentConfig,
+    request: Request,
+    ranked_fact_ids: tuple[str, ...] | None = None,
+) -> list[Fact]:
+    """Retrieve within validated subject lineage, then gate that request's evidence.
+
+    ``ranked_fact_ids`` is an optional GraphRAG order (ADR-002). It can only
+    re-rank facts that already passed the lineage and category gates here; it
+    can never add a fact from outside the request's approved scope.
+    """
     visible = [fact for fact in config.facts if fact.customer_visible and fact.customer_text]
     if config.whatsapp_presentation:
         completion_ids = {f.completion_fact_id for f in config.whatsapp_presentation.flows}
@@ -178,9 +207,15 @@ def request_candidates(config: CompanyAgentConfig, request: Request) -> list[Fac
     else:
         scoped = [f for f in scoped if f.category.value != "social"]
     tokens = _search_tokens(request.question)
+    rank_by_id = (
+        {fact_id: rank for rank, fact_id in enumerate(ranked_fact_ids)}
+        if ranked_fact_ids
+        else {}
+    )
     # Relevance is ranking only. It must never veto a semantic product match.
     scoped.sort(key=lambda f: (
         f.subject_id != request.subject_id,
+        rank_by_id.get(f.id, len(rank_by_id)),
         -_fact_relevance_score(config, f, tokens),
     ))
     return scoped[:8]
@@ -188,8 +223,12 @@ def request_candidates(config: CompanyAgentConfig, request: Request) -> list[Fac
 
 async def decide_evidence(
     config: CompanyAgentConfig, llm: LLMClient, plan: RequestPlan,
+    ranked: dict[int, tuple[str, ...]] | None = None,
 ) -> tuple[EvidenceDecision, list[list[Fact]]]:
-    candidates = [request_candidates(config, request) for request in plan.requests]
+    candidates = [
+        request_candidates(config, request, (ranked or {}).get(index))
+        for index, request in enumerate(plan.requests)
+    ]
     # Share text once even when several requests refer to the same facts.
     by_id = {fact.id: fact for group in candidates for fact in group}
     schema = EvidenceDecision.model_json_schema()
@@ -255,8 +294,17 @@ exactly once. No prose outside JSON; the server will render approved text.
 def compose_reply(
     config: CompanyAgentConfig, plan: RequestPlan, decision: EvidenceDecision,
     *, capabilities: RuntimeWhatsAppCapabilities | None = None,
+    generated: dict[int, GeneratedAnswer] | None = None,
 ) -> RuntimeTurn:
+    """Order literal (and, in hybrid mode, verified generated) answers into one reply.
+
+    ``generated`` never widens what the customer may hear: a generated answer
+    only replaces the literal rendering of the facts it cites, and only when
+    the audit verified it; otherwise the literal facts are rendered as always.
+    """
+
     assert config.agent is not None and config.agent.semantic_dialogue is not None
+    generated = generated or {}
     policy = config.agent.semantic_dialogue
     locale = config.agent.default_locale
     facts = {f.id: f for f in config.facts if f.customer_visible and f.customer_text}
@@ -293,18 +341,39 @@ def compose_reply(
     rendered_ids: list[str] = []
     trace: list[dict[str, object]] = []
     deferred = False
+    origins: list[str] = []
+    evidence_ids: list[str] = []
     for resolution in ordered:
-        unique = [f for f in resolution.fact_ids if f not in rendered_ids]
-        additions = [_localized_text(facts[f].customer_text or {}, locale) for f in unique]
+        answer = generated.get(resolution.request_index)
         record: dict[str, object] = {"subject_id": plan.requests[resolution.request_index].subject_id,
                   "topic": plan.requests[resolution.request_index].topic,
                   "status": resolution.status, "fact_ids": list(resolution.fact_ids)}
+        record_origin = "literal"
+        record_evidence: list[str] = [f"fact:{f}" for f in resolution.fact_ids]
+        if answer is not None and answer.verified and resolution.status == "answered":
+            unique = [f for f in answer.fact_ids if f not in rendered_ids]
+            additions = [answer.text]
+            record_origin = "generated"
+            record_evidence = list(answer.evidence_refs)
+            record.update(answer_origin="generated", answer_verified=True,
+                          evidence_ids=record_evidence, blocks=list(answer.blocks),
+                          dropped_blocks=list(answer.dropped_blocks))
+        else:
+            unique = [f for f in resolution.fact_ids if f not in rendered_ids]
+            additions = [_localized_text(facts[f].customer_text or {}, locale) for f in unique]
+            record.update(answer_origin="literal", answer_verified=True, evidence_ids=record_evidence)
+            if answer is not None:
+                record["fallback_reason"] = answer.fallback_reason
+                record["dropped_blocks"] = list(answer.dropped_blocks)
         if additions and len("\n\n".join([*pieces, *additions, *suffix, deferred_text])) > budget:
             record.update(status="deferred", fact_ids=[])
             deferred = True
         else:
             pieces.extend(additions)
             rendered_ids.extend(unique)
+            if resolution.status == "answered":
+                origins.append(record_origin)
+                evidence_ids.extend(record_evidence)
         trace.append(record)
     if deferred:
         suffix.insert(0, deferred_text)
@@ -313,7 +382,16 @@ def compose_reply(
     rendered = "\n\n".join([*pieces, *suffix])
     if not rendered or len(rendered) > budget:
         raise ValueError("composed answer exceeds the safe channel budget")
-    turn = RuntimeTurn(action, rendered, tuple(rendered_ids), request_resolutions=tuple(trace))
+    answer_origin = (
+        "generated" if origins and all(o == "generated" for o in origins)
+        else "mixed" if any(o == "generated" for o in origins)
+        else "literal"
+    )
+    turn = RuntimeTurn(
+        action, rendered, tuple(rendered_ids), request_resolutions=tuple(trace),
+        answer_origin=answer_origin, answer_verified=True,
+        evidence_ids=tuple(dict.fromkeys(evidence_ids)),
+    )
     # Prefer requested media over a secondary quote affordance. Otherwise the
     # approved next-step fact can surface the bound quotation flow.
     visual = next((r for r in known if plan.requests[r.request_index].topic == "visuals"), None)
@@ -321,11 +399,95 @@ def compose_reply(
     return replace(turn, interaction=_suggest_interaction(config, ui_turn, "", capabilities))
 
 
+_UNRETRIEVED_TOPICS = {"social", "visuals"}
+
+
+async def retrieve_for_plan(
+    retriever: KnowledgeRetriever | None,
+    config: CompanyAgentConfig,
+    plan: RequestPlan,
+    customer_memory: CustomerMemory | None,
+) -> tuple[dict[int, tuple[str, ...]], dict[str, object] | None]:
+    """Run GraphRAG retrieval per planned request, concurrently and fail-open.
+
+    A failed or slow retrieval leaves that request on the lexical order; it
+    can never turn into a handoff by itself.
+    """
+
+    if retriever is None:
+        return {}, None
+    company_id = config.organization.id if config.organization else "company"
+    memory_subjects = customer_memory.subject_ids if customer_memory else ()
+    indexes = [
+        index
+        for index, request in enumerate(plan.requests)
+        if request.subject_id != "unknown" and request.topic not in _UNRETRIEVED_TOPICS
+    ]
+    outcomes = await asyncio.gather(
+        *(
+            retriever.retrieve(
+                plan.requests[index].question,
+                anchor_subject_ids=(
+                    (plan.requests[index].subject_id,)
+                    if plan.requests[index].subject_id != company_id
+                    else ()
+                ),
+                memory_subject_ids=memory_subjects,
+                max_candidates=24,
+            )
+            for index in indexes
+        ),
+        return_exceptions=True,
+    )
+    ranked: dict[int, tuple[str, ...]] = {}
+    trace: list[dict[str, object]] = []
+    for index, outcome in zip(indexes, outcomes, strict=True):
+        request = plan.requests[index]
+        entry: dict[str, object] = {
+            "index": index, "subject_id": request.subject_id, "topic": request.topic,
+        }
+        if isinstance(outcome, BaseException):
+            entry["status"] = "fallback_lexical"
+            entry["error"] = type(outcome).__name__
+        else:
+            result: RetrievalResult = outcome
+            ranked[index] = result.fact_ids
+            entry["status"] = "ok"
+            entry.update(result.audit())
+        trace.append(entry)
+    audit: dict[str, object] = {"backend": retriever.backend, "requests": trace}
+    if memory_subjects:
+        audit["memory_subjects"] = list(memory_subjects)
+    return ranked, audit
+
+
 async def reply_to_requests(
     config: CompanyAgentConfig, llm: LLMClient, message: str, *,
     history: list[LLMMessage], context_fact_ids: tuple[str, ...],
     capabilities: RuntimeWhatsAppCapabilities | None,
+    fact_retriever: KnowledgeRetriever | None = None,
+    customer_memory: CustomerMemory | None = None,
+    evidence_retriever: EvidenceSearch | None = None,
+    entailment_verifier: EntailmentVerifier | None = None,
 ) -> RuntimeTurn:
-    plan = await interpret_requests(config, llm, message, history, context_fact_ids)
-    decision, _ = await decide_evidence(config, llm, plan)
-    return compose_reply(config, plan, decision, capabilities=capabilities)
+    plan = await interpret_requests(
+        config, llm, message, history, context_fact_ids, customer_memory=customer_memory,
+    )
+    ranked, retrieval_audit = await retrieve_for_plan(fact_retriever, config, plan, customer_memory)
+    decision, _ = await decide_evidence(config, llm, plan, ranked)
+    generated: dict[int, GeneratedAnswer] | None = None
+    generation_trace: dict[str, object] | None = None
+    from .grounded_generation import generate_answers, hybrid_active
+
+    if hybrid_active(config, enabled=get_settings().hybrid_generation_enabled):
+        # Fail-open by construction: generate_answers never raises; every
+        # failure leaves the request on the literal path.
+        generated, generation_trace = await generate_answers(
+            config, llm, plan, decision, history=history,
+            evidence_search=evidence_retriever, customer_memory=customer_memory,
+            verifier=entailment_verifier,
+        )
+    elif config.agent is not None and config.agent.response_mode == "hybrid":
+        generation_trace = {"status": "disabled_by_settings"}
+    turn = compose_reply(config, plan, decision, capabilities=capabilities, generated=generated)
+    return replace(turn, retrieval=retrieval_audit, generation=generation_trace)

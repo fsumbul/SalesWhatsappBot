@@ -29,6 +29,14 @@ phonenumbers = "^8.13.49"
 python-multipart = "^0.0.17"
 email-validator = "^2.2.0"
 playwright = "^1.61.0"
+falkordb = ">=1.0.10"
+sentence-transformers = ">=3.0"
+torch = ">=2.4"
+pypdf = ">=4.3"
+trafilatura = ">=1.12"
+beautifulsoup4 = ">=4.12"
+openpyxl = ">=3.1"
+pillow = ">=10.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"
@@ -74,6 +82,7 @@ exclude = ["alembic/", "tests/"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --tb=short"
+markers = ["integration: needs a live FalkorDB and Ollama (bge-m3); skipped otherwise"]
 
 [tool.coverage.run]
 source = ["src"]

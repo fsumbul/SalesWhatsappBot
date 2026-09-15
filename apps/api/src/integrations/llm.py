@@ -85,11 +85,12 @@ class OllamaLLMClient:
     explicit there and are already exercised by the local simulator.
     """
 
-    def __init__(self, *, base_url: str, model: str) -> None:
+    def __init__(self, *, base_url: str, model: str, num_ctx: int = 4096) -> None:
         self.base_url = base_url.rstrip("/")
         ollama_root = self.base_url[:-3] if self.base_url.endswith("/v1") else self.base_url
         self.api_url = f"{ollama_root.rstrip('/')}/api/chat"
         self.model = model
+        self.num_ctx = num_ctx
 
     async def complete(
         self,
@@ -117,7 +118,7 @@ class OllamaLLMClient:
                 # rendered by the server, so creativity has no value here.
                 "temperature": 0,
                 "num_predict": max_tokens,
-                "num_ctx": 4096,
+                "num_ctx": self.num_ctx,
             },
         }
         if response_schema is not None:
@@ -351,7 +352,7 @@ def get_llm_client() -> LLMClient:
     if s.llm_provider == "mock":
         return MockOnboardingLLMClient()
     if s.llm_provider == "ollama":
-        return OllamaLLMClient(base_url=s.llm_base_url, model=s.llm_model)
+        return OllamaLLMClient(base_url=s.llm_base_url, model=s.llm_model, num_ctx=s.llm_num_ctx)
     if s.llm_provider == "chat_compatible":
         return ChatCompletionsLLMClient(
             base_url=s.llm_base_url,

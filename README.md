@@ -9,6 +9,9 @@ First vertical: elevator sheave sales. Sector-agnostic core.
 - **Backend:** Python 3.12 + FastAPI + SQLAlchemy 2 + Celery + Redis
 - **Frontend:** Next.js 15 (App Router) + TypeScript + Tailwind + shadcn/ui
 - **DB:** PostgreSQL 16 (with Row-Level Security)
+- **Knowledge graph:** FalkorDB (GraphRAG index: BGE-M3 vectors + Turkish full-text + graph lineage, bge-reranker-v2-m3) and per-customer memory graph — see [ADR-002](docs/adr/ADR-002-falkordb-graphrag-retrieval.md)
+- **Local LLM:** Qwen3 8B via Ollama (decision-only in strict mode; in hybrid mode it may write audited, evidence-cited descriptive answers — see [ADR-003](docs/adr/ADR-003-self-service-knowledge-and-hybrid-answers.md))
+- **Self-service knowledge:** tenants upload PDF/XLSX/CSV/Markdown or register their website; facts and product images are extracted locally, auto-published when safe and revocable in one click
 - **Infra:** Docker Compose + Caddy + GitHub Actions
 
 ## Monorepo Layout
@@ -59,11 +62,27 @@ self-hosted chat-compatible server. See the Turkish
 [model server guide](docs/model-sunucusu-rehberi.md) for environment variables,
 Docker, vLLM, LocalAI, and llama.cpp examples.
 
+## GraphRAG retrieval (optional, ADR-002)
+
+```bash
+ollama pull qwen3:8b && ollama pull bge-m3      # local models
+# .env: KNOWLEDGE_BACKEND=falkordb  EMBEDDING_PROVIDER=ollama  RERANKER_ENABLED=true
+make knowledge-index TENANT=kasnak               # build the FalkorDB index for the LIVE agent
+make agent-worker                                # reply + knowledge queues
+```
+
+Retrieval only proposes approved fact candidates; the model still chooses ids and the
+server renders literal `customer_text`. With the settings left empty the runtime keeps
+its in-process lexical selector.
+
 ## Common Commands
 
 | Command | What it does |
 |---|---|
-| `make up` | Start Postgres, Redis, Mailhog |
+| `make up` | Start Postgres, Redis, Mailhog, FalkorDB |
+| `make agent-worker` | WhatsApp reply worker (`agent_runtime` + `knowledge` queues) |
+| `make knowledge-index TENANT=slug` | Build/verify the GraphRAG index for a tenant's LIVE agent |
+| `make knowledge-search TENANT_ID=… VERSION_ID=…` | Evaluate retrieval on the Turkish golden set |
 | `make down` | Stop infra containers |
 | `make install` | Install API + Web dependencies |
 | `make dev` | Run API + Web dev servers |

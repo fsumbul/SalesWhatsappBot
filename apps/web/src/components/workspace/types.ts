@@ -47,18 +47,67 @@ export type Turn = {
     button_text: string;
     options: { id: string; title: string }[];
     url?: string;
+    header_media?: { url: string } | null;
     carousel_cards?: {
-      id: string;
-      title: string;
-      body: string;
+      offering_id: string;
+      body_text: string;
+      button_text: string;
       url: string;
       header_media: { url: string };
     }[];
   };
   fact_ids?: string[];
+  // Hybrid mode (ADR-003): literal | generated | mixed, and the cited evidence.
+  answer_origin?: string;
+  answer_verified?: boolean;
+  evidence_ids?: string[];
   version?: number;
   latency_ms?: number;
   model?: string;
+};
+export type KnowledgeSource = {
+  id: string;
+  agent_id: string;
+  kind: string;
+  display_name: string;
+  canonical_uri: string | null;
+  enabled: boolean;
+  sync_policy: string;
+  auto_publish: boolean;
+  status: string;
+  last_sync_at: string | null;
+  last_error: string | null;
+  stats: Record<string, unknown>;
+  created_at: string;
+};
+export type KnowledgeCandidate = {
+  id: string;
+  source_id: string;
+  kind: string;
+  subject_id: string | null;
+  category: string | null;
+  payload: Record<string, unknown>;
+  evidence: { locator?: string; quote?: string };
+  confidence: number;
+  review_status: string;
+  protected: boolean;
+  published_ref: string | null;
+  error: string | null;
+  created_at: string;
+};
+export type KnowledgeMedia = {
+  id: string;
+  source_id: string;
+  origin_url: string;
+  mime_type: string;
+  width: number;
+  height: number;
+  subject_id: string | null;
+  alt_text: string | null;
+  score: number;
+  status: string;
+  asset_id: string | null;
+  public_url: string | null;
 };
 export type Session = {
   id: string;
@@ -124,4 +173,29 @@ export async function api<T>(path: string, method = "GET", body?: unknown): Prom
       throw new ApiError("Bağlantı kesildi. Aynı isteği güvenle yeniden deneyebilirsiniz.", 0);
     }
   }
+}
+
+/** Multipart upload through the BFF proxy (knowledge documents). */
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const response = await fetch("/api/platform/" + path, {
+    method: "POST",
+    body: form,
+    cache: "no-store",
+  });
+  const raw = await response.text();
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new ApiError("Sunucudan geçerli yanıt alınamadı.", response.status);
+  }
+  if (!response.ok) {
+    const detail = (value as { detail?: unknown })?.detail;
+    throw new ApiError(
+      typeof detail === "string" ? detail : "Yükleme başarısız oldu.",
+      response.status,
+      detail,
+    );
+  }
+  return value as T;
 }

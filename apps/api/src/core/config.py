@@ -162,6 +162,55 @@ class Settings(BaseSettings):
     # Ollama accepts either its root URL or a URL ending in /v1. For
     # chat_compatible uses the API base URL, normally ending in /v1.
     llm_base_url: str = "http://localhost:11434/v1"
+    # Context window requested from Ollama. Hybrid generation with several
+    # evidence chunks needs 8192; strict decisions fit comfortably in 4096.
+    llm_num_ctx: int = 4096
+    # Kill switch for model-written descriptive answers (ADR-003). Off means
+    # every hybrid tenant behaves exactly like strict.
+    hybrid_generation_enabled: bool = True
+
+    # --- Knowledge retrieval / GraphRAG (ADR-002) ---
+    # ``lexical`` keeps the in-process keyword retriever inside
+    # ``company_runtime``. ``falkordb`` turns on the hybrid graph + vector +
+    # full-text retriever (BGE-M3 embeddings, optional cross-encoder rerank)
+    # with the lexical retriever as an automatic fallback. Retrieval only
+    # proposes approved fact candidates; it never renders customer text.
+    knowledge_backend: Literal["lexical", "falkordb"] = "lexical"
+    falkordb_host: str = "localhost"
+    falkordb_port: int = 6381
+    falkordb_username: str = ""
+    falkordb_password: str = ""
+    # Embedding profile. Only ``ollama`` is implemented; empty keeps embeddings
+    # fail-closed (the graph retriever then reports itself unavailable).
+    embedding_provider: Literal["", "ollama"] = ""
+    embedding_model: str = "bge-m3"
+    # Empty derives the Ollama root from ``llm_base_url``.
+    embedding_base_url: str = ""
+    embedding_dimension: int = 1024
+    # Cross-encoder rerank of the fused candidate pool (sentence-transformers).
+    reranker_enabled: bool = False
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    reranker_device: str = "auto"
+    retrieval_max_candidates: int = 12
+    retrieval_rerank_pool: int = 24
+    retrieval_timeout_seconds: float = 4.0
+    # Background per-customer conversation memory graph (decision input only).
+    memory_enrichment_enabled: bool = True
+    # --- Self-service knowledge sources (ADR-003) ---
+    # Auto-publish candidates from the tenant's own documents/website above
+    # the threshold; protected topics (price/stock/delivery/warranty/...) are
+    # never auto-published. Everything stays revocable from chat/panel.
+    knowledge_auto_publish: bool = True
+    knowledge_auto_publish_threshold: float = 0.75
+    knowledge_publish_target: Literal["draft", "live"] = "live"
+    knowledge_document_max_bytes: int = 20 * 1024 * 1024
+    knowledge_crawl_max_pages: int = 60
+    knowledge_crawl_max_depth: int = 3
+    knowledge_crawl_user_agent: str = "LeadPulseBot/1.0"
+    knowledge_media_min_pixels: int = 300
+    knowledge_media_max_per_subject: int = 3
+    # Public origin Meta fetches product images from; empty derives app_base_url.
+    knowledge_public_media_base_url: str = ""
 
     # --- Observability ---
     sentry_dsn: str = ""
@@ -229,6 +278,8 @@ class Settings(BaseSettings):
             errors.append("APP_DEBUG must be false")
         if self.llm_provider not in {"ollama", "chat_compatible"}:
             errors.append("LLM_PROVIDER must be ollama or chat_compatible")
+        if self.knowledge_backend == "falkordb" and self.embedding_provider != "ollama":
+            errors.append("EMBEDDING_PROVIDER must be ollama when KNOWLEDGE_BACKEND=falkordb")
         version = self.whatsapp_graph_api_version
         if not (
             version.startswith("v")

@@ -16,6 +16,7 @@ Versioning rules (roadmap E1: "draft -> testing -> live with rollback"):
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from copy import deepcopy
 from uuid import UUID
 
@@ -30,6 +31,26 @@ from src.modules.compliance.models import AuditLog
 from .company_config import CompanyAgentConfig, empty_company_agent_config
 from .models import Agent, AgentVersion, AgentVersionStatus
 from .schemas import AgentIn, AgentVersionPatchIn
+
+
+def _schedule_knowledge_index(tenant_id: UUID, version_id: UUID) -> None:
+    """Rebuild the GraphRAG index for a version that just became LIVE.
+
+    Best effort: with the broker down the retriever reports the index as
+    missing and the runtime falls back to the lexical selector, and
+    ``scripts/knowledge_index.py`` can build it later.
+    """
+
+    from src.modules.knowledge.service import knowledge_enabled
+
+    if not knowledge_enabled():
+        return
+    try:
+        from src.workers.knowledge import index_agent_version
+
+        index_agent_version.delay(str(tenant_id), str(version_id))
+    except Exception:  # deliberately never fails a promotion
+        return
 
 
 class AgentService:
@@ -298,7 +319,73 @@ class AgentService:
         )
         await self.session.commit()
         await self.session.refresh(version)  # see update_draft's comment on why
+        _schedule_knowledge_index(tenant_id, version.id)
         return version
+
+    async def publish_hotfix(
+        self,
+        tenant_id: UUID,
+        agent_id: UUID,
+        mutate: Callable[[CompanyAgentConfig], CompanyAgentConfig],
+        *,
+        actor_id: UUID | None = None,
+        reason: str,
+    ) -> AgentVersion:
+        """Publish a corrected copy of the LIVE config as a new LIVE version.
+
+        Used by knowledge revocation: a fact that must disappear now cannot
+        wait for an administrator's half-finished draft. Mirrors ``rollback_to``
+        (a brand new version, old row archived, full audit) but applies a
+        validated mutation to the current LIVE content instead of an old one.
+        """
+
+        await self.lock_agent(tenant_id, agent_id)
+        live = await self.get_live(tenant_id, agent_id)
+        if live is None:
+            raise ConflictError("No live version to hotfix")
+        config = mutate(CompanyAgentConfig.model_validate(live.company_config))
+        company_config = {**config.model_dump(mode="json"), "lifecycle": "approved"}
+        candidate = AgentVersion(company_config=company_config)
+        self._require_publishable_company_config(candidate)
+        versions = await self.list_versions(tenant_id, agent_id)
+        next_version = versions[0].version + 1 if versions else 1
+        new_version = AgentVersion(
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            version=next_version,
+            status=AgentVersionStatus.LIVE,
+            persona=live.persona,
+            tone=live.tone,
+            languages=list(live.languages),
+            product_knowledge=live.product_knowledge,
+            qualification_questions=list(live.qualification_questions),
+            guardrails=dict(live.guardrails),
+            reply_policies=dict(live.reply_policies),
+            company_config=company_config,
+            created_by=actor_id,
+        )
+        live.status = AgentVersionStatus.ARCHIVED
+        self.session.add(new_version)
+        await self.session.flush()
+        self.session.add(
+            AuditLog(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                action="hotfix_live",
+                entity="agent_version",
+                entity_id=str(new_version.id),
+                meta={
+                    "agent_id": str(agent_id),
+                    "version": next_version,
+                    "archived_version": live.version,
+                    "reason": reason[:240],
+                },
+            )
+        )
+        await self.session.commit()
+        await self.session.refresh(new_version)
+        _schedule_knowledge_index(tenant_id, new_version.id)
+        return new_version
 
     async def rollback_to(
         self,
@@ -356,4 +443,5 @@ class AgentService:
             )
         )
         await self.session.commit()
+        _schedule_knowledge_index(tenant_id, new_version.id)
         return new_version

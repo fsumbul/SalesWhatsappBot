@@ -102,7 +102,11 @@ class FactCategory(StrEnum):
 
 class ResponseMode(StrEnum):
     STRICT = "strict"
+    # Legacy value: behaves exactly like STRICT (kept readable for old versions).
     GROUNDED = "grounded"
+    # Protected topics stay literal; descriptive topics may be model-written
+    # from cited evidence under a deterministic audit (ADR-003).
+    HYBRID = "hybrid"
 
 
 class UnknownFactAction(StrEnum):
@@ -396,8 +400,30 @@ class SemanticDialoguePolicy(StrictModel):
         return self
 
 
+class GroundedGenerationPolicy(StrictModel):
+    """Tenant-owned limits for model-written descriptive answers (HYBRID only)."""
+
+    generated_topics: list[Literal["details", "contact"]] = Field(default=["details"], max_length=2)
+    literal_fact_ids: list[Identifier] = Field(default_factory=list, max_length=200)
+    max_evidence_chunks: int = Field(default=2, ge=0, le=8)
+    max_chunk_characters: int = Field(default=600, ge=120, le=1200)
+    max_generated_characters: int = Field(default=600, ge=80, le=1024)
+    max_block_characters: int = Field(default=220, ge=40, le=400)
+    entailment_threshold: float = Field(default=0.30, ge=0.0, le=1.0)
+    generation_timeout_seconds: float = Field(default=12.0, ge=2.0, le=60.0)
+    style_hint: LocalizedText | None = None
+    history_messages: int = Field(default=2, ge=0, le=6)
+
+    @model_validator(mode="after")
+    def _unique(self) -> GroundedGenerationPolicy:
+        _assert_unique(self.generated_topics, "generated_topics")
+        _assert_unique(self.literal_fact_ids, "literal_fact_ids")
+        return self
+
+
 class AgentReplyPolicy(StrictModel):
     response_mode: ResponseMode = ResponseMode.GROUNDED
+    grounded_generation: GroundedGenerationPolicy | None = None
     purposes: list[ConversationPurpose] = Field(min_length=1, max_length=7)
     supported_locales: list[Locale] = Field(min_length=1, max_length=20)
     default_locale: Locale
@@ -671,6 +697,18 @@ class CompanyAgentConfig(StrictModel):
 
         if not self.agent.require_fact_ids_for_claims:
             errors.append("agent must require fact ids for customer claims")
+        if self.agent.response_mode == ResponseMode.HYBRID:
+            if self.agent.semantic_dialogue is None:
+                errors.append("hybrid response mode requires semantic_dialogue")
+            if self.agent.grounded_generation is None:
+                errors.append("hybrid response mode requires grounded_generation")
+        elif self.agent.grounded_generation is not None:
+            errors.append("grounded_generation is only valid with response_mode=hybrid")
+        if self.agent.grounded_generation is not None:
+            known = {fact.id for fact in self.facts}
+            for fact_id in self.agent.grounded_generation.literal_fact_ids:
+                if fact_id not in known:
+                    errors.append(f"literal_fact_ids references unknown fact {fact_id}")
         if self.agent.semantic_dialogue is not None:
             dialogue = self.agent.semantic_dialogue
             for next_id in [dialogue.next_step_fact_id, *dialogue.next_step_by_topic.values()]:
