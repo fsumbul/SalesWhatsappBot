@@ -3,8 +3,10 @@
 Bu çalışma mevcut pytest/pytest-asyncio, pytest-cov/coverage.py, Ruff, mypy,
 Next.js kontrolleri ve repo golden setlerini kullanır. Yeni bir test framework'ü
 kurulmadı. Mevcut model kabul runner'ına tekrar, JSON checkpoint ve aşama süresi
-raporlaması eklendi; mevcut CI artık JUnit, coverage XML/JSON ve yavaş test
-listesini başarısız koşularda da saklar.
+raporlaması eklendi. Mevcut CI için JUnit, coverage XML/JSON ve yavaş test
+listesini başarısız koşularda da saklayan değişiklik hazırlandı. GitHub bağlantısında
+`workflow` yetkisi olmadığı için CI değişikliği ayrı yerel commit olarak tutuldu;
+uzaktaki CI henüz bu değişikliği içermiyor. Testler ve raporlar repoya gönderildi.
 
 ## Sonuç
 
