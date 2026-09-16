@@ -1,0 +1,42 @@
+{
+  "_meta": "UNVERIFIED: shape written from NeMo Retriever NIM documentation on 2026-09-16; pin against the running container's GET /v1/openapi.json and replace with a recorded response.",
+  "data": [
+    {
+      "index": 0,
+      "bounding_boxes": [
+        {
+          "type": "title",
+          "x_min": 0.1,
+          "y_min": 0.05,
+          "x_max": 0.9,
+          "y_max": 0.1,
+          "confidence": 0.97
+        },
+        {
+          "type": "text",
+          "x_min": 0.1,
+          "y_min": 0.12,
+          "x_max": 0.9,
+          "y_max": 0.4,
+          "confidence": 0.95
+        },
+        {
+          "type": "table",
+          "x_min": 0.1,
+          "y_min": 0.45,
+          "x_max": 0.9,
+          "y_max": 0.8,
+          "confidence": 0.93
+        },
+        {
+          "type": "chart",
+          "x_min": 0.1,
+          "y_min": 0.82,
+          "x_max": 0.5,
+          "y_max": 0.98,
+          "confidence": 0.9
+        }
+      ]
+    }
+  ]
+}

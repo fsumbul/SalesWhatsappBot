@@ -243,6 +243,24 @@ class Settings(BaseSettings):
     guardrail_topic_control_mode: Literal["flag", "block"] = "flag"
     guardrail_topic_min_tokens: int = 3
 
+    # --- OCR / layout chain for scanned PDFs (plan WP2) ---
+    # Pages whose text layer is shorter than ``min_text_chars`` are rasterized
+    # locally (pypdfium2) and sent to the operator's NeMo Retriever containers:
+    # page-elements → OCR for text regions, table-structure + OCR for tables.
+    # Layout is optional (whole-page OCR without it); OCR is required.
+    knowledge_ocr_enabled: bool = False
+    knowledge_ocr_base_url: str = ""
+    knowledge_ocr_api_key: str = ""
+    knowledge_ocr_model: str = "nemotron-ocr-v2"
+    # Route of the OCR container (pin it from GET /v1/openapi.json).
+    knowledge_ocr_path: str = "/v1/infer"
+    knowledge_layout_base_url: str = ""
+    knowledge_layout_api_key: str = ""
+    knowledge_ocr_min_text_chars: int = 40
+    knowledge_ocr_dpi: int = 150
+    knowledge_ocr_max_pages_per_document: int = 60
+    knowledge_ocr_min_confidence: float = 0.3
+
     # --- Knowledge retrieval / GraphRAG (ADR-002) ---
     # ``lexical`` keeps the in-process keyword retriever inside
     # ``company_runtime``. ``falkordb`` turns on the hybrid graph + vector +
@@ -394,6 +412,26 @@ class Settings(BaseSettings):
                         role="guardrail.topic_control",
                         url=self.guardrail_topic_control_base_url,
                         kind="llm",
+                        nim=True,
+                    )
+                )
+        if self.knowledge_ocr_enabled:
+            endpoints.append(
+                ModelEndpoint(
+                    name="KNOWLEDGE_OCR_BASE_URL",
+                    role="knowledge.ocr",
+                    url=self.knowledge_ocr_base_url,
+                    kind="ocr",
+                    nim=True,
+                )
+            )
+            if self.knowledge_layout_base_url.strip():
+                endpoints.append(
+                    ModelEndpoint(
+                        name="KNOWLEDGE_LAYOUT_BASE_URL",
+                        role="knowledge.layout",
+                        url=self.knowledge_layout_base_url,
+                        kind="layout",
                         nim=True,
                     )
                 )

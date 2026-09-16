@@ -13,6 +13,7 @@ import csv
 import io
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urljoin, urlparse
@@ -21,7 +22,7 @@ from bs4 import BeautifulSoup
 
 from .chunking import normalize_whitespace
 
-EXTRACTOR_VERSION = "2026.09.1"
+EXTRACTOR_VERSION = "2026.09.2"
 
 _PDF_MAGIC = b"%PDF-"
 _ZIP_MAGIC = b"PK\x03\x04"
@@ -141,7 +142,16 @@ def _extract_pdf(filename: str, data: bytes) -> list[TextUnit]:
     return units
 
 
-def _table_rows_to_units(filename: str, sheet: str, rows: list[list[str]]) -> list[TextUnit]:
+def table_rows_to_units(
+    filename: str,
+    sheet: str,
+    rows: list[list[str]],
+    *,
+    locator_for: Callable[[int, int], str] | None = None,
+    extra_meta: dict[str, Any] | None = None,
+) -> list[TextUnit]:
+    """Render a header + rows grid as ``Tablo:`` units (XLSX, CSV and OCR tables alike)."""
+
     if not rows:
         return []
     header = [cell.strip() for cell in rows[0]]
@@ -162,16 +172,23 @@ def _table_rows_to_units(filename: str, sheet: str, rows: list[list[str]]) -> li
         if not lines:
             continue
         first, last = start + 2, start + 1 + len(block)
-        locator = f"{filename}#sheet={sheet}&rows={first}-{last}"
+        locator = (
+            locator_for(first, last)
+            if locator_for is not None
+            else f"{filename}#sheet={sheet}&rows={first}-{last}"
+        )
         units.append(
             TextUnit(
                 locator=locator,
                 text=f"Tablo: {sheet}\n" + "\n".join(lines),
                 title=sheet,
-                meta={"sheet": sheet, "rows": [first, last]},
+                meta={"sheet": sheet, "rows": [first, last], **(extra_meta or {})},
             )
         )
     return units
+
+
+_table_rows_to_units = table_rows_to_units
 
 
 def _extract_xlsx(filename: str, data: bytes) -> list[TextUnit]:

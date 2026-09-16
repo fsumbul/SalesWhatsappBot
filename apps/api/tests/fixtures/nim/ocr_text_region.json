@@ -1,0 +1,166 @@
+{
+  "_meta": "UNVERIFIED: shape written from NeMo Retriever NIM documentation on 2026-09-16; pin against the running container's GET /v1/openapi.json and replace with a recorded response.",
+  "data": [
+    {
+      "index": 0,
+      "text_detections": [
+        {
+          "text_prediction": {
+            "text": "Döküm",
+            "confidence": 0.99
+          },
+          "bounding_box": {
+            "points": [
+              {
+                "x": 0.02,
+                "y": 0.05
+              },
+              {
+                "x": 0.2,
+                "y": 0.05
+              },
+              {
+                "x": 0.2,
+                "y": 0.15
+              },
+              {
+                "x": 0.02,
+                "y": 0.15
+              }
+            ]
+          }
+        },
+        {
+          "text_prediction": {
+            "text": "kasnak",
+            "confidence": 0.98
+          },
+          "bounding_box": {
+            "points": [
+              {
+                "x": 0.22,
+                "y": 0.05
+              },
+              {
+                "x": 0.4,
+                "y": 0.05
+              },
+              {
+                "x": 0.4,
+                "y": 0.15
+              },
+              {
+                "x": 0.22,
+                "y": 0.15
+              }
+            ]
+          }
+        },
+        {
+          "text_prediction": {
+            "text": "GG-25",
+            "confidence": 0.97
+          },
+          "bounding_box": {
+            "points": [
+              {
+                "x": 0.02,
+                "y": 0.3
+              },
+              {
+                "x": 0.2,
+                "y": 0.3
+              },
+              {
+                "x": 0.2,
+                "y": 0.4
+              },
+              {
+                "x": 0.02,
+                "y": 0.4
+              }
+            ]
+          }
+        },
+        {
+          "text_prediction": {
+            "text": "pik",
+            "confidence": 0.97
+          },
+          "bounding_box": {
+            "points": [
+              {
+                "x": 0.22,
+                "y": 0.3
+              },
+              {
+                "x": 0.3,
+                "y": 0.3
+              },
+              {
+                "x": 0.3,
+                "y": 0.4
+              },
+              {
+                "x": 0.22,
+                "y": 0.4
+              }
+            ]
+          }
+        },
+        {
+          "text_prediction": {
+            "text": "dökümdür.",
+            "confidence": 0.96
+          },
+          "bounding_box": {
+            "points": [
+              {
+                "x": 0.32,
+                "y": 0.3
+              },
+              {
+                "x": 0.55,
+                "y": 0.3
+              },
+              {
+                "x": 0.55,
+                "y": 0.4
+              },
+              {
+                "x": 0.32,
+                "y": 0.4
+              }
+            ]
+          }
+        },
+        {
+          "text_prediction": {
+            "text": "??",
+            "confidence": 0.1
+          },
+          "bounding_box": {
+            "points": [
+              {
+                "x": 0.8,
+                "y": 0.8
+              },
+              {
+                "x": 0.9,
+                "y": 0.8
+              },
+              {
+                "x": 0.9,
+                "y": 0.9
+              },
+              {
+                "x": 0.8,
+                "y": 0.9
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

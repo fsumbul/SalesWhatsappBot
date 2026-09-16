@@ -34,6 +34,7 @@ from .models import (
     KnowledgeSnapshot,
     KnowledgeSource,
 )
+from .ocr import DocumentOcr, ocr_pdf_pages, pages_without_text
 from .publisher import KnowledgePublisher, PublishReport
 
 logger = structlog.get_logger(__name__)
@@ -93,10 +94,13 @@ class KnowledgeIngestService:
         settings: Settings | None = None,
         http_client: httpx.AsyncClient | None = None,
         guard: InputGuard | None = None,
+        ocr: DocumentOcr | None = None,
     ) -> None:
         self.session = session
         self.llm = llm
         self.graph = graph
+        # OCR chain (plan WP2): scanned PDF pages become bbox-located units.
+        self.ocr = ocr
         # Guardrail gate (plan WP1): blocked chunks are stored with their
         # verdict but never extracted or embedded.
         self.guard = guard
@@ -171,6 +175,12 @@ class KnowledgeIngestService:
             try:
                 data = await _document_bytes(self.session, document)
                 units = extract_document(document.filename, document.mime_type, data)
+                if (
+                    self.ocr is not None
+                    and self.ocr.available
+                    and document.mime_type == "application/pdf"
+                ):
+                    units = await self._ocr_missing_pages(document, data, units)
                 document.page_count = len(units)
                 document.extractor_version = EXTRACTOR_VERSION
                 if not units:
@@ -193,6 +203,45 @@ class KnowledgeIngestService:
                     "knowledge.document.failed", document_id=str(document.id), error=document.error
                 )
             await self.session.commit()
+
+    async def _ocr_missing_pages(
+        self, document: KnowledgeDocument, data: bytes, units: list[TextUnit]
+    ) -> list[TextUnit]:
+        """OCR pages without a text layer; the document report never holds text."""
+
+        assert self.ocr is not None
+        try:
+            missing = await asyncio.to_thread(
+                pages_without_text,
+                data,
+                units,
+                min_chars=self.settings.knowledge_ocr_min_text_chars,
+            )
+        except Exception as exc:  # unreadable by pdfium: keep the text-layer result
+            logger.warning("knowledge.ocr.page_scan_failed", error=type(exc).__name__)
+            return units
+        if not missing:
+            return units
+        ocr_units, report = await ocr_pdf_pages(
+            document.filename,
+            data,
+            missing,
+            self.ocr,
+            dpi=self.settings.knowledge_ocr_dpi,
+            max_pages=self.settings.knowledge_ocr_max_pages_per_document,
+        )
+        document.meta = {**document.meta, "ocr": {**report, "missing_pages": missing}}
+        self.stats["ocr_pages"] += len(report["pages"])
+        self.stats["ocr_units"] += len(ocr_units)
+        merged = [*units, *ocr_units]
+        merged.sort(
+            key=lambda unit: (
+                int(unit.meta.get("page", 0) or 0),
+                1 if unit.meta.get("ocr") else 0,
+                unit.locator,
+            )
+        )
+        return merged
 
     # --- website ------------------------------------------------------------------
 

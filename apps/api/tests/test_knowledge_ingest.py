@@ -32,6 +32,7 @@ from src.modules.knowledge.models import (
     KnowledgeSnapshot,
     KnowledgeSource,
 )
+from src.modules.knowledge.ocr import OcrRegion
 from src.modules.knowledge.publisher import KnowledgePublisher
 from tests.test_whatsapp_runtime_integration import (
     _seed_runtime_tenant,
@@ -484,3 +485,85 @@ async def test_document_ingest_never_extracts_or_embeds_guard_blocked_chunks(
         chunks = list((await session.execute(select(KnowledgeChunk).where(KnowledgeChunk.source_id == flagged_source))).scalars())
         flagged = next(c for c in chunks if "Palanga" in c.text)
         assert flagged.guard["decision"] == "flag" and flagged.extracted and flagged.embedded
+
+
+# --- OCR chain for scanned PDFs (NIM plan WP2) --------------------------------------
+
+
+class _RegionOcr:
+    available = True
+    describe = {"ocr_model": "fake-ocr", "layout": "none"}  # noqa: RUF012
+
+    def __init__(self, text: str | None) -> None:
+        self.text = text
+        self.pages = 0
+
+    async def read_page(self, image: bytes, mime_type: str) -> list[OcrRegion]:
+        self.pages += 1
+        if self.text is None:
+            return []
+        return [OcrRegion("text", (0.1, 0.1, 0.9, 0.4), self.text, 0.91)]
+
+
+async def _pdf_source(tenant_id: UUID, agent_id: UUID, uri: str, data: bytes) -> UUID:
+    async with session_scope(tenant_id) as session:
+        source = KnowledgeSource(
+            tenant_id=tenant_id, agent_id=agent_id, kind="document", display_name="tarama.pdf",
+            canonical_uri=uri, auto_publish=True,
+        )
+        session.add(source)
+        await session.flush()
+        session.add(
+            KnowledgeDocument(
+                tenant_id=tenant_id, source_id=source.id, filename="tarama.pdf", mime_type="application/pdf",
+                sha256=uri, size_bytes=len(data), content=data,
+            )
+        )
+        await session.commit()
+        return source.id
+
+
+@pytest.mark.asyncio
+async def test_scanned_pdf_pages_are_ocr_ed_into_bbox_located_chunks(
+    runtime_database: None,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.test_knowledge_ocr import image_pdf
+
+    get_settings.cache_clear()
+    tenant_id, _owner = await _seed_runtime_tenant(with_agent=True)
+    agent_id = await _install_live(tenant_id)
+    data = image_pdf(1)
+    source_id = await _pdf_source(tenant_id, agent_id, "upload://scan", data)
+    llm = _ExtractingLLM()
+    graph = _FakeGraph()
+    ocr = _RegionOcr("Artı Kasnak 1995'ten beri kasnak üretir ve kırktan fazla ülkeye ihracat yapar.")
+
+    async with session_scope(tenant_id) as session:
+        result = await KnowledgeIngestService(session, llm=llm, graph=graph, ocr=ocr).sync_source(tenant_id, source_id)  # type: ignore[arg-type]
+
+    assert result["status"] == "synced", result
+    assert ocr.pages == 1 and result["stats"]["ocr_pages"] == 1 and result["stats"]["ocr_units"] == 1
+    assert result["stats"]["snapshots"] == 1 and result["stats"]["candidate_facts"] == 1
+    async with session_scope(tenant_id) as session:
+        document = (await session.execute(select(KnowledgeDocument).where(KnowledgeDocument.source_id == source_id))).scalar_one()
+        assert document.status == "extracted" and document.extractor_version == "2026.09.2"
+        assert document.meta["ocr"]["missing_pages"] == [1] and document.meta["ocr"]["pages"] == [{"page": 1, "regions": 1, "units": 1}]
+        assert document.meta["ocr"]["ocr_model"] == "fake-ocr" and "1995" not in json.dumps(document.meta)
+        snapshot = (await session.execute(select(KnowledgeSnapshot).where(KnowledgeSnapshot.source_id == source_id))).scalar_one()
+        assert snapshot.locator == "tarama.pdf#page=1&bbox=0.1000,0.1000,0.9000,0.4000"
+        assert snapshot.meta["ocr"] is True and snapshot.meta["page"] == 1
+        chunk = (await session.execute(select(KnowledgeChunk).where(KnowledgeChunk.source_id == source_id))).scalar_one()
+        assert chunk.locator.startswith(snapshot.locator + "#chars=") and chunk.extracted and chunk.embedded
+        candidate = (await session.execute(select(KnowledgeCandidate).where(KnowledgeCandidate.source_id == source_id))).scalar_one()
+        assert candidate.subject_id == "company" and candidate.evidence["locator"] == chunk.locator
+
+    # A scan the OCR cannot read stays "no extractable text", with the report attached.
+    empty_source = await _pdf_source(tenant_id, agent_id, "upload://blank", data)
+    async with session_scope(tenant_id) as session:
+        result = await KnowledgeIngestService(session, llm=llm, graph=graph, ocr=_RegionOcr(None)).sync_source(tenant_id, empty_source)  # type: ignore[arg-type]
+    assert result["status"] == "synced" and result["stats"].get("snapshots", 0) == 0
+    async with session_scope(tenant_id) as session:
+        document = (await session.execute(select(KnowledgeDocument).where(KnowledgeDocument.source_id == empty_source))).scalar_one()
+        assert document.status == "failed" and document.error == "no extractable text"
+        assert document.meta["ocr"]["pages"] == [{"page": 1, "regions": 0, "units": 0}]
