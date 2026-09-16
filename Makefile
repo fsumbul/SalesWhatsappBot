@@ -1,4 +1,4 @@
-.PHONY: help up down install dev test lint format migrate migration api web api-shell db-shell clean agent-worker knowledge-index knowledge-search knowledge-reembed
+.PHONY: help up down install dev test check-local lint format migrate migration api web api-shell db-shell clean agent-worker knowledge-index knowledge-search knowledge-reembed
 
 help:
 	@echo "LeadPulse - Make targets"
@@ -10,6 +10,7 @@ help:
 	@echo "  api         Run only API dev server"
 	@echo "  web         Run only Web dev server"
 	@echo "  test        Run all tests"
+	@echo "  check-local Run API tests with reports, lint, types and Web build locally"
 	@echo "  lint        Lint API + Web"
 	@echo "  format      Auto-format code"
 	@echo "  migrate     Apply DB migrations"
@@ -48,6 +49,14 @@ web:
 test:
 	cd apps/api && poetry run pytest -v
 	cd apps/web && pnpm test --if-present
+
+# Prepare an isolated test database and export test configuration first.
+# Reports stay on this device; no GitHub Actions runner is involved.
+check-local:
+	mkdir -p test-results/local
+	cd apps/api && APP_ENV=test REQUIRE_DB_TESTS=1 poetry run pytest -v --cov=src --cov-branch --cov-report=term-missing --cov-report=xml:../../test-results/local/coverage.xml --cov-report=json:../../test-results/local/coverage.json --junitxml=../../test-results/local/junit.xml --durations=20
+	$(MAKE) lint
+	cd apps/web && pnpm typecheck && pnpm build
 
 lint:
 	cd apps/api && poetry run ruff check . && poetry run mypy src

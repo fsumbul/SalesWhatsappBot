@@ -3,10 +3,10 @@
 Bu çalışma mevcut pytest/pytest-asyncio, pytest-cov/coverage.py, Ruff, mypy,
 Next.js kontrolleri ve repo golden setlerini kullanır. Yeni bir test framework'ü
 kurulmadı. Mevcut model kabul runner'ına tekrar, JSON checkpoint ve aşama süresi
-raporlaması eklendi. Mevcut CI için JUnit, coverage XML/JSON ve yavaş test
-listesini başarısız koşularda da saklayan değişiklik hazırlandı. GitHub bağlantısında
-`workflow` yetkisi olmadığı için CI değişikliği ayrı yerel commit olarak tutuldu;
-uzaktaki CI henüz bu değişikliği içermiyor. Testler ve raporlar repoya gönderildi.
+raporlaması eklendi. GitHub CI kullanıcı tercihiyle kapatıldı; CI için hazırlanan
+yerel commit kaldırıldı. Kontroller cihazda `make check-local` ile çalıştırılır;
+JUnit ve coverage XML/JSON raporları git dışında `test-results/local/` altında
+saklanır. Testler ve değerlendirme raporları repoya gönderildi.
 
 ## Sonuç
 
@@ -85,7 +85,7 @@ anlamsal doğrulaması değildir; entailment reranker'ı bu ortamda kapalı.
   atlanan testin sessizce başarılı sayılması engellendi.
 - Coverage hem çalıştırılan satırları hem karar dallarını ölçer; bunlar farklı
   metriklerdir. [coverage.py branch coverage](https://coverage.readthedocs.io/en/7.14.0/branch.html).
-- JUnit XML sonuçları ve `--durations` çıktısı tekrar üretilebilir CI kanıtıdır.
+- JUnit XML sonuçları ve `--durations` çıktısı tekrar üretilebilir test kanıtıdır.
   [pytest raporlama](https://docs.pytest.org/en/stable/how-to/output.html),
   [pytest süre ölçümü](https://docs.pytest.org/en/stable/how-to/usage.html).
 - Bilgi arama: mevcut 12 soruluk `knowledge_golden.arti_kasnak.json`, BGE-M3,
@@ -150,7 +150,22 @@ ve arızalar için garanti vermez.
 
 ## Tekrar çalıştırma
 
-Test DB ve bağımlılıklar hazırlandıktan sonra:
+Python 3.12, Poetry ve pnpm ile bağımlılıklar kurulduktan, ayrı test DB'sine
+migration uygulandıktan ve test ortam değişkenleri yüklendikten sonra repo kökünde:
+
+```bash
+make check-local
+```
+
+Bu komut API testleri, satır/dal coverage, Ruff, mypy, web lint, TypeScript ve
+web build kontrollerini sırayla çalıştırır; ilk başarısız adımda durur.
+`REQUIRE_DB_TESTS=1` nedeniyle atlanan testler başarı sayılmaz. Test DB bağlantısı
+`LEADPULSE_TEST_DATABASE_URL` ile sınırlı uygulama rolüne ayarlanmalıdır; varsayılan
+yerel `localhost:5433/leadpulse_test` bağlantısıdır. Üretim `.env` dosyasını kullanmayın.
+GitHub'daki mevcut CI workflow'u `disabled_manually` durumundadır; workflow dosyası
+repoda korunur fakat otomatik çalışmaz.
+
+Model kabulü ve arama değerlendirmesini ayrıca çalıştırmak için mevcut komutlar:
 
 ```bash
 cd apps/api
