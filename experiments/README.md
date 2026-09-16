@@ -165,3 +165,36 @@ olduğunu, duplicate accept'in no-op kaldığını ve açık koleksiyonun uzak a
 atlamayı engellediğini de dener. Ayrıntılı matematiksel sözleşme için
 [`docs/universal-configuration-flow.md`](../docs/universal-configuration-flow.md)
 dosyasına bakın.
+
+## Tekrarlı güncel müşteri runtime kabul testi
+
+Mevcut `apps/api/scripts/verify_company_models.py` artık `--benchmark` ile
+GraphRAG golden sorularını gerçek `CompanyAgentRuntime` üzerinden tekrarlayabilir.
+Kendi test framework'ü yerine mevcut kabul runner'ı, golden JSON'u, NIM rapor
+istatistik yardımcıları ve pytest/coverage altyapısı kullanılır.
+
+Test ortamında Qwen ve BGE-M3 bağlantı ayarları tanımlandıktan sonra:
+
+```bash
+cd apps/api
+python scripts/verify_company_models.py --benchmark --hybrid --repeat 3 --report company-model-report.json
+```
+
+Runner yalnız onaylı repo konfigürasyonu ve sentetik geçmiş kullanır. Rastgele
+kimlikli geçici bir graph oluşturur ve `finally` bloğunda siler. Veritabanı
+şirket kaydı yazmaz, Meta çağrısı yapmaz. Bir ısınma çağrısı dağılım dışında
+kalır; soruların sırası tekrarlar arasında döndürülür. JSON ara kayıtları,
+aşama sürelerini, kontrol sonuçlarını ve p50/p95/ortalama özetlerini içerir.
+`--golden-only --golden FILE` yalnız verilen senaryoların tekrarını çalıştırır.
+
+Üç tekrar küçük örneklemdir: yüzdelikler gözlenen dağılımı anlatır, kapasite
+veya SLA garantisi değildir. Model testi ile kod regresyonunu ayırın:
+
+```bash
+REQUIRE_DB_TESTS=1 pytest --cov=src --cov-branch --cov-report=json --junitxml=junit.xml --durations=20
+```
+
+Coverage ölçümünü model gecikme ölçümüyle aynı Python process'inde çalıştırmayın.
+Paylaşılan model donanımı ve aynı anda çalışan işlemler raporda belirtilmelidir.
+Referans fact ID eşleşmesi anlamsal doğruluğun tamamı değildir: aynı onaylı
+bilgiyi taşıyan alternatif kayıtları goldene eklerken gerekçeyi belgeleyin.

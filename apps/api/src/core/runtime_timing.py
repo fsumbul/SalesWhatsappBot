@@ -6,7 +6,7 @@ never retries business operations and never records arguments or exception text.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Coroutine, Iterator
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -90,7 +90,7 @@ def timing_span(name: str) -> Iterator[None]:
         yield
         return
     started = perf_counter()
-    span = {
+    span: dict[str, Any] = {
         "id": len(timing.spans), "parent_id": _parent.get(), "stage": name,
         "start_ms": round((started - timing.started) * 1000, 2), "status": "running",
     }
@@ -119,8 +119,8 @@ async def timed_await(name: str, operation: Awaitable[T]) -> T:
         return await operation
 
 
-def timed_stage(name: str) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
-    def decorate(fn: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
+def timed_stage(name: str) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Coroutine[Any, Any, T]]]:
+    def decorate(fn: Callable[P, Awaitable[T]]) -> Callable[P, Coroutine[Any, Any, T]]:
         @wraps(fn)
         async def wrapped(*args: P.args, **kwargs: P.kwargs) -> T:
             with timing_span(name):

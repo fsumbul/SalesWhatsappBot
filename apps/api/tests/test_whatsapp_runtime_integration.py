@@ -1470,3 +1470,85 @@ async def test_rapid_inbound_turns_are_ordered_and_coalesced_to_one_reply(
             AgentRuntimeJobStatus.HANDOFF.value,
         ]
         assert jobs[0].audit["coalesced_into_job_id"] == str(jobs[1].id)
+
+
+@pytest.mark.parametrize("reason", ["empty_body", "opted_out", "human_review"])
+async def test_early_exit_keeps_timing_without_any_model_or_send(
+    runtime_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    reason: str,
+) -> None:
+    """Use real outbox/RLS rows to cover paths before model preparation."""
+    from src.modules.discovery.models import ConsentStatus
+
+    tenant_id, _ = await _seed_runtime_tenant(with_agent=True)
+    job_id, conversation_id = await _create_inbound_job(tenant_id, "wamid.timing-early")
+    blocking_id = None
+    if reason == "human_review":
+        blocking_id, _ = await _create_inbound_job(tenant_id, "wamid.timing-blocker")
+    async with session_scope(tenant_id) as session:
+        job = await session.get(AgentRuntimeJob, job_id)
+        assert job is not None
+        if reason == "empty_body":
+            inbound = await session.get(Message, job.inbound_message_id)
+            assert inbound is not None
+            inbound.body = ""
+        elif reason == "opted_out":
+            conversation = await session.get(Conversation, conversation_id)
+            assert conversation is not None
+            contact = await session.get(LeadContact, conversation.contact_id)
+            assert contact is not None
+            contact.consent_status = ConsentStatus.OPT_OUT
+        else:
+            blocker = await session.get(AgentRuntimeJob, blocking_id)
+            assert blocker is not None
+            blocker.status = AgentRuntimeJobStatus.HANDOFF.value
+        await session.commit()
+
+    async def forbidden(*args, **kwargs):
+        pytest.fail("early exit must not send, type or invoke the model")
+
+    monkeypatch.setattr(runtime_worker, "_send_runtime_turn_once", forbidden)
+    monkeypatch.setattr(runtime_worker, "_send_typing_indicator_best_effort", forbidden)
+    monkeypatch.setattr(runtime_worker.CompanyAgentRuntime, "reply", forbidden)
+    assert await runtime_worker._process_runtime_job(tenant_id, job_id) == {"status": "skipped"}
+    async with session_scope(tenant_id) as session:
+        job = await session.get(AgentRuntimeJob, job_id)
+        assert job is not None
+        assert job.outbound_message_id is None
+        timing = job.audit["timing"]
+        assert timing["flags"]["result_status"] == "skipped"
+        assert timing["flags"]["exit_reason"] == job.error
+        assert not any(s["stage"] in {"llm.http", "whatsapp.send"} for s in timing["spans"])
+
+
+@pytest.mark.parametrize("previous_attempts", [0, 4])
+async def test_pre_send_failure_timing_distinguishes_retry_from_exhaustion(
+    runtime_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    previous_attempts: int,
+) -> None:
+    tenant_id, _ = await _seed_runtime_tenant(with_agent=True)
+    job_id, _ = await _create_inbound_job(tenant_id, "wamid.timing-retry")
+    async with session_scope(tenant_id) as session:
+        job = await session.get(AgentRuntimeJob, job_id)
+        assert job is not None
+        job.attempts = previous_attempts
+        await session.commit()
+
+    async def preparation_failure(*args):
+        raise OSError("synthetic pre-send failure")
+
+    monkeypatch.setattr(runtime_worker, "_execute_runtime_job", preparation_failure)
+    result = await runtime_worker._process_runtime_job(tenant_id, job_id)
+    assert result == {"status": "failed", "retryable": previous_attempts == 0}
+    async with session_scope(tenant_id) as session:
+        job = await session.get(AgentRuntimeJob, job_id)
+        assert job is not None
+        assert job.status == ("pending" if previous_attempts == 0 else "failed")
+        assert job.outbound_message_id is None
+        assert job.audit["timing"]["flags"]["attempt"] == previous_attempts + 1
+        assert job.audit["timing"]["flags"]["retryable"] == (previous_attempts == 0)
+        assert "external_send_attempts" not in job.audit
+        if previous_attempts == 4:
+            assert job.audit["manual_review_required"] is True

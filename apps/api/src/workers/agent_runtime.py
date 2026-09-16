@@ -877,9 +877,10 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             job.fact_ids = list(turn.fact_ids)
             job.used_fallback = turn.used_fallback
             job.status = AgentRuntimeJobStatus.SENDING.value
+            timing = current_timing()
             job.audit = {
                 **(job.audit or {}),
-                **({"timing": current_timing().snapshot()} if current_timing() is not None else {}),
+                **({"timing": timing.snapshot()} if timing is not None else {}),
                 "model": (
                     "guardrail"
                     if guard_turn is not None

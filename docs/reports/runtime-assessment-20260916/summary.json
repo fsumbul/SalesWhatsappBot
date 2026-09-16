@@ -1,0 +1,247 @@
+{
+  "base_commit": "b43dc51",
+  "test_framework": "pytest + pytest-cov + JUnit",
+  "automated_tests": {
+    "passed": 687,
+    "failed": 0,
+    "skipped": 0,
+    "full_suite": 681,
+    "additional": 6
+  },
+  "model": {
+    "raw_evaluations": 54,
+    "normalized_evaluations": 48,
+    "passed": 39,
+    "failed": 9,
+    "raw_original_passed": 33,
+    "correction_passed": 6,
+    "correction_cases": [
+      "kaç ülkeye satıyorsunuz",
+      "ölçüleri neler"
+    ],
+    "llm_latency_ms": {
+      "n": 42,
+      "p50": 23916.6,
+      "p95": 47201.1,
+      "mean": 25365.4
+    },
+    "menu_latency_ms": {
+      "n": 6,
+      "p50": 0.4,
+      "p95": 0.6,
+      "mean": 0.4
+    },
+    "generation_status": {
+      "failed:TimeoutError": 13,
+      "not_applicable": 15,
+      "not_run": 6,
+      "ok": 14
+    },
+    "stage_latency_ms": {
+      "llm.intent": {
+        "n": 42,
+        "p50": 7171.1,
+        "p95": 17184.3,
+        "mean": 9372.6
+      },
+      "llm.evidence_decision": {
+        "n": 42,
+        "p50": 7717.1,
+        "p95": 20890.2,
+        "mean": 9074.0
+      },
+      "retrieval.plan": {
+        "n": 42,
+        "p50": 105.9,
+        "p95": 1815.4,
+        "mean": 303.5
+      },
+      "generation": {
+        "n": 42,
+        "p50": 7863.6,
+        "p95": 12014.6,
+        "mean": 6614.4
+      },
+      "llm.http": {
+        "n": 111,
+        "p50": 7967.5,
+        "p95": 17183.6,
+        "mean": 9481.0
+      }
+    },
+    "per_case": {
+      "6211 rulman hangi mil çapına uygundur?": {
+        "passed": 3,
+        "n": 3,
+        "p50": 22039.8,
+        "p95": 39508.2,
+        "mean": 27853.6
+      },
+      "TS180118 kaç halat için?": {
+        "passed": 0,
+        "n": 3,
+        "p50": 15870.7,
+        "p95": 21601.8,
+        "mean": 16172.7
+      },
+      "Palanga kasnağının malzemesi ve çalışma özellikleri nedir?": {
+        "passed": 3,
+        "n": 3,
+        "p50": 32251.5,
+        "p95": 36933.6,
+        "mean": 32183.9
+      },
+      "Captormal kasnakların standart çap seçenekleri nelerdir?": {
+        "passed": 3,
+        "n": 3,
+        "p50": 30315.7,
+        "p95": 36281.9,
+        "mean": 31251.2
+      },
+      "Döküm kasnakta 320 mm çap seçeneği var mı?": {
+        "passed": 3,
+        "n": 3,
+        "p50": 27287.8,
+        "p95": 47201.1,
+        "mean": 33426.7
+      },
+      "Yan desteklerde hangi mil çapları var?": {
+        "passed": 3,
+        "n": 3,
+        "p50": 24523.4,
+        "p95": 47484.2,
+        "mean": 31974.8
+      },
+      "Özel ölçü üretim yapıyor musunuz?": {
+        "passed": 0,
+        "n": 3,
+        "p50": 10898.0,
+        "p95": 24962.7,
+        "mean": 15567.2
+      },
+      "İhracat ekibine nasıl ulaşabilirim?": {
+        "passed": 3,
+        "n": 3,
+        "p50": 12658.8,
+        "p95": 32169.3,
+        "mean": 19158.4
+      },
+      "kasnaklarınız sessiz mi çalışıyo": {
+        "passed": 0,
+        "n": 3,
+        "p50": 12783.9,
+        "p95": 35757.6,
+        "mean": 20419.1
+      },
+      "halatın yönünü değiştiren parça hakkında bilgi": {
+        "passed": 3,
+        "n": 3,
+        "p50": 27046.9,
+        "p95": 53780.5,
+        "mean": 35856.7
+      },
+      "guided_menu": {
+        "passed": 3,
+        "n": 3,
+        "p50": 0.5,
+        "p95": 0.6,
+        "mean": 0.5
+      },
+      "stale_history_menu": {
+        "passed": 3,
+        "n": 3,
+        "p50": 0.4,
+        "p95": 0.5,
+        "mean": 0.4
+      },
+      "descriptive_material": {
+        "passed": 3,
+        "n": 3,
+        "p50": 24540.0,
+        "p95": 45817.8,
+        "mean": 31584.4
+      },
+      "unknown_price_stock": {
+        "passed": 3,
+        "n": 3,
+        "p50": 18172.2,
+        "p95": 21501.5,
+        "mean": 19270.9
+      },
+      "ölçüleri neler": {
+        "passed": 3,
+        "n": 3,
+        "p50": 21894.2,
+        "p95": 23112.0,
+        "mean": 21972.9
+      },
+      "kaç ülkeye satıyorsunuz": {
+        "passed": 3,
+        "n": 3,
+        "p50": 18421.2,
+        "p95": 18430.6,
+        "mean": 18422.8
+      }
+    },
+    "checks": {
+      "no_fallback": 48,
+      "visible_facts_only": 48,
+      "verified": 48,
+      "expected_fact_hit": 39,
+      "unavailable_boundary": 48,
+      "guided_without_llm": 48
+    },
+    "limitations": [
+      "No Meta send, worker queue or Windows SSH tunnel",
+      "Fixture config, not production customer data",
+      "Small-sample percentiles are descriptive, not an SLA",
+      "No document evidence or customer memory is seeded"
+    ]
+  },
+  "retrieval": {
+    "embedding": "bge-m3",
+    "profile": "bge-m3#1024",
+    "reranker": "none",
+    "n": 12,
+    "recall_at_1": 0.667,
+    "recall_at_3": 0.833,
+    "mrr": 0.75,
+    "latency_ms": {
+      "n": 12,
+      "p50": 100.2,
+      "p95": 100.6,
+      "mean": 100.1
+    },
+    "index_ms": 58128.0,
+    "index_facts": 63,
+    "meets_baseline": false
+  },
+  "coverage": {
+    "covered_lines": 12005,
+    "num_statements": 15952,
+    "percent_covered": 70.22351797862002,
+    "percent_covered_display": "70",
+    "missing_lines": 3947,
+    "excluded_lines": 103,
+    "percent_statements_covered": 75.25702106318957,
+    "percent_statements_covered_display": "75",
+    "num_branches": 4628,
+    "num_partial_branches": 739,
+    "covered_branches": 2447,
+    "missing_branches": 2181,
+    "percent_branches_covered": 52.87381158167675,
+    "percent_branches_covered_display": "53"
+  },
+  "web": {
+    "typecheck": "pass",
+    "lint": "pass_with_existing_warning",
+    "build": "pass",
+    "browser_journeys": "not_configured"
+  },
+  "production": {
+    "preflight": "pass",
+    "new_instrumented_customer_samples": 0,
+    "models_changed": false,
+    "settings_changed": false
+  }
+}

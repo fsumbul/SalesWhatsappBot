@@ -10,5 +10,5 @@
   {"question": "kasnaklarınız sessiz mi çalışıyo", "expected_fact_ids": ["plastic_pulley_performance", "cast_pulley_performance"]},
   {"question": "halatın yönünü değiştiren parça hakkında bilgi", "expected_fact_ids": ["cast_pulley_role_and_types"]},
   {"question": "ölçüleri neler", "anchor_subject_ids": ["deflection_pulley"], "expected_fact_ids": ["cast_standard_dimensions", "cast_eco_dimensions"]},
-  {"question": "kaç ülkeye satıyorsunuz", "expected_fact_ids": ["company_history_and_reach"]}
+  {"question": "kaç ülkeye satıyorsunuz", "expected_fact_ids": ["company_history_and_reach", "company_overview"]}
 ]

@@ -1,0 +1,207 @@
+{
+  "generated_at": "2026-09-16T10:14:04.218391+00:00",
+  "config": "/workspace/ashira-assessment-20260916/apps/api/config/arti_kasnak.production.json",
+  "golden_items": 12,
+  "baseline": {
+    "recall_at_3_min": 1.0,
+    "mrr_min": 0.96
+  },
+  "configurations": [
+    {
+      "embedding": "bge-m3",
+      "profile": "bge-m3#1024",
+      "reranker": "none",
+      "n": 12,
+      "recall_at_1": 0.667,
+      "recall_at_3": 0.833,
+      "mrr": 0.75,
+      "latency_ms": {
+        "n": 12,
+        "p50": 100.2,
+        "p95": 100.6,
+        "mean": 100.1
+      },
+      "case_results": [
+        {
+          "question": "6211 rulman hangi mil çapına uygundur?",
+          "expected_fact_ids": [
+            "bearing_compatibility"
+          ],
+          "ranked_fact_ids": [
+            "bearing_compatibility",
+            "shaft_measurement_definitions",
+            "mc_nylon_standard_dimensions"
+          ],
+          "first_relevant_rank": 1,
+          "degraded": false,
+          "elapsed_ms": 101.85
+        },
+        {
+          "question": "TS180118 kaç halat için?",
+          "expected_fact_ids": [
+            "traction_sheave_available_dimensions"
+          ],
+          "ranked_fact_ids": [
+            "traction_sheave_available_dimensions",
+            "mc_nylon_standard_dimensions",
+            "belt_pulley_available_dimensions"
+          ],
+          "first_relevant_rank": 1,
+          "degraded": false,
+          "elapsed_ms": 99.47
+        },
+        {
+          "question": "Palanga kasnağının malzemesi ve çalışma özellikleri nedir?",
+          "expected_fact_ids": [
+            "palanga_pulley_details"
+          ],
+          "ranked_fact_ids": [
+            "palanga_pulley_details",
+            "plastic_pulley_performance",
+            "plastic_belt_pulley_details"
+          ],
+          "first_relevant_rank": 1,
+          "degraded": false,
+          "elapsed_ms": 100.58
+        },
+        {
+          "question": "Captormal kasnakların standart çap seçenekleri nelerdir?",
+          "expected_fact_ids": [
+            "mc_nylon_eco_dimensions",
+            "mc_nylon_standard_dimensions"
+          ],
+          "ranked_fact_ids": [
+            "plastic_pulley_material",
+            "plastic_pulley_performance",
+            "mc_nylon_warranty_catalog_claim"
+          ],
+          "first_relevant_rank": null,
+          "degraded": false,
+          "elapsed_ms": 99.57
+        },
+        {
+          "question": "Döküm kasnakta 320 mm çap seçeneği var mı?",
+          "expected_fact_ids": [
+            "cast_eco_dimensions",
+            "cast_standard_dimensions"
+          ],
+          "ranked_fact_ids": [
+            "cast_eco_dimensions",
+            "cast_pulley_performance",
+            "cast_pulley_materials"
+          ],
+          "first_relevant_rank": 1,
+          "degraded": false,
+          "elapsed_ms": 100.16
+        },
+        {
+          "question": "Yan desteklerde hangi mil çapları var?",
+          "expected_fact_ids": [
+            "side_support_standard_dimensions"
+          ],
+          "ranked_fact_ids": [
+            "side_support_standard_dimensions",
+            "catalog_product_groups",
+            "shaft_measurement_definitions"
+          ],
+          "first_relevant_rank": 1,
+          "degraded": false,
+          "elapsed_ms": 99.7
+        },
+        {
+          "question": "Özel ölçü üretim yapıyor musunuz?",
+          "expected_fact_ids": [
+            "customization_and_order_flexibility",
+            "drawing_based_production"
+          ],
+          "ranked_fact_ids": [
+            "quote_shaft_dimensions_question",
+            "quote_drawing_question",
+            "in_house_manufacturing"
+          ],
+          "first_relevant_rank": null,
+          "degraded": false,
+          "elapsed_ms": 100.64
+        },
+        {
+          "question": "İhracat ekibine nasıl ulaşabilirim?",
+          "expected_fact_ids": [
+            "contact_information"
+          ],
+          "ranked_fact_ids": [
+            "conversation_wellbeing",
+            "contact_information",
+            "conversation_positive_mood"
+          ],
+          "first_relevant_rank": 2,
+          "degraded": false,
+          "elapsed_ms": 99.52
+        },
+        {
+          "question": "kasnaklarınız sessiz mi çalışıyo",
+          "expected_fact_ids": [
+            "cast_pulley_performance",
+            "plastic_pulley_performance"
+          ],
+          "ranked_fact_ids": [
+            "plastic_belt_pulley_details",
+            "plastic_pulley_performance",
+            "conversation_waiting"
+          ],
+          "first_relevant_rank": 2,
+          "degraded": false,
+          "elapsed_ms": 100.44
+        },
+        {
+          "question": "halatın yönünü değiştiren parça hakkında bilgi",
+          "expected_fact_ids": [
+            "cast_pulley_role_and_types"
+          ],
+          "ranked_fact_ids": [
+            "cast_pulley_role_and_types",
+            "conversation_correction",
+            "motor_pulley_custom_production"
+          ],
+          "first_relevant_rank": 1,
+          "degraded": false,
+          "elapsed_ms": 99.8
+        },
+        {
+          "question": "ölçüleri neler",
+          "expected_fact_ids": [
+            "cast_eco_dimensions",
+            "cast_standard_dimensions"
+          ],
+          "ranked_fact_ids": [
+            "cast_standard_dimensions",
+            "cast_eco_dimensions",
+            "all_product_groups"
+          ],
+          "first_relevant_rank": 1,
+          "degraded": false,
+          "elapsed_ms": 100.59
+        },
+        {
+          "question": "kaç ülkeye satıyorsunuz",
+          "expected_fact_ids": [
+            "company_history_and_reach"
+          ],
+          "ranked_fact_ids": [
+            "company_history_and_reach",
+            "company_overview",
+            "quote_quantity_location_question"
+          ],
+          "first_relevant_rank": 1,
+          "degraded": false,
+          "elapsed_ms": 99.47
+        }
+      ],
+      "index_ms": 58128.0,
+      "index_facts": 63,
+      "falkordb_memory_delta_bytes": 6574392,
+      "meets_baseline": false
+    }
+  ],
+  "entailment_calibration": {},
+  "recommendation": "Test edilen yapılandırmalar ADR-002 eşiğini karşılamadı; başarısız golden soruları inceleyin. Bu rapor üretim ayarlarını değiştirmez."
+}

@@ -93,3 +93,22 @@ async def test_timing_persistence_failure_cannot_retry_successful_send(monkeypat
     assert await agent_runtime._process_runtime_job(uuid4(), uuid4()) == {"status": "sent"}
     assert sends == 1
     assert current_timing() is None
+
+
+async def test_disabled_timing_preserves_result_without_audit_write(monkeypatch):
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from src.workers import agent_runtime
+
+    async def operation(*args):
+        assert current_timing() is None
+        return {"status": "sent"}
+
+    def forbidden_database(*args):
+        pytest.fail("disabled timing must not open a telemetry transaction")
+
+    monkeypatch.setattr(agent_runtime, "get_settings", lambda: SimpleNamespace(runtime_timing_enabled=False))
+    monkeypatch.setattr(agent_runtime, "_process_runtime_job_instrumented", operation)
+    monkeypatch.setattr(agent_runtime, "session_scope", forbidden_database)
+    assert await agent_runtime._process_runtime_job(uuid4(), uuid4()) == {"status": "sent"}

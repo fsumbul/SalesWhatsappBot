@@ -74,18 +74,22 @@ async def _golden_metrics(retriever: FalkorGraphFactRetriever, tenant: Any, vers
     hits1 = hitsk = 0
     reciprocal = 0.0
     latency: list[float] = []
+    case_results: list[dict[str, Any]] = []
     for item in items:
         with timed(latency):
             result = await retriever.retrieve(RetrievalRequest(tenant_id=tenant, agent_version_id=version, query=item["question"], anchor_subject_ids=tuple(item.get("anchor_subject_ids", [])), max_candidates=k))
         ranked = list(result.fact_ids)
         expected = set(item["expected_fact_ids"])
         first = next((i for i, fact_id in enumerate(ranked) if fact_id in expected), None)
+        case_results.append({"question": item["question"], "expected_fact_ids": sorted(expected),
+                             "ranked_fact_ids": ranked, "first_relevant_rank": first + 1 if first is not None else None,
+                             "degraded": result.degraded, "elapsed_ms": round(latency[-1], 2)})
         if first is not None:
             hitsk += 1
             reciprocal += 1 / (first + 1)
             hits1 += first == 0
     n = max(1, len(items))
-    return {"n": len(items), "recall_at_1": round(hits1 / n, 3), f"recall_at_{k}": round(hitsk / n, 3), "mrr": round(reciprocal / n, 3), "latency_ms": latency_summary(latency)}
+    return {"n": len(items), "recall_at_1": round(hits1 / n, 3), f"recall_at_{k}": round(hitsk / n, 3), "mrr": round(reciprocal / n, 3), "latency_ms": latency_summary(latency), "case_results": case_results}
 
 
 async def _entailment_calibration(reranker: Any, pairs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -151,7 +155,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
 def _recommend(configurations: list[dict[str, Any]]) -> str:
     winners = [c for c in configurations if c["meets_baseline"]]
     if not winners:
-        return "Hiçbir yapılandırma ADR-002 ölçümünü korumadı: varsayılan bge-m3 + local kalır."
+        return "Test edilen yapılandırmalar ADR-002 eşiğini karşılamadı; başarısız golden soruları inceleyin. Bu rapor üretim ayarlarını değiştirmez."
     best = max(winners, key=lambda c: (c["mrr"], -c["latency_ms"]["p95"]))
     return f"{best['embedding']} + {best['reranker']} (MRR {best['mrr']}, p95 {best['latency_ms']['p95']} ms) baseline'ı karşılıyor."
 
