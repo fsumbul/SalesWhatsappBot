@@ -18,10 +18,11 @@ from src.core.config import Settings, get_settings
 from src.integrations.llm import LLMClient
 from src.modules.agents.company_config import CompanyAgentConfig
 from src.modules.agents.models import AgentVersion, AgentVersionStatus
+from src.modules.guardrails.ports import GuardDecision, GuardVerdict, InputGuard
 
 from .chunking import chunk_text, content_hash
 from .crawler import WebsiteCrawler
-from .evidence import EvidenceGraph
+from .evidence import EmbeddingProfileMismatchError, EvidenceGraph
 from .extract import EXTRACTOR_VERSION, PageExtract, TextUnit, extract_document
 from .extraction import ValidatedExtraction, extract_chunk, subject_labels
 from .media import discover_images, fetch_image
@@ -33,11 +34,14 @@ from .models import (
     KnowledgeSnapshot,
     KnowledgeSource,
 )
+from .ocr import DocumentOcr, ocr_pdf_pages, pages_without_text
 from .publisher import KnowledgePublisher, PublishReport
+from .vision import MediaVerifier, verify_media
 
 logger = structlog.get_logger(__name__)
 _MAX_CHUNKS_PER_SYNC = 400
 _EXTRACTION_CONCURRENCY = 2
+_GUARD_CONCURRENCY = 4
 
 
 async def agent_config_for(
@@ -90,13 +94,25 @@ class KnowledgeIngestService:
         graph: EvidenceGraph | None,
         settings: Settings | None = None,
         http_client: httpx.AsyncClient | None = None,
+        guard: InputGuard | None = None,
+        ocr: DocumentOcr | None = None,
+        vision: MediaVerifier | None = None,
     ) -> None:
         self.session = session
         self.llm = llm
         self.graph = graph
+        # Vision verification (plan WP3): confirms/overrides the image subject.
+        self.vision = vision
+        # OCR chain (plan WP2): scanned PDF pages become bbox-located units.
+        self.ocr = ocr
+        # Guardrail gate (plan WP1): blocked chunks are stored with their
+        # verdict but never extracted or embedded.
+        self.guard = guard
         self.settings = settings or get_settings()
         self.http_client = http_client
         self.stats: Counter[str] = Counter()
+        # Cleared when the tenant graph belongs to another embedding profile.
+        self._graph_ready = True
 
     # --- entry point ----------------------------------------------------------
 
@@ -117,7 +133,14 @@ class KnowledgeIngestService:
         try:
             if self.graph is not None:
                 assert config.agent is not None
-                await self.graph.ensure_indexes(tenant_id, config.agent.default_locale)
+                try:
+                    await self.graph.ensure_indexes(tenant_id, config.agent.default_locale)
+                except EmbeddingProfileMismatchError as exc:
+                    # Text, chunks and candidates still flow; only the graph waits
+                    # for ``knowledge-reembed``. Never mix embedding spaces.
+                    self._graph_ready = False
+                    self.stats["graph_profile_mismatch"] += 1
+                    logger.warning("knowledge.graph.profile_mismatch", error=str(exc)[:200])
             if source.kind == "document":
                 await self._sync_documents(tenant_id, source, config)
             elif source.kind == "website":
@@ -165,6 +188,12 @@ class KnowledgeIngestService:
             try:
                 data = await _document_bytes(self.session, document)
                 units = extract_document(document.filename, document.mime_type, data)
+                if (
+                    self.ocr is not None
+                    and self.ocr.available
+                    and document.mime_type == "application/pdf"
+                ):
+                    units = await self._ocr_missing_pages(document, data, units)
                 document.page_count = len(units)
                 document.extractor_version = EXTRACTOR_VERSION
                 if not units:
@@ -187,6 +216,45 @@ class KnowledgeIngestService:
                     "knowledge.document.failed", document_id=str(document.id), error=document.error
                 )
             await self.session.commit()
+
+    async def _ocr_missing_pages(
+        self, document: KnowledgeDocument, data: bytes, units: list[TextUnit]
+    ) -> list[TextUnit]:
+        """OCR pages without a text layer; the document report never holds text."""
+
+        assert self.ocr is not None
+        try:
+            missing = await asyncio.to_thread(
+                pages_without_text,
+                data,
+                units,
+                min_chars=self.settings.knowledge_ocr_min_text_chars,
+            )
+        except Exception as exc:  # unreadable by pdfium: keep the text-layer result
+            logger.warning("knowledge.ocr.page_scan_failed", error=type(exc).__name__)
+            return units
+        if not missing:
+            return units
+        ocr_units, report = await ocr_pdf_pages(
+            document.filename,
+            data,
+            missing,
+            self.ocr,
+            dpi=self.settings.knowledge_ocr_dpi,
+            max_pages=self.settings.knowledge_ocr_max_pages_per_document,
+        )
+        document.meta = {**document.meta, "ocr": {**report, "missing_pages": missing}}
+        self.stats["ocr_pages"] += len(report["pages"])
+        self.stats["ocr_units"] += len(ocr_units)
+        merged = [*units, *ocr_units]
+        merged.sort(
+            key=lambda unit: (
+                int(unit.meta.get("page", 0) or 0),
+                1 if unit.meta.get("ocr") else 0,
+                unit.locator,
+            )
+        )
+        return merged
 
     # --- website ------------------------------------------------------------------
 
@@ -272,7 +340,7 @@ class KnowledgeIngestService:
             return previous
         if previous is not None:
             previous.status = "removed"
-            if self.graph is not None:
+            if self.graph is not None and self._graph_ready:
                 await self.graph.delete_snapshot(tenant_id, previous.id)
         snapshot = KnowledgeSnapshot(
             tenant_id=tenant_id,
@@ -311,6 +379,7 @@ class KnowledgeIngestService:
         await self.session.flush()
         self.stats["chunks"] += len(rows)
 
+        rows = await self._guard_chunks(rows)
         extractions = await self._extract_chunks(config, rows)
         for row, extraction in zip(rows, extractions, strict=True):
             if extraction is None:
@@ -320,7 +389,7 @@ class KnowledgeIngestService:
             await self._store_candidates(tenant_id, source, snapshot, row, extraction)
         if page is not None and page.product.get("name"):
             snapshot.meta = {**snapshot.meta, "product_page": True}
-        if self.graph is not None and rows:
+        if self.graph is not None and self._graph_ready and rows:
             try:
                 await self.graph.upsert_chunks(
                     tenant_id,
@@ -345,6 +414,40 @@ class KnowledgeIngestService:
                 logger.warning("knowledge.graph.upsert_failed", error=type(exc).__name__)
         await self.session.commit()
         return snapshot
+
+    async def _guard_chunks(self, rows: list[KnowledgeChunk]) -> list[KnowledgeChunk]:
+        """Return the chunks that may be extracted and embedded.
+
+        Blocked chunks (and every chunk when a classifier is unavailable in
+        closed mode) keep their verdict in ``guard`` and stay unprocessed;
+        flagged chunks proceed with the verdict recorded. The sync itself never
+        fails because of the gate.
+        """
+
+        if self.guard is None or not self.guard.available or not rows:
+            return rows
+        guard = self.guard
+        semaphore = asyncio.Semaphore(_GUARD_CONCURRENCY)
+
+        async def one(row: KnowledgeChunk) -> GuardVerdict:
+            async with semaphore:
+                return await guard.check_document_text(row.text)
+
+        verdicts: list[GuardVerdict] = list(await asyncio.gather(*(one(row) for row in rows)))
+        active: list[KnowledgeChunk] = []
+        for row, verdict in zip(rows, verdicts, strict=True):
+            if verdict.decision == GuardDecision.ALLOW:
+                active.append(row)
+                continue
+            row.guard = verdict.audit()
+            if verdict.decision == GuardDecision.FLAG:
+                self.stats["chunks_flagged"] += 1
+                active.append(row)
+            elif verdict.decision == GuardDecision.BLOCK:
+                self.stats["chunks_blocked"] += 1
+            else:
+                self.stats["chunks_guard_unavailable"] += 1
+        return active
 
     async def _extract_chunks(
         self, config: CompanyAgentConfig, rows: list[KnowledgeChunk]
@@ -488,6 +591,25 @@ class KnowledgeIngestService:
             if duplicate is not None:
                 per_subject[subject] += 1
                 continue
+            decision = await verify_media(
+                candidate,
+                image,
+                subject_labels=all_labels,
+                verifier=self.vision,
+                min_confidence=self.settings.knowledge_vision_min_confidence,
+                max_edge=self.settings.knowledge_vision_max_edge,
+                context=page.title or "",
+            )
+            if decision.verification:
+                self.stats["media_verified"] += 1
+            if not decision.store:
+                self.stats["media_rejected_vision"] += 1
+                continue
+            if decision.subject_id is not None and decision.subject_id != subject:
+                self.stats["media_subject_overridden"] += 1
+                subject = decision.subject_id
+                if per_subject[subject] >= self.settings.knowledge_media_max_per_subject:
+                    continue
             self.session.add(
                 KnowledgeMedia(
                     tenant_id=tenant_id,
@@ -501,8 +623,9 @@ class KnowledgeIngestService:
                     size_bytes=len(image.content),
                     content=image.content,
                     subject_id=subject,
-                    alt_text=(candidate.alt or candidate.context or None),
-                    score=candidate.score,
+                    alt_text=decision.alt_text,
+                    score=decision.score,
+                    verification=dict(decision.verification),
                 )
             )
             per_subject[subject] += 1

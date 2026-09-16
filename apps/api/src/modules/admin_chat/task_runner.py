@@ -97,7 +97,7 @@ async def model(system: str, payload: Any, schema: Any) -> Any:
     for attempt in range(2):
         try:
             raw = await asyncio.wait_for(
-                planner.get_llm_client().complete(
+                planner.get_llm_client("admin").complete(
                     [LLMMessage(role="user", content=json.dumps(payload, ensure_ascii=False))],
                     system=system,
                     max_tokens=1000 if schema is TaskStep else 400,
@@ -317,7 +317,7 @@ async def execute(
                 ),
             }
             payload = bounded_context(payload)
-            truncated = truncated or payload.get("data_truncated", False)
+            truncated = truncated or bool(payload.get("data_truncated", False))
             step = await asyncio.wait_for(model(SYSTEM, payload, TaskStep), timeout=remaining)
             attempts += 1
             if step.goal >= len(goals):

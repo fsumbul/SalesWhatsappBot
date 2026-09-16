@@ -18,7 +18,7 @@ from time import perf_counter
 from typing import Any
 from uuid import UUID
 
-from src.integrations.embeddings import EmbeddingClient
+from src.integrations.embeddings import EmbeddingClient, embedding_profile
 from src.integrations.reranker import Reranker
 
 from .compiler import extract_codes, fts_query
@@ -42,6 +42,14 @@ class EvidenceChunk:
     channels: tuple[str, ...]
 
 
+class EmbeddingProfileMismatchError(RuntimeError):
+    """The tenant's chunk graph was embedded with another model/dimension.
+
+    Vectors from two embedding spaces never mix: ingestion stops writing to
+    the graph until ``reembed_knowledge_graph`` rebuilt it (plan WP4).
+    """
+
+
 class EvidenceGraph:
     def __init__(self, store: GraphStore, embeddings: EmbeddingClient) -> None:
         self.store = store
@@ -51,8 +59,34 @@ class EvidenceGraph:
     def graph_name(tenant_id: UUID) -> str:
         return f"kn_{tenant_id.hex}"
 
+    @property
+    def profile(self) -> str:
+        return embedding_profile(self.embeddings)
+
+    async def current_profile(self, tenant_id: UUID) -> str | None:
+        """Embedding profile recorded on the graph, ``None`` when absent (legacy or new)."""
+
+        graph = self.graph_name(tenant_id)
+        if not await self.store.graph_exists(graph):
+            return None
+        rows = await self.store.query(graph, "MATCH (m:Meta) RETURN m.profile LIMIT 1")
+        if not rows or not isinstance(rows[0][0], str):
+            return None
+        return rows[0][0]
+
+    async def rebuild(self, tenant_id: UUID, locale: str = "tr") -> None:
+        """Drop the tenant graph and recreate its indexes for the current profile."""
+
+        await self.store.delete_graph(self.graph_name(tenant_id))
+        await self.ensure_indexes(tenant_id, locale)
+
     async def ensure_indexes(self, tenant_id: UUID, locale: str = "tr") -> None:
         graph = self.graph_name(tenant_id)
+        existing = await self.current_profile(tenant_id)
+        if existing is not None and existing != self.profile:
+            raise EmbeddingProfileMismatchError(
+                f"graph built with {existing}, configured {self.profile}; run knowledge-reembed"
+            )
         statements = [
             "CREATE INDEX FOR (c:Chunk) ON (c.id)",
             "CREATE INDEX FOR (c:Chunk) ON (c.source_id)",
@@ -73,6 +107,17 @@ class EvidenceGraph:
                 message = str(exc).lower()
                 if "already" not in message and "exist" not in message:
                     raise
+        if existing is None:
+            await self.store.query(
+                graph,
+                "MERGE (m:Meta {kind: 'evidence'}) SET m.profile = $profile, "
+                "m.embedding_model = $model, m.dimension = $dimension",
+                {
+                    "profile": self.profile,
+                    "model": self.embeddings.model_name,
+                    "dimension": int(self.embeddings.dimension),
+                },
+            )
 
     async def upsert_chunks(self, tenant_id: UUID, rows: list[dict[str, Any]]) -> int:
         """Rows: id, source_id, snapshot_id, locator, title, text, content_hash, subject_ids."""
@@ -287,7 +332,9 @@ class ScopedEvidenceRetriever:
         subject_ids: tuple[str, ...] = (),
         k: int = 4,
     ) -> list[EvidencePassage]:
-        chunks, _ = await self._retriever.retrieve(self._tenant_id, query, subject_ids=subject_ids, k=k)
+        chunks, _ = await self._retriever.retrieve(
+            self._tenant_id, query, subject_ids=subject_ids, k=k
+        )
         return [
             EvidencePassage(
                 id=chunk.id,

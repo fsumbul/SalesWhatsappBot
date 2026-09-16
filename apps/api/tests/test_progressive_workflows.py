@@ -131,7 +131,7 @@ async def test_chat_form_mixed_and_model_failure_preserves_fields(client, monkey
         async def complete(self, *args, **kwargs):
             raise LLMCompletionError("offline")
 
-    monkeypatch.setattr(planner, "get_llm_client", lambda: Broken())
+    monkeypatch.setattr(planner, "get_llm_client", lambda *_args, **_kwargs: Broken())
     assert (await turn(client, headers, sid, "Devam et")).status_code == 503
     rows = (
         await client.get(f"/api/v1/admin-chat/sessions/{sid}/workflows", headers=headers)
@@ -285,7 +285,7 @@ async def test_workflow_model_outage_and_invalid_import_keep_input(client, monke
         async def complete(self, *args, **kwargs):
             raise LLMCompletionError("offline")
 
-    monkeypatch.setattr(workspace, "get_llm_client", lambda: Offline())
+    monkeypatch.setattr(workspace, "get_llm_client", lambda *_args, **_kwargs: Offline())
     headers, _ = await account(client, UserRole.TENANT_OWNER)
     await agent(client, headers)
     sid = await chat(client, headers)
@@ -321,7 +321,7 @@ async def test_progressive_test_result_and_stale_version(client, monkeypatch):
         async def complete(self, *args, **kwargs):
             return json.dumps({"action": "reply", "fact_ids": ["service"]})
 
-    monkeypatch.setattr(workspace, "get_llm_client", lambda: Model())
+    monkeypatch.setattr(workspace, "get_llm_client", lambda *_args, **_kwargs: Model())
     headers, _ = await account(client, UserRole.TENANT_OWNER)
     aid, version = await agent(client, headers)
     proposal = (

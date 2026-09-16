@@ -92,16 +92,121 @@ def sync_knowledge_source(tenant_id: str, source_id: str) -> dict[str, Any]:
 
 
 async def _sync_knowledge_source(tenant_id: UUID, source_id: UUID) -> dict[str, Any]:
+    from src.modules.guardrails.service import build_ingest_guard
     from src.modules.knowledge.ingest import KnowledgeIngestService
+    from src.modules.knowledge.ocr import build_document_ocr
     from src.modules.knowledge.service import build_evidence_graph
+    from src.modules.knowledge.vision import build_media_verifier
 
     async with session_scope(tenant_id) as session:
         service = KnowledgeIngestService(
-            session, llm=get_llm_client(), graph=build_evidence_graph()
+            session,
+            llm=get_llm_client("extraction"),
+            graph=build_evidence_graph(),
+            guard=build_ingest_guard(),
+            ocr=build_document_ocr(),
+            vision=build_media_verifier(),
         )
         result = await service.sync_source(tenant_id, source_id)
     logger.info("knowledge.source.synced", source_id=str(source_id), **{k: v for k, v in result.items() if k != "publish"})
     return result
+
+
+@agent_celery_app.task(
+    name="src.workers.knowledge.reembed_knowledge_graph",
+    time_limit=3600,
+    soft_time_limit=3300,
+)
+def reembed_knowledge_graph(tenant_id: str) -> dict[str, Any]:
+    """Rebuild ``kn_<tenant>`` for the configured embedding profile (plan WP4)."""
+
+    return run_async(_reembed_knowledge_graph(UUID(tenant_id)))
+
+
+async def _reembed_knowledge_graph(tenant_id: UUID) -> dict[str, Any]:
+    from src.modules.knowledge.ingest import agent_config_for
+    from src.modules.knowledge.models import KnowledgeChunk, KnowledgeSnapshot, KnowledgeSource
+    from src.modules.knowledge.service import build_evidence_graph
+
+    graph = build_evidence_graph()
+    if graph is None:
+        return {"status": "disabled"}
+    batch_size = 64
+    embedded = skipped = 0
+    async with session_scope(tenant_id) as session:
+        sources = list(
+            (
+                await session.execute(
+                    select(KnowledgeSource).where(KnowledgeSource.tenant_id == tenant_id)
+                )
+            ).scalars()
+        )
+        locale = "tr"
+        for source in sources:
+            config = await agent_config_for(session, tenant_id, source.agent_id)
+            if config is not None and config.agent is not None:
+                locale = config.agent.default_locale
+                break
+        rows = list(
+            (
+                await session.execute(
+                    select(KnowledgeChunk, KnowledgeSnapshot.title)
+                    .join(KnowledgeSnapshot, KnowledgeChunk.snapshot_id == KnowledgeSnapshot.id)
+                    .where(
+                        KnowledgeChunk.tenant_id == tenant_id,
+                        KnowledgeSnapshot.status != "removed",
+                    )
+                    .order_by(KnowledgeChunk.created_at, KnowledgeChunk.ordinal)
+                )
+            ).all()
+        )
+        await graph.rebuild(tenant_id, locale)
+        pending: list[tuple[KnowledgeChunk, dict[str, Any]]] = []
+
+        async def flush() -> None:
+            nonlocal embedded
+            if not pending:
+                return
+            await graph.upsert_chunks(tenant_id, [row for _, row in pending])
+            for chunk, _ in pending:
+                chunk.embedded = True
+            embedded += len(pending)
+            pending.clear()
+
+        for chunk, title in rows:
+            decision = str((chunk.guard or {}).get("decision", "allow"))
+            if decision in {"block", "unavailable"}:
+                chunk.embedded = False
+                skipped += 1
+                continue
+            pending.append(
+                (
+                    chunk,
+                    {
+                        "id": str(chunk.id),
+                        "source_id": str(chunk.source_id),
+                        "snapshot_id": str(chunk.snapshot_id),
+                        "locator": chunk.locator,
+                        "title": title or "",
+                        "text": chunk.text,
+                        "content_hash": chunk.content_hash,
+                        "subject_ids": list(chunk.subject_ids),
+                    },
+                )
+            )
+            if len(pending) >= batch_size:
+                await flush()
+        await flush()
+        await session.commit()
+    summary = {
+        "status": "reembedded",
+        "graph": graph.graph_name(tenant_id),
+        "profile": graph.profile,
+        "chunks": embedded,
+        "skipped": skipped,
+    }
+    logger.info("knowledge.graph.reembedded", **summary)
+    return summary
 
 
 @agent_celery_app.task(name="src.workers.knowledge.delete_knowledge_source", time_limit=900)
@@ -193,7 +298,7 @@ async def _enrich_conversation_memory(tenant_id: UUID, job_id: UUID) -> dict[str
         if outbound is not None and outbound.body:
             turns.append(LLMMessage(role="assistant", content=outbound.body))
 
-    extraction = await extract_memory(get_llm_client(), config, turns)
+    extraction = await extract_memory(get_llm_client("memory"), config, turns)
     recorded = await memory_store.record_turn(
         tenant_id=tenant_id,
         key=key,

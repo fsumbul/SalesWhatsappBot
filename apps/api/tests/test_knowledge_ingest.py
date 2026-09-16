@@ -22,6 +22,7 @@ from src.core.db import session_scope
 from src.integrations.llm import LLMMessage
 from src.modules.agents.models import AgentVersion, AgentVersionStatus
 from src.modules.agents.service import AgentService
+from src.modules.guardrails.ports import GuardCheck, GuardDecision, GuardVerdict
 from src.modules.knowledge.ingest import KnowledgeIngestService
 from src.modules.knowledge.models import (
     KnowledgeCandidate,
@@ -31,7 +32,9 @@ from src.modules.knowledge.models import (
     KnowledgeSnapshot,
     KnowledgeSource,
 )
+from src.modules.knowledge.ocr import OcrRegion
 from src.modules.knowledge.publisher import KnowledgePublisher
+from src.modules.knowledge.vision import VisionVerdict
 from tests.test_whatsapp_runtime_integration import (
     _seed_runtime_tenant,
     runtime_database,  # noqa: F401 - pytest fixture
@@ -393,3 +396,237 @@ async def test_website_ingest_respects_robots_and_publishes_product_image(
         live = await AgentService(session).get_live(tenant_id, agent_id)
         assert live is not None
         assert "cast_pulley" not in (live.company_config.get("whatsapp_presentation") or {}).get("offering_media", {})
+
+
+# --- guardrail gate on document chunks (NIM plan WP1) -------------------------------
+
+
+class _ChunkGuard:
+    """Blocks the chunk that talks about the palanga pulley, flags nothing else."""
+
+    available = True
+
+    def __init__(self, decision: GuardDecision = GuardDecision.BLOCK) -> None:
+        self.decision = decision
+        self.texts: list[str] = []
+
+    async def check_customer_message(self, text: str, **kwargs: Any) -> GuardVerdict:
+        raise AssertionError("ingestion must use the document check")
+
+    async def check_document_text(self, text: str) -> GuardVerdict:
+        self.texts.append(text)
+        if "Palanga" in text:
+            return GuardVerdict(
+                self.decision,
+                (GuardCheck("content_safety", self.decision, None, ("S16",), 12.0, "guard-model"),),
+                f"content_safety:{'S16' if self.decision == GuardDecision.BLOCK else 'S9'}",
+            )
+        return GuardVerdict(GuardDecision.ALLOW)
+
+
+async def _document_source(tenant_id: UUID, agent_id: UUID, uri: str) -> UUID:
+    async with session_scope(tenant_id) as session:
+        source = KnowledgeSource(
+            tenant_id=tenant_id, agent_id=agent_id, kind="document", display_name="katalog.md",
+            canonical_uri=uri, auto_publish=True,
+        )
+        session.add(source)
+        await session.flush()
+        session.add(
+            KnowledgeDocument(
+                tenant_id=tenant_id, source_id=source.id, filename="katalog.md", mime_type="text/markdown",
+                sha256=uri, size_bytes=len(_MARKDOWN), content=_MARKDOWN,
+            )
+        )
+        await session.commit()
+        return source.id
+
+
+@pytest.mark.asyncio
+async def test_document_ingest_never_extracts_or_embeds_guard_blocked_chunks(
+    runtime_database: None,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    get_settings.cache_clear()
+    tenant_id, _owner = await _seed_runtime_tenant(with_agent=True)
+    agent_id = await _install_live(tenant_id)
+    source_id = await _document_source(tenant_id, agent_id, "upload://guarded")
+    llm = _ExtractingLLM()
+    graph = _FakeGraph()
+    guard = _ChunkGuard()
+
+    async with session_scope(tenant_id) as session:
+        result = await KnowledgeIngestService(session, llm=llm, graph=graph, guard=guard).sync_source(tenant_id, source_id)  # type: ignore[arg-type]
+
+    assert result["status"] == "synced", result
+    assert result["stats"]["chunks"] == 2 and result["stats"]["chunks_blocked"] == 1
+    assert len(guard.texts) == 2
+    # Only the company chunk reached the model and the graph.
+    assert llm.calls == 1 and len(graph.rows) == 1
+    assert result["stats"].get("candidate_offerings", 0) == 0
+    async with session_scope(tenant_id) as session:
+        chunks = list((await session.execute(select(KnowledgeChunk).where(KnowledgeChunk.source_id == source_id))).scalars())
+        blocked = next(c for c in chunks if "Palanga" in c.text)
+        allowed = next(c for c in chunks if "Palanga" not in c.text)
+        assert blocked.guard["decision"] == "block" and blocked.guard["reason"] == "content_safety:S16"
+        assert blocked.extracted is False and blocked.embedded is False
+        assert "Palanga" not in json.dumps(blocked.guard)
+        assert allowed.guard == {} and allowed.extracted and allowed.embedded
+        candidates = list((await session.execute(select(KnowledgeCandidate).where(KnowledgeCandidate.source_id == source_id))).scalars())
+        assert {c.subject_id for c in candidates} == {"company"}
+
+    # Flagged chunks are processed but keep the verdict.
+    flagged_source = await _document_source(tenant_id, agent_id, "upload://flagged")
+    flag_guard = _ChunkGuard(GuardDecision.FLAG)
+    async with session_scope(tenant_id) as session:
+        result = await KnowledgeIngestService(session, llm=llm, graph=graph, guard=flag_guard).sync_source(tenant_id, flagged_source)  # type: ignore[arg-type]
+    assert result["stats"]["chunks_flagged"] == 1 and result["stats"].get("chunks_blocked", 0) == 0
+    assert result["stats"]["candidate_offerings"] == 1
+    async with session_scope(tenant_id) as session:
+        chunks = list((await session.execute(select(KnowledgeChunk).where(KnowledgeChunk.source_id == flagged_source))).scalars())
+        flagged = next(c for c in chunks if "Palanga" in c.text)
+        assert flagged.guard["decision"] == "flag" and flagged.extracted and flagged.embedded
+
+
+# --- OCR chain for scanned PDFs (NIM plan WP2) --------------------------------------
+
+
+class _RegionOcr:
+    available = True
+    describe = {"ocr_model": "fake-ocr", "layout": "none"}  # noqa: RUF012
+
+    def __init__(self, text: str | None) -> None:
+        self.text = text
+        self.pages = 0
+
+    async def read_page(self, image: bytes, mime_type: str) -> list[OcrRegion]:
+        self.pages += 1
+        if self.text is None:
+            return []
+        return [OcrRegion("text", (0.1, 0.1, 0.9, 0.4), self.text, 0.91)]
+
+
+async def _pdf_source(tenant_id: UUID, agent_id: UUID, uri: str, data: bytes) -> UUID:
+    async with session_scope(tenant_id) as session:
+        source = KnowledgeSource(
+            tenant_id=tenant_id, agent_id=agent_id, kind="document", display_name="tarama.pdf",
+            canonical_uri=uri, auto_publish=True,
+        )
+        session.add(source)
+        await session.flush()
+        session.add(
+            KnowledgeDocument(
+                tenant_id=tenant_id, source_id=source.id, filename="tarama.pdf", mime_type="application/pdf",
+                sha256=uri, size_bytes=len(data), content=data,
+            )
+        )
+        await session.commit()
+        return source.id
+
+
+@pytest.mark.asyncio
+async def test_scanned_pdf_pages_are_ocr_ed_into_bbox_located_chunks(
+    runtime_database: None,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.test_knowledge_ocr import image_pdf
+
+    get_settings.cache_clear()
+    tenant_id, _owner = await _seed_runtime_tenant(with_agent=True)
+    agent_id = await _install_live(tenant_id)
+    data = image_pdf(1)
+    source_id = await _pdf_source(tenant_id, agent_id, "upload://scan", data)
+    llm = _ExtractingLLM()
+    graph = _FakeGraph()
+    ocr = _RegionOcr("Artı Kasnak 1995'ten beri kasnak üretir ve kırktan fazla ülkeye ihracat yapar.")
+
+    async with session_scope(tenant_id) as session:
+        result = await KnowledgeIngestService(session, llm=llm, graph=graph, ocr=ocr).sync_source(tenant_id, source_id)  # type: ignore[arg-type]
+
+    assert result["status"] == "synced", result
+    assert ocr.pages == 1 and result["stats"]["ocr_pages"] == 1 and result["stats"]["ocr_units"] == 1
+    assert result["stats"]["snapshots"] == 1 and result["stats"]["candidate_facts"] == 1
+    async with session_scope(tenant_id) as session:
+        document = (await session.execute(select(KnowledgeDocument).where(KnowledgeDocument.source_id == source_id))).scalar_one()
+        assert document.status == "extracted" and document.extractor_version == "2026.09.2"
+        assert document.meta["ocr"]["missing_pages"] == [1] and document.meta["ocr"]["pages"] == [{"page": 1, "regions": 1, "units": 1}]
+        assert document.meta["ocr"]["ocr_model"] == "fake-ocr" and "1995" not in json.dumps(document.meta)
+        snapshot = (await session.execute(select(KnowledgeSnapshot).where(KnowledgeSnapshot.source_id == source_id))).scalar_one()
+        assert snapshot.locator == "tarama.pdf#page=1&bbox=0.1000,0.1000,0.9000,0.4000"
+        assert snapshot.meta["ocr"] is True and snapshot.meta["page"] == 1
+        chunk = (await session.execute(select(KnowledgeChunk).where(KnowledgeChunk.source_id == source_id))).scalar_one()
+        assert chunk.locator.startswith(snapshot.locator + "#chars=") and chunk.extracted and chunk.embedded
+        candidate = (await session.execute(select(KnowledgeCandidate).where(KnowledgeCandidate.source_id == source_id))).scalar_one()
+        assert candidate.subject_id == "company" and candidate.evidence["locator"] == chunk.locator
+
+    # A scan the OCR cannot read stays "no extractable text", with the report attached.
+    empty_source = await _pdf_source(tenant_id, agent_id, "upload://blank", data)
+    async with session_scope(tenant_id) as session:
+        result = await KnowledgeIngestService(session, llm=llm, graph=graph, ocr=_RegionOcr(None)).sync_source(tenant_id, empty_source)  # type: ignore[arg-type]
+    assert result["status"] == "synced" and result["stats"].get("snapshots", 0) == 0
+    async with session_scope(tenant_id) as session:
+        document = (await session.execute(select(KnowledgeDocument).where(KnowledgeDocument.source_id == empty_source))).scalar_one()
+        assert document.status == "failed" and document.error == "no extractable text"
+        assert document.meta["ocr"]["pages"] == [{"page": 1, "regions": 0, "units": 0}]
+
+
+# --- vision verification of discovered images (NIM plan WP3) ---------------------------
+
+
+class _WebsiteVerifier:
+    available = True
+    model = "fake-vision"
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def verify(self, image: bytes, mime_type: str, **kwargs: Any) -> VisionVerdict:
+        self.calls.append({"mime": mime_type, **kwargs})
+        return VisionVerdict(True, "cast_pulley", 0.93, "Gri döküm asansör kasnağı.", model="fake-vision")
+
+
+@pytest.mark.asyncio
+async def test_website_ingest_records_vision_verification_on_stored_media(
+    runtime_database: None,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.core import robots
+
+    get_settings.cache_clear()
+    robots.clear_cache()
+
+    async def _fake_get_parser(origin: str, user_agent: str) -> Any:
+        from urllib.robotparser import RobotFileParser
+
+        parser = RobotFileParser()
+        parser.parse(["User-agent: *", "Disallow: /gizli"])
+        return parser
+
+    monkeypatch.setattr(robots, "_get_parser", _fake_get_parser)
+    tenant_id, _owner = await _seed_runtime_tenant(with_agent=True)
+    agent_id = await _install_live(tenant_id)
+    async with session_scope(tenant_id) as session:
+        source = KnowledgeSource(
+            tenant_id=tenant_id, agent_id=agent_id, kind="website", display_name="example-kasnak.test",
+            canonical_uri="https://example-kasnak.test/", auto_publish=False, settings={"max_pages": 10},
+        )
+        session.add(source)
+        await session.commit()
+        source_id = source.id
+    verifier = _WebsiteVerifier()
+    async with httpx.AsyncClient(transport=_mock_transport()) as client, session_scope(tenant_id) as session:
+        service = KnowledgeIngestService(session, llm=_WebsiteLLM(), graph=_FakeGraph(), http_client=client, vision=verifier)  # type: ignore[arg-type]
+        result = await service.sync_source(tenant_id, source_id)
+
+    assert result["status"] == "synced", result
+    assert result["stats"]["media_stored"] == 1 and result["stats"]["media_verified"] == 1
+    assert len(verifier.calls) == 1 and verifier.calls[0]["mime"] == "image/jpeg"
+    assert verifier.calls[0]["subject_labels"] == {"cast_pulley": "Döküm kasnak"}
+    assert verifier.calls[0]["context"] == "Döküm kasnak"
+    async with session_scope(tenant_id) as session:
+        media = (await session.execute(select(KnowledgeMedia).where(KnowledgeMedia.source_id == source_id))).scalar_one()
+        assert media.subject_id == "cast_pulley" and media.alt_text == "Döküm kasnak"  # page alt wins
+        assert media.verification["status"] == "verified" and media.verification["decision"] == "kept"
+        assert media.verification["model"] == "fake-vision" and media.verification["confidence"] == 0.93
+        assert media.verification["alt_text_written"] is False
+        assert media.score == round(0.6 * 1.0 + 0.4 * 0.93, 4)

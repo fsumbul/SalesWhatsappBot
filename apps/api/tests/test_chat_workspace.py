@@ -40,8 +40,8 @@ def model(monkeypatch, intent, builder_patch=None):
                 return json.dumps(intent)
             return json.dumps({"reply": "Bilgiler önizlemeye hazır.", "patch": builder_patch or {}})
 
-    monkeypatch.setattr(planner, "get_llm_client", lambda: LLM())
-    monkeypatch.setattr(workspace, "get_llm_client", lambda: LLM())
+    monkeypatch.setattr(planner, "get_llm_client", lambda *_args, **_kwargs: LLM())
+    monkeypatch.setattr(workspace, "get_llm_client", lambda *_args, **_kwargs: LLM())
 
 
 async def agent(client, headers, name="Acme"):
@@ -215,7 +215,7 @@ async def test_model_failure_rolls_back_builder_start_and_keeps_retryable_turn(c
         async def complete(self, *args, **kwargs):
             return "invalid json"
 
-    monkeypatch.setattr(workspace, "get_llm_client", lambda: Broken())
+    monkeypatch.setattr(workspace, "get_llm_client", lambda *_args, **_kwargs: Broken())
     r = await seed_legacy_turn(client, headers, monkeypatch, sid, instruction)
     assert r.status_code == 502, r.text
     assert (
@@ -286,7 +286,7 @@ async def test_chat_customer_runtime_history_fallback_and_no_meta(client, monkey
             assert "Acme" in kwargs["system"]
             return json.dumps({"action": "reply", "fact_ids": ["service"]})
 
-    monkeypatch.setattr(workspace, "get_llm_client", lambda: RuntimeModel())
+    monkeypatch.setattr(workspace, "get_llm_client", lambda *_args, **_kwargs: RuntimeModel())
 
     async def no_send(*args, **kwargs):
         pytest.fail("Customer tests must never send to Meta")
@@ -313,7 +313,7 @@ async def test_chat_customer_runtime_history_fallback_and_no_meta(client, monkey
         async def complete(self, *args, **kwargs):
             return "invalid json"
 
-    monkeypatch.setattr(workspace, "get_llm_client", lambda: Broken())
+    monkeypatch.setattr(workspace, "get_llm_client", lambda *_args, **_kwargs: Broken())
     r3 = await seed_legacy_turn(client, headers, monkeypatch, sid, question)
     assert r3.status_code == 200, r3.text
     assert r3.json()["cards"][0]["result"]["response_source"] == "fallback"

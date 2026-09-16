@@ -73,11 +73,10 @@ def output(row: Any) -> dict[str, Any]:
     if selected:
         body = selected["body"]
         for key in selected["variables"]:
-            body = re.sub(
-                r"{{\s*" + re.escape(key) + r"\s*}}",
-                lambda _, key=key: row.fields.get("var_" + key) or "{{" + key + "}}",
-                body,
-            )
+            replacement = str(row.fields.get("var_" + key) or "{{" + key + "}}")
+            # Literal replacement: escape backslashes so re.sub does not interpret them.
+            pattern = r"{{\s*" + re.escape(key) + r"\s*}}"
+            body = re.sub(pattern, replacement.replace("\\", "\\\\"), body)
         result["template_preview"] = {
             **{k: selected.get(k, "") for k in ("name", "language", "header", "footer", "buttons")},
             "body": body,

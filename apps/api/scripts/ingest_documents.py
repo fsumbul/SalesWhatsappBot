@@ -111,7 +111,7 @@ Skip marketing fluff and anything already obvious from the subject name.
 
 
 async def _extract(config: CompanyAgentConfig, chunk: str, location: str) -> list[dict[str, Any]]:
-    llm = get_llm_client()
+    llm = get_llm_client("extraction")
     context = {
         "company_id": config.organization.id if config.organization else "company",
         "subjects": {

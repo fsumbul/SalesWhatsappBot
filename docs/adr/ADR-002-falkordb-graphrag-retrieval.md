@@ -79,7 +79,7 @@ Runtime dokunuşları: `CompanyAgentRuntime(fact_retriever=, customer_memory=)`,
 
 ## 7. Sonuçlar ve açık işler
 
-- Embedding modeli değişince fingerprint değişir ve indeks yeniden kurulur; farklı modellerin vektörleri asla aynı grafta karışmaz.
+- Embedding modeli değişince fingerprint değişir ve indeks yeniden kurulur; farklı modellerin vektörleri asla aynı grafta karışmaz. **2026-09-16 (ADR-004/WP4):** parmak izi artık `model#dimension` profilidir; `EMBEDDING_PROVIDER=nim` (NeMo Retriever `/v1/embeddings`, `input_type`) ve `RERANKER_PROVIDER=nim` (`/v1/ranking`, sigmoid skor) eklendi; `kn_<tenant>` grafiği `(:Meta {profile})` taşır ve `make knowledge-reembed` ile yeniden kurulur. NIM için golden set A/B (`experiments/nim/retrieval_ab.py`) çalıştırılmadan varsayılan bge-m3 + yerel reranker kalır.
 - Reranker süreç içi çalışır (RAM ~2 GB); GPU'suz sunucuda `RERANKER_ENABLED=false` ile kapatılabilir, RRF sırası kullanılır.
 - Hafıza zenginleştirme `.delay()` ile en iyi çaba; broker kapalıysa tur kaybolmaz ama o turun hafızası yazılmaz (hafıza doğruluk değil kişiselleştirme girdisidir). Kalıcı iş satırı + tarama gerekirse `AgentRuntimeJob` deseni kopyalanır.
 - Hafıza saklama süresi ve otomatik silme politikası deployment kararıdır (`forget` hazır).

@@ -23,7 +23,7 @@ from typing import Literal, Protocol
 
 import httpx
 
-from src.core.config import get_settings
+from src.core.config import LLMRole, SchemaMode, Settings, get_settings
 
 
 @dataclass(frozen=True)
@@ -159,7 +159,14 @@ class ChatCompletionsLLMClient:
     complete chat-completions URL.
     """
 
-    def __init__(self, *, base_url: str, model: str, api_key: str = "") -> None:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        model: str,
+        api_key: str = "",
+        schema_mode: SchemaMode = "response_format",
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_url = (
             self.base_url
@@ -168,6 +175,9 @@ class ChatCompletionsLLMClient:
         )
         self.model = model
         self.api_key = api_key
+        # ``nvext_guided_json`` is the NVIDIA NIM way to constrain decoding to a
+        # JSON schema; ``response_format`` is the OpenAI-style contract.
+        self.schema_mode: SchemaMode = schema_mode
 
     async def complete(
         self,
@@ -187,7 +197,9 @@ class ChatCompletionsLLMClient:
             "temperature": 0,
             "max_tokens": max_tokens,
         }
-        if response_schema is not None:
+        if response_schema is not None and self.schema_mode == "nvext_guided_json":
+            payload["nvext"] = {"guided_json": response_schema}
+        elif response_schema is not None:
             payload["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
@@ -225,7 +237,9 @@ class ChatCompletionsLLMClient:
                 raise TypeError("completion message has no content")
             return content
         except (httpx.HTTPError, TypeError, ValueError) as exc:
-            raise LLMCompletionError("The configured model did not return a usable completion") from exc
+            raise LLMCompletionError(
+                "The configured model did not return a usable completion"
+            ) from exc
 
 
 _FIELD_ORDER = [
@@ -345,21 +359,41 @@ class MockOnboardingLLMClient:
         )
 
 
-def get_llm_client() -> LLMClient:
-    """Factory so callers never construct a client directly — this is the
-    one place that needs to change once a real provider is wired in."""
+def get_llm_client(role: LLMRole = "customer") -> LLMClient:
+    """Factory so callers never construct a client directly.
+
+    ``role`` selects the endpoint profile (plan WP5): customer turns stay on
+    the base ``LLM_*`` settings, background roles may point at another model
+    (``LLM_ROLE_<ROLE>_*``). Every role yields the same ``LLMClient`` protocol.
+    """
+
     s = get_settings()
-    if s.llm_provider == "mock":
+    if isinstance(s, Settings):
+        endpoint = s.llm_endpoint(role)
+        provider, model, base_url = endpoint.provider, endpoint.model, endpoint.base_url
+        api_key, num_ctx, schema_mode = endpoint.api_key, endpoint.num_ctx, endpoint.schema_mode
+    else:  # settings doubles without role support use the base profile
+        provider, model, base_url = s.llm_provider, s.llm_model, s.llm_base_url
+        api_key, num_ctx, schema_mode = s.llm_api_key, s.llm_num_ctx, "response_format"
+    if provider == "mock":
         return MockOnboardingLLMClient()
-    if s.llm_provider == "ollama":
-        return OllamaLLMClient(base_url=s.llm_base_url, model=s.llm_model, num_ctx=s.llm_num_ctx)
-    if s.llm_provider == "chat_compatible":
+    if provider == "ollama":
+        return OllamaLLMClient(base_url=base_url, model=model, num_ctx=num_ctx)
+    if provider == "chat_compatible":
         return ChatCompletionsLLMClient(
-            base_url=s.llm_base_url,
-            model=s.llm_model,
-            api_key=s.llm_api_key,
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            schema_mode=schema_mode,
         )
-    if not s.llm_provider:
-        return NullLLMClient()
-    # Keep unknown provider names fail-closed.
+    # Empty and unknown provider names stay fail-closed.
     return NullLLMClient()
+
+
+def role_llm_client(role: LLMRole) -> LLMClient | None:
+    """Client for a role only when the deployment overrides it; else ``None``."""
+
+    s = get_settings()
+    if not isinstance(s, Settings) or not s.llm_endpoint(role).override:
+        return None
+    return get_llm_client(role)

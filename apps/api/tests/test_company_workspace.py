@@ -153,7 +153,7 @@ async def test_two_company_workflow_isolation_and_revision(client, monkeypatch):
                 assert expected_name in kwargs["system"]
                 return json.dumps({"action": "reply", "fact_ids": ["service"]})
 
-        monkeypatch.setattr("src.modules.agents.workspace.get_llm_client", lambda: LLM())
+        monkeypatch.setattr("src.modules.agents.workspace.get_llm_client", lambda *_args, **_kwargs: LLM())
         test = await client.post(
             f"/api/v1/agents/{aid}/test-sessions", headers=headers, json={"version_id": v["id"]}
         )
@@ -247,7 +247,7 @@ async def test_builder_stages_canonical_config_without_saving(client, monkeypatc
                 }
             )
 
-    monkeypatch.setattr("src.modules.agents.workspace.get_llm_client", lambda: LLM())
+    monkeypatch.setattr("src.modules.agents.workspace.get_llm_client", lambda *_args, **_kwargs: LLM())
     r = await client.post(
         f"/api/v1/agents/{aid}/builder/sessions/{session['id']}/messages",
         headers=headers,
@@ -320,7 +320,7 @@ async def test_operational_chat_uses_model_is_private_and_idempotent(client, mon
             calls.append(messages[0].content)
             return Intent(tool="analytics").model_dump_json()
 
-    monkeypatch.setattr("src.modules.admin_chat.planner.get_llm_client", lambda: LLM())
+    monkeypatch.setattr("src.modules.admin_chat.planner.get_llm_client", lambda *_args, **_kwargs: LLM())
     payload = {"text": "Genel durum", "client_message_id": str(uuid4())}
     url = f"/api/v1/admin-chat/sessions/{sid}/turns"
     first = await client.post(url, headers=a, json=payload)
@@ -338,7 +338,7 @@ async def test_operational_chat_uses_model_is_private_and_idempotent(client, mon
         async def complete(self, *args, **kwargs):
             raise LLMCompletionError("test outage")
 
-    monkeypatch.setattr("src.modules.admin_chat.planner.get_llm_client", lambda: Unavailable())
+    monkeypatch.setattr("src.modules.admin_chat.planner.get_llm_client", lambda *_args, **_kwargs: Unavailable())
     fail = await client.post(
         url, headers=a, json={"text": "Talepleri analiz et", "client_message_id": str(uuid4())}
     )

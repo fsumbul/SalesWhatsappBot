@@ -19,7 +19,7 @@ def _healthy_result() -> dict[str, object]:
             "tenant_found": True,
             "tenant_status": "active",
             "tenant_waba_bound": True,
-            "alembic_revision": "b7c4d9e2f013",
+            "alembic_revision": "d9e6f1a2b035",
             "runtime_table_present": True,
             "runtime_role_superuser": False,
             "runtime_role_bypassrls": False,
@@ -106,6 +106,7 @@ def test_selection_requires_an_active_human_reviewer():
 
 def test_preflight_revision_matches_current_migration_head() -> None:
     from pathlib import Path
+
     from alembic.config import Config
     from alembic.script import ScriptDirectory
     from scripts.runtime_preflight import _EXPECTED_ALEMBIC_REVISION
@@ -114,3 +115,23 @@ def test_preflight_revision_matches_current_migration_head() -> None:
     config = Config(str(api / "alembic.ini"))
     config.set_main_option("script_location", str(api / "alembic"))
     assert ScriptDirectory.from_config(config).get_heads() == [_EXPECTED_ALEMBIC_REVISION]
+
+
+def test_require_nim_gates_on_every_configured_endpoint() -> None:
+    result = _healthy_result()
+    result["nim"] = {
+        "guardrail.jailbreak": {"kind": "classify", "ready": True},
+        "guardrail.content_safety": {"kind": "llm", "ready": False},
+    }
+
+    assert _failed(result, require_ollama=True) is False
+    assert _failed(result, require_ollama=True, require_nim=True) is True
+
+    result["nim"]["guardrail.content_safety"]["ready"] = True
+    assert _failed(result, require_ollama=True, require_nim=True) is False
+
+
+def test_require_nim_passes_when_nothing_is_configured() -> None:
+    result = _healthy_result()
+    result["nim"] = {}
+    assert _failed(result, require_ollama=True, require_nim=True) is False

@@ -157,6 +157,23 @@ inbound → worker → [retriever: FalkorDB kb_<tenant>_<version>] → aday fact
         → (commit sonrası) knowledge kuyruğu → Qwen3 yapısal özet → mem_<tenant>
 ```
 
+## NIM harness ajanları ve veri sınırı (ADR-004)
+
+Guardrail (jailbreak + içerik güvenliği + konu kontrolü), taranmış PDF için OCR/tablo zinciri,
+ürün görseli doğrulama, NIM embedding/rerank adaptörleri ve rol bazlı LLM seçimi eklendi.
+Hiçbiri karar vermez veya müşteriye metin yazmaz; hepsi `Settings` ile kapalı başlar ve yalnız
+operatörün kendi GPU sunucusundaki konteynerlere bağlanır (`NIM_PUBLIC_HOST_DENYLIST`,
+`runtime_preflight.py --require-nim`). Ayrıntı: [ADR-004](adr/ADR-004-nim-harness-agents-and-data-boundary.md),
+plan: [nvidia-nim-harness-agents-plan-2026-09-16.md](nvidia-nim-harness-agents-plan-2026-09-16.md).
+
+```
+inbound → worker → [guardrail: block → onaylı DECLINE | unavailable(closed) → güvenli tur]
+        → retriever → Qwen3 (customer) → literal / [generation rolü] → denetim → Meta POST
+ingest  → extract (+ OCR: page-elements → OCR / table-structure) → [guardrail chunk] → chunk
+        → embed (ollama|nim, profil parmak izi) → Qwen3/Nemotron (extraction) → aday → publisher
+        → görseller → [vision: ret/override/alt] → knowledge_media.verification
+```
+
 ## Deployment
 
 - Docker Compose ile lokal (Postgres 16, Redis 7, Caddy)

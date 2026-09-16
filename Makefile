@@ -1,4 +1,4 @@
-.PHONY: help up down install dev test lint format migrate migration api web api-shell db-shell clean agent-worker knowledge-index knowledge-search
+.PHONY: help up down install dev test lint format migrate migration api web api-shell db-shell clean agent-worker knowledge-index knowledge-search knowledge-reembed
 
 help:
 	@echo "LeadPulse - Make targets"
@@ -20,6 +20,7 @@ help:
 	@echo "  agent-worker      Run the WhatsApp reply + knowledge Celery worker"
 	@echo "  knowledge-index   Build the GraphRAG index for a tenant (TENANT=kasnak)"
 	@echo "  knowledge-search  Evaluate retrieval on the golden set (TENANT_ID=.. VERSION_ID=..)"
+	@echo "  knowledge-reembed Rebuild a tenant's chunk graph after an embedding profile change (TENANT=kasnak)"
 
 up:
 	docker compose -f infra/docker-compose.yml up -d
@@ -84,3 +85,6 @@ knowledge-index:
 
 knowledge-search:
 	cd apps/api && poetry run python scripts/knowledge_search.py --tenant-id $(TENANT_ID) --version-id $(VERSION_ID) --golden config/knowledge_golden.arti_kasnak.json
+
+knowledge-reembed:
+	cd apps/api && poetry run python scripts/knowledge_reembed.py --tenant-slug $(or $(TENANT),kasnak)

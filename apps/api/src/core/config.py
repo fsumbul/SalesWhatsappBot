@@ -6,8 +6,10 @@ All configuration goes through `Settings`. Do NOT read env vars directly elsewhe
 import math
 import re
 from collections import Counter
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, PostgresDsn, RedisDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -70,6 +72,67 @@ def _app_secret_key_security(value: str) -> dict[str, bool | int]:
         "low_entropy_detected": low_entropy_detected,
         "production_acceptable": not placeholder_detected and not low_entropy_detected,
     }
+
+
+ModelEndpointKind = Literal[
+    "llm", "embedding", "rerank", "classify", "ocr", "layout", "vision", "asr", "translate"
+]
+
+
+@dataclass(frozen=True)
+class ModelEndpoint:
+    """One model service that receives customer or tenant data.
+
+    ``name`` is the environment variable that configures it, ``role`` a stable
+    key used by preflight output and audit trails, ``nim`` whether the service
+    is a self-hosted NVIDIA NIM container (which exposes ``/v1/health/ready``).
+    """
+
+    name: str
+    role: str
+    url: str
+    kind: ModelEndpointKind
+    nim: bool = False
+
+    @property
+    def host(self) -> str:
+        return (urlparse(self.url).hostname or "").lower()
+
+
+def host_is_denied(host: str, denylist: list[str]) -> bool:
+    """Exact or parent-domain match against the public-endpoint denylist."""
+
+    host = host.lower().rstrip(".")
+    return any(host == denied or host.endswith("." + denied) for denied in denylist if denied)
+
+
+LLMRole = Literal["customer", "generation", "extraction", "memory", "admin"]
+LLM_ROLES: tuple[LLMRole, ...] = ("customer", "generation", "extraction", "memory", "admin")
+SchemaMode = Literal["response_format", "nvext_guided_json"]
+
+
+@dataclass(frozen=True)
+class LLMEndpoint:
+    """Resolved model endpoint for one role (plan WP5).
+
+    ``customer`` (planner, evidence decision, strict decision) always uses the
+    base ``LLM_*`` profile. Other roles fall back to it field by field, so a
+    deployment can move extraction/memory to a NIM container while customer
+    turns stay on the local model.
+    """
+
+    role: str
+    provider: str
+    model: str
+    base_url: str
+    api_key: str
+    schema_mode: SchemaMode
+    num_ctx: int
+    override: bool
+
+    @property
+    def nim(self) -> bool:
+        return self.schema_mode == "nvext_guided_json"
 
 
 class Settings(BaseSettings):
@@ -165,9 +228,113 @@ class Settings(BaseSettings):
     # Context window requested from Ollama. Hybrid generation with several
     # evidence chunks needs 8192; strict decisions fit comfortably in 4096.
     llm_num_ctx: int = 4096
+    # JSON-schema transport for chat_compatible servers: ``response_format``
+    # (vLLM, LocalAI, OpenAI-style) or ``nvext.guided_json`` (NVIDIA NIM).
+    llm_schema_mode: SchemaMode = "response_format"
+    # Role overrides (plan WP5). Empty = inherit the base LLM_* profile.
+    # generation: model-written hybrid answers (Turkish customer prose);
+    # extraction: knowledge-source chunk extraction; memory: per-customer
+    # memory summaries (enum-only output); admin: admin chat / builder.
+    llm_role_generation_provider: str = ""
+    llm_role_generation_model: str = ""
+    llm_role_generation_base_url: str = ""
+    llm_role_generation_api_key: str = ""
+    llm_role_generation_schema_mode: Literal["", "response_format", "nvext_guided_json"] = ""
+    llm_role_generation_num_ctx: int = 0
+    llm_role_extraction_provider: str = ""
+    llm_role_extraction_model: str = ""
+    llm_role_extraction_base_url: str = ""
+    llm_role_extraction_api_key: str = ""
+    llm_role_extraction_schema_mode: Literal["", "response_format", "nvext_guided_json"] = ""
+    llm_role_extraction_num_ctx: int = 0
+    llm_role_memory_provider: str = ""
+    llm_role_memory_model: str = ""
+    llm_role_memory_base_url: str = ""
+    llm_role_memory_api_key: str = ""
+    llm_role_memory_schema_mode: Literal["", "response_format", "nvext_guided_json"] = ""
+    llm_role_memory_num_ctx: int = 0
+    llm_role_admin_provider: str = ""
+    llm_role_admin_model: str = ""
+    llm_role_admin_base_url: str = ""
+    llm_role_admin_api_key: str = ""
+    llm_role_admin_schema_mode: Literal["", "response_format", "nvext_guided_json"] = ""
+    llm_role_admin_num_ctx: int = 0
     # Kill switch for model-written descriptive answers (ADR-003). Off means
     # every hybrid tenant behaves exactly like strict.
     hybrid_generation_enabled: bool = True
+
+    # --- NVIDIA NIM harness agents (self-hosted) ---
+    # Guardrail, OCR, vision, embedding, rerank, ASR and translation adapters
+    # talk to NIM containers the operator runs on their own GPU host. The
+    # public build.nvidia.com trial endpoints log their inputs, so every
+    # endpoint that receives customer or tenant data is refused when it points
+    # at one of the hosts below (``model_endpoint_boundary_errors``). The
+    # shared key is optional; per-feature ``*_API_KEY`` fields take precedence.
+    # See docs/nvidia-nim-harness-agents-plan-2026-09-16.md.
+    nim_api_key: str = ""
+    nim_timeout_seconds: float = 10.0
+    nim_public_host_denylist: str = "integrate.api.nvidia.com,ai.api.nvidia.com,api.nvcf.nvidia.com"
+
+    # --- Guardrail gate (plan WP1) ---
+    # Customer messages are classified before any model call, document chunks
+    # before extraction. ``closed`` means an unreachable classifier yields the
+    # approved safe turn instead of calling the model (mandatory in
+    # production). Topic control only flags by default: Turkish is not an
+    # officially supported language of the NemoGuard models and a wrongly
+    # blocked sales question costs more than a tolerated off-topic one.
+    guardrail_enabled: bool = False
+    guardrail_fail_mode: Literal["closed", "open"] = "closed"
+    guardrail_timeout_seconds: float = 2.5
+    guardrail_checks: str = "jailbreak,content_safety,topic_control"
+    guardrail_ingest_enabled: bool = True
+    guardrail_jailbreak_base_url: str = ""
+    guardrail_jailbreak_api_key: str = ""
+    # Signed score in [-1, 1]; positive means jailbreak. Raise to demand margin.
+    guardrail_jailbreak_threshold: float = 0.0
+    guardrail_content_safety_base_url: str = ""
+    guardrail_content_safety_model: str = "llama-3.1-nemoguard-8b-content-safety"
+    guardrail_content_safety_api_key: str = ""
+    # Aegis categories that block on their own; S9 (PII), S12 (profanity),
+    # S13/S14 and the political/advice categories only flag.
+    guardrail_block_categories: str = "S1,S2,S3,S4,S5,S6,S7,S8,S10,S11,S15,S16,S17,S22"
+    guardrail_topic_control_base_url: str = ""
+    guardrail_topic_control_model: str = "llama-3.1-nemoguard-8b-topic-control"
+    guardrail_topic_control_api_key: str = ""
+    guardrail_topic_control_mode: Literal["flag", "block"] = "flag"
+    guardrail_topic_min_tokens: int = 3
+
+    # --- OCR / layout chain for scanned PDFs (plan WP2) ---
+    # Pages whose text layer is shorter than ``min_text_chars`` are rasterized
+    # locally (pypdfium2) and sent to the operator's NeMo Retriever containers:
+    # page-elements → OCR for text regions, table-structure + OCR for tables.
+    # Layout is optional (whole-page OCR without it); OCR is required.
+    knowledge_ocr_enabled: bool = False
+    knowledge_ocr_base_url: str = ""
+    knowledge_ocr_api_key: str = ""
+    knowledge_ocr_model: str = "nemotron-ocr-v2"
+    # Route of the OCR container (pin it from GET /v1/openapi.json).
+    knowledge_ocr_path: str = "/v1/infer"
+    knowledge_layout_base_url: str = ""
+    knowledge_layout_api_key: str = ""
+    knowledge_ocr_min_text_chars: int = 40
+    knowledge_ocr_dpi: int = 150
+    knowledge_ocr_max_pages_per_document: int = 60
+    knowledge_ocr_min_confidence: float = 0.3
+
+    # --- Vision verification of product images (plan WP3) ---
+    # A vision-language NIM on the operator's GPU host confirms that a
+    # discovered image shows an approved offering, may override the guessed
+    # subject and proposes Turkish alt text (sanitized before use). Disabled
+    # keeps the heuristic-only discovery of ADR-003.
+    knowledge_vision_enabled: bool = False
+    knowledge_vision_base_url: str = ""
+    knowledge_vision_api_key: str = ""
+    knowledge_vision_model: str = "meta/llama-3.2-11b-vision-instruct"
+    knowledge_vision_schema_mode: Literal["nvext_guided_json", "response_format"] = (
+        "nvext_guided_json"
+    )
+    knowledge_vision_min_confidence: float = 0.6
+    knowledge_vision_max_edge: int = 1024
 
     # --- Knowledge retrieval / GraphRAG (ADR-002) ---
     # ``lexical`` keeps the in-process keyword retriever inside
@@ -182,15 +349,25 @@ class Settings(BaseSettings):
     falkordb_password: str = ""
     # Embedding profile. Only ``ollama`` is implemented; empty keeps embeddings
     # fail-closed (the graph retriever then reports itself unavailable).
-    embedding_provider: Literal["", "ollama"] = ""
+    # ``nim`` targets a self-hosted NeMo Retriever embedding container
+    # (``/v1/embeddings`` with ``input_type``); it needs an explicit base URL.
+    embedding_provider: Literal["", "ollama", "nim"] = ""
     embedding_model: str = "bge-m3"
-    # Empty derives the Ollama root from ``llm_base_url``.
+    # Empty derives the Ollama root from ``llm_base_url`` (Ollama only).
     embedding_base_url: str = ""
+    embedding_api_key: str = ""
+    # Part of every index fingerprint together with the model name: changing
+    # it rebuilds ``kb_*`` and requires ``make knowledge-reembed`` for ``kn_*``.
     embedding_dimension: int = 1024
-    # Cross-encoder rerank of the fused candidate pool (sentence-transformers).
+    # Cross-encoder rerank of the fused candidate pool: in-process
+    # sentence-transformers (``local``) or a NeMo Retriever reranking NIM
+    # (``nim``, ``/v1/ranking``; logits are mapped to [0, 1]).
     reranker_enabled: bool = False
+    reranker_provider: Literal["local", "nim"] = "local"
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
     reranker_device: str = "auto"
+    reranker_base_url: str = ""
+    reranker_api_key: str = ""
     retrieval_max_candidates: int = 12
     retrieval_rerank_pool: int = 24
     retrieval_timeout_seconds: float = 4.0
@@ -256,6 +433,195 @@ class Settings(BaseSettings):
 
         return _app_secret_key_security(self.app_secret_key)
 
+    @property
+    def nim_public_host_denylist_list(self) -> list[str]:
+        return [h.strip().lower() for h in self.nim_public_host_denylist.split(",") if h.strip()]
+
+    @property
+    def guardrail_checks_list(self) -> list[str]:
+        return [c.strip().lower() for c in self.guardrail_checks.split(",") if c.strip()]
+
+    @property
+    def guardrail_block_categories_list(self) -> list[str]:
+        return [c.strip().upper() for c in self.guardrail_block_categories.split(",") if c.strip()]
+
+    def llm_endpoint(self, role: LLMRole = "customer") -> LLMEndpoint:
+        """Resolve the model endpoint of a role, inheriting unset fields from ``LLM_*``."""
+
+        base = LLMEndpoint(
+            role="customer",
+            provider=self.llm_provider,
+            model=self.llm_model,
+            base_url=self.llm_base_url,
+            api_key=self.llm_api_key,
+            schema_mode=self.llm_schema_mode,
+            num_ctx=self.llm_num_ctx,
+            override=False,
+        )
+        if role == "customer":
+            return base
+        provider = str(getattr(self, f"llm_role_{role}_provider"))
+        model = str(getattr(self, f"llm_role_{role}_model"))
+        base_url = str(getattr(self, f"llm_role_{role}_base_url"))
+        api_key = str(getattr(self, f"llm_role_{role}_api_key"))
+        schema_mode = str(getattr(self, f"llm_role_{role}_schema_mode"))
+        num_ctx = int(getattr(self, f"llm_role_{role}_num_ctx"))
+        override = bool(provider or model or base_url)
+        resolved_schema: SchemaMode = (
+            "nvext_guided_json" if schema_mode == "nvext_guided_json" else "response_format"
+        )
+        return LLMEndpoint(
+            role=role,
+            provider=provider or base.provider,
+            model=model or base.model,
+            base_url=base_url or base.base_url,
+            api_key=api_key or (base.api_key if not base_url else ""),
+            schema_mode=resolved_schema if schema_mode else base.schema_mode,
+            num_ctx=num_ctx or base.num_ctx,
+            override=override,
+        )
+
+    def llm_role_overrides(self) -> list[LLMEndpoint]:
+        return [self.llm_endpoint(role) for role in LLM_ROLES if self.llm_endpoint(role).override]
+
+    def model_endpoints(self) -> list[ModelEndpoint]:
+        """Every configured model service that may see customer or tenant data.
+
+        Feature packages append their endpoints here so the boundary gate and
+        the preflight probe never fall out of sync with the settings.
+        """
+
+        endpoints: list[ModelEndpoint] = []
+        if self.llm_provider in {"ollama", "chat_compatible"}:
+            endpoints.append(
+                ModelEndpoint(
+                    name="LLM_BASE_URL",
+                    role="llm.customer",
+                    url=self.llm_base_url,
+                    kind="llm",
+                    nim=self.llm_schema_mode == "nvext_guided_json",
+                )
+            )
+        for endpoint in self.llm_role_overrides():
+            if endpoint.provider not in {"ollama", "chat_compatible"}:
+                continue
+            endpoints.append(
+                ModelEndpoint(
+                    name=f"LLM_ROLE_{endpoint.role.upper()}_BASE_URL",
+                    role=f"llm.{endpoint.role}",
+                    url=endpoint.base_url,
+                    kind="llm",
+                    nim=endpoint.nim,
+                )
+            )
+        if self.embedding_provider:
+            nim_embedding = self.embedding_provider == "nim"
+            endpoints.append(
+                ModelEndpoint(
+                    name="EMBEDDING_BASE_URL",
+                    role="embedding",
+                    url=(
+                        self.embedding_base_url
+                        if nim_embedding
+                        else self.embedding_base_url or self.llm_base_url
+                    ),
+                    kind="embedding",
+                    nim=nim_embedding,
+                )
+            )
+        if self.reranker_enabled and self.reranker_provider == "nim":
+            endpoints.append(
+                ModelEndpoint(
+                    name="RERANKER_BASE_URL",
+                    role="reranker",
+                    url=self.reranker_base_url,
+                    kind="rerank",
+                    nim=True,
+                )
+            )
+        if self.guardrail_enabled:
+            checks = self.guardrail_checks_list
+            if "jailbreak" in checks:
+                endpoints.append(
+                    ModelEndpoint(
+                        name="GUARDRAIL_JAILBREAK_BASE_URL",
+                        role="guardrail.jailbreak",
+                        url=self.guardrail_jailbreak_base_url,
+                        kind="classify",
+                        nim=True,
+                    )
+                )
+            if "content_safety" in checks:
+                endpoints.append(
+                    ModelEndpoint(
+                        name="GUARDRAIL_CONTENT_SAFETY_BASE_URL",
+                        role="guardrail.content_safety",
+                        url=self.guardrail_content_safety_base_url,
+                        kind="llm",
+                        nim=True,
+                    )
+                )
+            if "topic_control" in checks:
+                endpoints.append(
+                    ModelEndpoint(
+                        name="GUARDRAIL_TOPIC_CONTROL_BASE_URL",
+                        role="guardrail.topic_control",
+                        url=self.guardrail_topic_control_base_url,
+                        kind="llm",
+                        nim=True,
+                    )
+                )
+        if self.knowledge_ocr_enabled:
+            endpoints.append(
+                ModelEndpoint(
+                    name="KNOWLEDGE_OCR_BASE_URL",
+                    role="knowledge.ocr",
+                    url=self.knowledge_ocr_base_url,
+                    kind="ocr",
+                    nim=True,
+                )
+            )
+            if self.knowledge_layout_base_url.strip():
+                endpoints.append(
+                    ModelEndpoint(
+                        name="KNOWLEDGE_LAYOUT_BASE_URL",
+                        role="knowledge.layout",
+                        url=self.knowledge_layout_base_url,
+                        kind="layout",
+                        nim=True,
+                    )
+                )
+        if self.knowledge_vision_enabled:
+            endpoints.append(
+                ModelEndpoint(
+                    name="KNOWLEDGE_VISION_BASE_URL",
+                    role="knowledge.vision",
+                    url=self.knowledge_vision_base_url,
+                    kind="vision",
+                    nim=True,
+                )
+            )
+        return endpoints
+
+    def nim_endpoints(self) -> list[ModelEndpoint]:
+        return [endpoint for endpoint in self.model_endpoints() if endpoint.nim]
+
+    def model_endpoint_boundary_errors(self) -> list[str]:
+        """Names of endpoints that are missing or point at a public trial host."""
+
+        errors: list[str] = []
+        denylist = self.nim_public_host_denylist_list
+        for endpoint in self.model_endpoints():
+            if not endpoint.url.strip():
+                errors.append(f"{endpoint.name} is required")
+                continue
+            if host_is_denied(endpoint.host, denylist):
+                errors.append(
+                    f"{endpoint.name} must not point at a public model endpoint "
+                    "(customer and tenant data stay on self-hosted services)"
+                )
+        return errors
+
     def production_runtime_errors(self) -> list[str]:
         """Return only missing/invalid key names, never secret values."""
 
@@ -278,8 +644,31 @@ class Settings(BaseSettings):
             errors.append("APP_DEBUG must be false")
         if self.llm_provider not in {"ollama", "chat_compatible"}:
             errors.append("LLM_PROVIDER must be ollama or chat_compatible")
-        if self.knowledge_backend == "falkordb" and self.embedding_provider != "ollama":
-            errors.append("EMBEDDING_PROVIDER must be ollama when KNOWLEDGE_BACKEND=falkordb")
+        for endpoint in self.llm_role_overrides():
+            if endpoint.provider not in {"ollama", "chat_compatible"}:
+                errors.append(
+                    f"LLM_ROLE_{endpoint.role.upper()}_PROVIDER must be ollama or chat_compatible"
+                )
+            if not endpoint.model.strip():
+                errors.append(f"LLM_ROLE_{endpoint.role.upper()}_MODEL is required")
+        if self.knowledge_backend == "falkordb" and self.embedding_provider not in {
+            "ollama",
+            "nim",
+        }:
+            errors.append(
+                "EMBEDDING_PROVIDER must be ollama or nim when KNOWLEDGE_BACKEND=falkordb"
+            )
+        if self.embedding_provider == "nim":
+            from src.integrations.embeddings import nim_embedding_dimension_error
+
+            dimension_error = nim_embedding_dimension_error(
+                self.embedding_model, self.embedding_dimension
+            )
+            if dimension_error:
+                errors.append(dimension_error)
+        errors.extend(self.model_endpoint_boundary_errors())
+        if self.guardrail_enabled and self.guardrail_fail_mode != "closed":
+            errors.append("GUARDRAIL_FAIL_MODE must be closed in production")
         version = self.whatsapp_graph_api_version
         if not (
             version.startswith("v")

@@ -10,6 +10,7 @@ failing, fused first-stage ranking is used unchanged.
 from __future__ import annotations
 
 import asyncio
+import math
 import threading
 from functools import lru_cache
 from typing import Any, Protocol
@@ -100,6 +101,60 @@ class CrossEncoderReranker:
             raise RerankError("The reranker failed to score candidates") from exc
 
 
+class NimReranker:
+    """NeMo Retriever reranking NIM (``POST /v1/ranking``).
+
+    The container returns logits; they are squashed with a sigmoid so the
+    scores live on the same [0, 1] scale as the in-process cross-encoder and
+    the entailment threshold / graph bonuses of ADR-002/ADR-003 keep their
+    meaning. Passages missing from the answer score 0.
+    """
+
+    available = True
+
+    def __init__(
+        self, *, base_url: str, model: str, api_key: str = "", timeout_seconds: float = 10.0
+    ) -> None:
+        from src.integrations.nim import NimHttp
+
+        self.http = NimHttp(
+            base_url, api_key=api_key, timeout_seconds=timeout_seconds, name="reranker"
+        )
+        self.model_name = model
+
+    async def rerank(self, query: str, documents: list[str]) -> list[float]:
+        if not documents:
+            return []
+        payload: dict[str, object] = {
+            "model": self.model_name,
+            "query": {"text": query},
+            "passages": [{"text": document} for document in documents],
+            "truncate": "END",
+        }
+        try:
+            data = await self.http.post_json("/v1/ranking", payload)
+            rankings = data.get("rankings")
+            if not isinstance(rankings, list):
+                raise TypeError("ranking response has no rankings")
+            scores = [0.0] * len(documents)
+            for item in rankings:
+                if not isinstance(item, dict):
+                    raise TypeError("ranking item must be an object")
+                index = item.get("index")
+                logit = item.get("logit", item.get("score"))
+                if (
+                    not isinstance(index, int)
+                    or isinstance(logit, bool)
+                    or not isinstance(logit, int | float)
+                    or not 0 <= index < len(documents)
+                ):
+                    raise TypeError("ranking item has an unexpected shape")
+                scores[index] = 1.0 / (1.0 + math.exp(-float(logit)))
+            return scores
+        except Exception as exc:
+            raise RerankError("The reranker failed to score candidates") from exc
+
+
 @lru_cache
 def get_reranker() -> Reranker:
     """Process-wide reranker so the model loads once per worker."""
@@ -107,4 +162,13 @@ def get_reranker() -> Reranker:
     s = get_settings()
     if not s.reranker_enabled:
         return NullReranker()
+    if s.reranker_provider == "nim":
+        if not s.reranker_base_url.strip():
+            return NullReranker()
+        return NimReranker(
+            base_url=s.reranker_base_url,
+            model=s.reranker_model,
+            api_key=s.reranker_api_key or s.nim_api_key,
+            timeout_seconds=s.nim_timeout_seconds,
+        )
     return CrossEncoderReranker(model=s.reranker_model, device=s.reranker_device)

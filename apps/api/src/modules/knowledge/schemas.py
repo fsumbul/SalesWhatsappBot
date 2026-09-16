@@ -102,6 +102,7 @@ class MediaOut(BaseModel):
     score: float
     status: str
     asset_id: str | None
+    verification: dict[str, Any] = Field(default_factory=dict)
     public_url: str | None = None
     created_at: datetime
 

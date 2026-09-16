@@ -158,7 +158,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="not found")
         llm_messages = [LLMMessage(role=m.role, content=m.content) for m in body.messages]
         try:
-            reply = await get_llm_client().complete(
+            reply = await get_llm_client("customer").complete(
                 llm_messages,
                 system=("Sen bir WhatsApp satış asistanısın. Türkçe, kısa ve doğal cevaplar ver."),
             )

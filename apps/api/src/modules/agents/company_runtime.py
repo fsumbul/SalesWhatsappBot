@@ -1667,6 +1667,20 @@ def safe_unknown_fact_turn(config: CompanyAgentConfig, reason: str | None = None
     )
 
 
+def safe_decline_turn(config: CompanyAgentConfig, reason: str | None = None) -> RuntimeTurn:
+    """Server-owned refusal (approved text, no facts); used by the guardrail gate."""
+
+    _require_runtime_config(config)
+    return RuntimeTurn(
+        action=CustomerReplyAction.DECLINE,
+        reply=_unknown_fact_reply(config, CustomerReplyAction.DECLINE),
+        fact_ids=(),
+        used_fallback=True,
+        response_source="fallback",
+        fallback_reason=reason,
+    )
+
+
 class CompanyAgentRuntime:
     """Execute a customer turn using an injected local LLM client.
 
@@ -1685,10 +1699,14 @@ class CompanyAgentRuntime:
         customer_memory: CustomerMemory | None = None,
         evidence_retriever: EvidenceSearch | None = None,
         entailment_verifier: EntailmentVerifier | None = None,
+        generation_llm: LLMClient | None = None,
     ) -> None:
         _require_runtime_config(config)
         self.config = config
         self.llm = llm_client
+        # Optional separate model for hybrid-mode prose (plan WP5); planner
+        # and evidence decisions always use ``llm_client``.
+        self.generation_llm = generation_llm
         self.whatsapp_capabilities = whatsapp_capabilities
         # Optional GraphRAG retriever (ADR-002). It only re-orders approved
         # candidates; when it is absent or fails, the lexical selector runs.
@@ -1795,6 +1813,7 @@ class CompanyAgentRuntime:
                     customer_memory=self.customer_memory,
                     evidence_retriever=self.evidence_retriever,
                     entailment_verifier=self.entailment_verifier,
+                    generation_llm=self.generation_llm,
                 )
             except Exception as exc:
                 return safe_unknown_fact_turn(self.config, type(exc).__name__)

@@ -1,0 +1,166 @@
+{
+  "_meta": "UNVERIFIED: shape written from NeMo Retriever NIM documentation on 2026-09-16; pin against the running container's GET /v1/openapi.json and replace with a recorded response.",
+  "data": [
+    {
+      "index": 0,
+      "text_detections": [
+        {
+          "text_prediction": {
+            "text": "Çap",
+            "confidence": 0.99
+          },
+          "bounding_box": {
+            "points": [
+              {
+                "x": 0.1,
+                "y": 0.1
+              },
+              {
+                "x": 0.3,
+                "y": 0.1
+              },
+              {
+                "x": 0.3,
+                "y": 0.25
+              },
+              {
+                "x": 0.1,
+                "y": 0.25
+              }
+            ]
+          }
+        },
+        {
+          "text_prediction": {
+            "text": "Halat",
+            "confidence": 0.99
+          },
+          "bounding_box": {
+            "points": [
+              {
+                "x": 0.6,
+                "y": 0.1
+              },
+              {
+                "x": 0.9,
+                "y": 0.1
+              },
+              {
+                "x": 0.9,
+                "y": 0.25
+              },
+              {
+                "x": 0.6,
+                "y": 0.25
+              }
+            ]
+          }
+        },
+        {
+          "text_prediction": {
+            "text": "320 mm",
+            "confidence": 0.98
+          },
+          "bounding_box": {
+            "points": [
+              {
+                "x": 0.1,
+                "y": 0.42
+              },
+              {
+                "x": 0.35,
+                "y": 0.42
+              },
+              {
+                "x": 0.35,
+                "y": 0.58
+              },
+              {
+                "x": 0.1,
+                "y": 0.58
+              }
+            ]
+          }
+        },
+        {
+          "text_prediction": {
+            "text": "4x8",
+            "confidence": 0.97
+          },
+          "bounding_box": {
+            "points": [
+              {
+                "x": 0.6,
+                "y": 0.42
+              },
+              {
+                "x": 0.8,
+                "y": 0.42
+              },
+              {
+                "x": 0.8,
+                "y": 0.58
+              },
+              {
+                "x": 0.6,
+                "y": 0.58
+              }
+            ]
+          }
+        },
+        {
+          "text_prediction": {
+            "text": "400 mm",
+            "confidence": 0.98
+          },
+          "bounding_box": {
+            "points": [
+              {
+                "x": 0.1,
+                "y": 0.75
+              },
+              {
+                "x": 0.35,
+                "y": 0.75
+              },
+              {
+                "x": 0.35,
+                "y": 0.92
+              },
+              {
+                "x": 0.1,
+                "y": 0.92
+              }
+            ]
+          }
+        },
+        {
+          "text_prediction": {
+            "text": "5x8",
+            "confidence": 0.97
+          },
+          "bounding_box": {
+            "points": [
+              {
+                "x": 0.6,
+                "y": 0.75
+              },
+              {
+                "x": 0.8,
+                "y": 0.75
+              },
+              {
+                "x": 0.8,
+                "y": 0.92
+              },
+              {
+                "x": 0.6,
+                "y": 0.92
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

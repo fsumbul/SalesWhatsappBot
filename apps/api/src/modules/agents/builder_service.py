@@ -36,7 +36,7 @@ class AgentBuilderService:
     def __init__(self, session: AsyncSession, *, llm_client: LLMClient | None = None) -> None:
         self.session = session
         self.agents = AgentService(session)
-        self.llm = llm_client or get_llm_client()
+        self.llm = llm_client or get_llm_client("admin")
 
     async def get_builder_session(
         self, tenant_id: UUID, agent_id: UUID, session_id: UUID

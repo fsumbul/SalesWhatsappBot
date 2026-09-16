@@ -23,7 +23,7 @@ async def test_formatted_phone_opens_review_workflow(monkeypatch, literal, model
                 {"tool": "outreach", "recipients": [model_value], "purpose": "mesaj yoll"}
             )
 
-    monkeypatch.setattr(planner, "get_llm_client", lambda: Model())
+    monkeypatch.setattr(planner, "get_llm_client", lambda *_args, **_kwargs: Model())
     intent, source = await planner.plan(f"{literal} mesaj yoll")
     assert source == "model"
     assert intent.recipients == [literal]
@@ -53,7 +53,7 @@ async def test_model_cannot_change_phone_identity(monkeypatch, message, value):
         async def complete(self, *args, **kwargs):
             return json.dumps({"tool": "outreach", "recipients": [value]})
 
-    monkeypatch.setattr(planner, "get_llm_client", lambda: Model())
+    monkeypatch.setattr(planner, "get_llm_client", lambda *_args, **_kwargs: Model())
     with pytest.raises(ValueError, match="Ungrounded recipient"):
         await planner.plan(message)
 

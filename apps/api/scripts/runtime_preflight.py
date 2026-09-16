@@ -22,7 +22,7 @@ from sqlalchemy import func, select, text
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import models_registry  # noqa: F401
-from src.core.config import get_settings
+from src.core.config import Settings, get_settings
 from src.core.db import session_scope, set_tenant_context
 from src.core.errors import ConflictError
 from src.modules.agents.models import Agent, AgentVersion, AgentVersionStatus
@@ -30,7 +30,7 @@ from src.modules.agents.runtime_models import AgentRuntimeJob
 from src.modules.auth.models import Tenant, TenantStatus, User, UserRole
 from src.modules.outreach.channel import resolve_channel
 
-_EXPECTED_ALEMBIC_REVISION = "b7c4d9e2f013"
+_EXPECTED_ALEMBIC_REVISION = "d9e6f1a2b035"
 _WORKER_NAME = "agent-runtime@ashiraai"
 _SCHEDULED_TASKS = ["AshiraaiApi", "AshiraaiAgentWorker", "AshiraaiAgentRecovery"]
 _CPU_AVERAGE_BLOCK_PERCENT = 90
@@ -112,6 +112,38 @@ def _host_health() -> dict[str, Any]:
         "cpu_load_average_percent": round(sum(samples) / len(samples), 1),
         "cpu_load_max_percent": max(samples),
     }
+
+
+async def _nim_health(settings: Settings) -> dict[str, Any]:
+    """Readiness of every self-hosted NIM endpoint the settings enable.
+
+    Only host names, readiness and served model ids are reported — never a
+    request or response body.
+    """
+
+    from src.integrations.nim import NimHttp
+
+    report: dict[str, Any] = {}
+    for endpoint in settings.nim_endpoints():
+        entry: dict[str, Any] = {"kind": endpoint.kind, "host": endpoint.host}
+        try:
+            http = NimHttp(
+                endpoint.url,
+                api_key=settings.nim_api_key,
+                timeout_seconds=5.0,
+                name=endpoint.role,
+            )
+            entry["ready"] = await http.ready()
+            if endpoint.kind in {"llm", "embedding", "rerank"}:
+                try:
+                    entry["models"] = await http.models()
+                except Exception as exc:
+                    entry["models_error"] = type(exc).__name__
+        except Exception as exc:
+            entry["ready"] = False
+            entry["error_type"] = type(exc).__name__
+        report[endpoint.role] = entry
+    return report
 
 
 async def inspect(tenant_slug: str) -> dict[str, Any]:
@@ -456,6 +488,8 @@ async def inspect(tenant_slug: str) -> dict[str, Any]:
             "error_type": type(exc).__name__,
         }
 
+    result["nim"] = await _nim_health(settings)
+
     try:
         redis = Redis.from_url(str(settings.celery_broker_url))
         try:
@@ -485,8 +519,10 @@ def _failed(
     *,
     require_llm: bool | None = None,
     require_ollama: bool | None = None,
+    require_nim: bool = False,
 ) -> bool:
     database = result.get("database", {})
+    nim = result.get("nim", {})
     llm = result.get("llm", result.get("ollama", {}))
     require_llm = require_llm if require_llm is not None else bool(require_ollama)
     meta = result.get("meta", {})
@@ -529,6 +565,7 @@ def _failed(
         or (
             require_llm and (not llm.get("reachable") or not llm.get("configured_model_present"))
         )
+        or (require_nim and any(not entry.get("ready") for entry in nim.values()))
     )
 
 
@@ -537,11 +574,22 @@ def main() -> None:
     parser.add_argument("--tenant-slug", default="kasnak")
     parser.add_argument("--require-llm", action="store_true")
     parser.add_argument("--require-ollama", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--require-nim",
+        action="store_true",
+        help="fail unless every configured self-hosted NIM endpoint reports ready",
+    )
     args = parser.parse_args()
     result = asyncio.run(inspect(args.tenant_slug))
     print(json.dumps(result, ensure_ascii=False, indent=2))
     raise SystemExit(
-        1 if _failed(result, require_llm=args.require_llm or args.require_ollama) else 0
+        1
+        if _failed(
+            result,
+            require_llm=args.require_llm or args.require_ollama,
+            require_nim=args.require_nim,
+        )
+        else 0
     )
 
 

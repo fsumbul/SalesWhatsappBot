@@ -9,13 +9,24 @@ constants, so a model change re-indexes instead of silently mixing spaces.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Literal, Protocol
 
 import httpx
 
 from src.core.config import get_settings
 
 _BATCH_SIZE = 32
+
+# Native output sizes of the NeMo Retriever embedding NIMs (plan §2). Only the
+# truncatable models accept a smaller ``dimensions`` value.
+NIM_NATIVE_DIMENSIONS: dict[str, int] = {
+    "nvidia/nemotron-3-embed-1b": 2048,
+    "nvidia/llama-nemotron-embed-vl-1b-v2": 2048,
+    "nvidia/llama-3.2-nv-embedqa-1b-v2": 2048,
+}
+NIM_TRUNCATABLE_MODELS = frozenset(
+    {"nvidia/llama-nemotron-embed-vl-1b-v2", "nvidia/llama-3.2-nv-embedqa-1b-v2"}
+)
 
 
 class EmbeddingError(RuntimeError):
@@ -36,6 +47,30 @@ class EmbeddingClient(Protocol):
     async def embed_query(self, text: str) -> list[float]: ...
 
     async def embed_documents(self, texts: list[str]) -> list[list[float]]: ...
+
+
+def embedding_profile(client: EmbeddingClient) -> str:
+    """Identity of an embedding space for index fingerprints (model + dimension).
+
+    Two clients with the same model name but different output sizes must never
+    share a graph; the dimension is therefore part of every fingerprint.
+    """
+
+    return f"{client.model_name}#{client.dimension}"
+
+
+def nim_embedding_dimension_error(model: str, dimension: int) -> str | None:
+    """Explain why ``dimension`` cannot be requested from a NIM embedding model."""
+
+    native = NIM_NATIVE_DIMENSIONS.get(model)
+    if native is None or dimension == native:
+        return None
+    if model in NIM_TRUNCATABLE_MODELS and 0 < dimension < native:
+        return None
+    return (
+        f"EMBEDDING_DIMENSION must be {native} for {model} "
+        "(the model does not support that output size)"
+    )
 
 
 class NullEmbeddingClient:
@@ -114,6 +149,88 @@ class OllamaEmbeddingClient:
             raise EmbeddingError("The embedding service did not return usable vectors") from exc
 
 
+class NimEmbeddingClient:
+    """NeMo Retriever embedding NIM through the OpenAI-style ``/v1/embeddings``.
+
+    Queries and passages are embedded asymmetrically (``input_type``), inputs
+    are truncated server-side (``truncate=END``) and ``dimensions`` is only sent
+    for models that support Matryoshka truncation. The response size is
+    verified against the configured dimension so a misconfigured profile can
+    never write vectors of the wrong length into a graph.
+    """
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        model: str,
+        dimension: int,
+        api_key: str = "",
+        read_timeout_seconds: float = 60.0,
+    ) -> None:
+        from src.integrations.nim import NimHttp
+
+        self.http = NimHttp(
+            base_url, api_key=api_key, timeout_seconds=read_timeout_seconds, name="embedding"
+        )
+        self.model_name = model
+        self.dimension = dimension
+        native = NIM_NATIVE_DIMENSIONS.get(model)
+        self._send_dimensions = (
+            model in NIM_TRUNCATABLE_MODELS and native is not None and dimension != native
+        )
+
+    async def embed_query(self, text: str) -> list[float]:
+        vectors = await self._embed([text], "query")
+        return vectors[0]
+
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), _BATCH_SIZE):
+            vectors.extend(await self._embed(texts[start : start + _BATCH_SIZE], "passage"))
+        return vectors
+
+    async def _embed(
+        self, inputs: list[str], input_type: Literal["query", "passage"]
+    ) -> list[list[float]]:
+        if not inputs:
+            return []
+        payload: dict[str, object] = {
+            "model": self.model_name,
+            "input": inputs,
+            "input_type": input_type,
+            "encoding_format": "float",
+            "truncate": "END",
+        }
+        if self._send_dimensions:
+            payload["dimensions"] = self.dimension
+        try:
+            data = await self.http.post_json("/v1/embeddings", payload)
+            items = data.get("data")
+            if not isinstance(items, list) or len(items) != len(inputs):
+                raise TypeError("embedding response count mismatch")
+            ordered: list[list[float] | None] = [None] * len(inputs)
+            for position, item in enumerate(items):
+                if not isinstance(item, dict):
+                    raise TypeError("embedding item must be an object")
+                index = item.get("index", position)
+                vector = item.get("embedding")
+                if (
+                    not isinstance(index, int)
+                    or not 0 <= index < len(inputs)
+                    or not isinstance(vector, list)
+                    or len(vector) != self.dimension
+                ):
+                    raise TypeError("embedding dimension mismatch")
+                ordered[index] = [float(value) for value in vector]
+            if any(vector is None for vector in ordered):
+                raise TypeError("embedding response is missing inputs")
+            return [vector for vector in ordered if vector is not None]
+        except Exception as exc:
+            # NimError / TypeError / ValueError: never surface provider bodies.
+            raise EmbeddingError("The embedding service did not return usable vectors") from exc
+
+
 def get_embedding_client() -> EmbeddingClient:
     """Factory keyed on settings; the single place a provider is chosen."""
 
@@ -123,5 +240,12 @@ def get_embedding_client() -> EmbeddingClient:
             base_url=s.embedding_base_url or s.llm_base_url,
             model=s.embedding_model,
             dimension=s.embedding_dimension,
+        )
+    if s.embedding_provider == "nim" and s.embedding_base_url.strip():
+        return NimEmbeddingClient(
+            base_url=s.embedding_base_url,
+            model=s.embedding_model,
+            dimension=s.embedding_dimension,
+            api_key=s.embedding_api_key or s.nim_api_key,
         )
     return NullEmbeddingClient()

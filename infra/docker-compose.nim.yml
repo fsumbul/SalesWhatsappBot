@@ -1,0 +1,107 @@
+# NVIDIA NIM harness agents — GPU host only.
+#
+#   docker compose -f infra/docker-compose.nim.yml --profile nim up -d nim-guard-jailbreak
+#
+# Runs on the operator's own Linux + NVIDIA GPU server (NVIDIA driver +
+# NVIDIA Container Toolkit installed). These containers receive customer
+# messages, tenant documents, images and voice notes, so:
+#   * publish ports ONLY on a private interface (NIM_BIND_ADDRESS, default
+#     loopback) and reach them from the app host over VPN / a private VLAN /
+#     an SSH tunnel, exactly like the existing Ollama tunnel in docs/runbook.md;
+#   * never point the application at build.nvidia.com trial endpoints — the
+#     Settings boundary gate refuses them in production;
+#   * NGC_API_KEY lives only in this host's .env, never in Git.
+#
+# Image names/tags marked "verify" must be confirmed against the NGC catalog
+# (ngc.nvidia.com) before first use; the plan (docs/nvidia-nim-harness-agents-
+# plan-2026-09-16.md §2) lists what was verified from NVIDIA documentation.
+#
+# VRAM budget (rough, fp16): each 8B guard ~16 GB (fp8 halves it), 11B vision
+# ~22 GB, Nemotron 3.5 Lightning 30B-A3B ~60 GB (fp8 ~30 GB), embed/rerank/
+# OCR/layout ≤ 4 GB each. A single 80 GB GPU cannot host everything at once:
+# start the services for the work package you are enabling.
+
+x-nim: &nim
+  restart: unless-stopped
+  profiles: ["nim"]
+  environment:
+    NGC_API_KEY: ${NGC_API_KEY:?NGC_API_KEY is required to pull NIM models}
+    NIM_CACHE_PATH: /opt/nim/.cache
+  volumes:
+    - nim_cache:/opt/nim/.cache
+  shm_size: 16gb
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+services:
+  # --- WP1 guardrail gate ------------------------------------------------
+  nim-guard-content:
+    <<: *nim
+    image: nvcr.io/nim/nvidia/llama-3.1-nemoguard-8b-content-safety:1.10.1
+    ports: ["${NIM_BIND_ADDRESS:-127.0.0.1}:8010:8000"]
+  nim-guard-jailbreak:
+    <<: *nim
+    image: nvcr.io/nim/nvidia/nemoguard-jailbreak-detect:1.10.1
+    ports: ["${NIM_BIND_ADDRESS:-127.0.0.1}:8011:8000"]
+  nim-guard-topic:
+    <<: *nim
+    image: nvcr.io/nim/nvidia/llama-3.1-nemoguard-8b-topic-control:1.10.1
+    ports: ["${NIM_BIND_ADDRESS:-127.0.0.1}:8012:8000"]
+
+  # --- WP2 OCR / layout ---------------------------------------------------
+  nim-ocr:
+    <<: *nim
+    image: ${NIM_OCR_IMAGE:-nvcr.io/nim/nvidia/nemotron-ocr:latest}  # verify tag on NGC
+    ports: ["${NIM_BIND_ADDRESS:-127.0.0.1}:8020:8000"]
+  nim-layout:
+    <<: *nim
+    # Serves nvidia/nemotron-page-elements-v3 and nvidia/nemotron-table-structure-v1
+    # (POST /v1/page-elements, POST /v1/table-structure).
+    image: nvcr.io/nim/nvidia/nemotron-object-detection:2.0
+    ports: ["${NIM_BIND_ADDRESS:-127.0.0.1}:8021:8000"]
+
+  # --- WP3 vision -----------------------------------------------------------
+  nim-vision:
+    <<: *nim
+    image: ${NIM_VISION_IMAGE:-nvcr.io/nim/meta/llama-3.2-11b-vision-instruct:latest}  # verify tag
+    ports: ["${NIM_BIND_ADDRESS:-127.0.0.1}:8030:8000"]
+
+  # --- WP4 embedding / rerank ---------------------------------------------
+  nim-embed:
+    <<: *nim
+    image: ${NIM_EMBED_IMAGE:-nvcr.io/nim/nvidia/nemotron-3-embed-1b:latest}  # verify tag
+    ports: ["${NIM_BIND_ADDRESS:-127.0.0.1}:8040:8000"]
+  nim-rerank:
+    <<: *nim
+    image: ${NIM_RERANK_IMAGE:-nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3}
+    ports: ["${NIM_BIND_ADDRESS:-127.0.0.1}:8041:8000"]
+
+  # --- WP5 background LLM (extraction / memory) -----------------------------
+  nim-llm:
+    <<: *nim
+    image: ${NIM_LLM_IMAGE:-nvcr.io/nim/nvidia/nemotron-3.5-lightning-30b-a3b:latest}  # verify tag
+    ports: ["${NIM_BIND_ADDRESS:-127.0.0.1}:8050:8000"]
+
+  # --- WP6 optional: speech + translation -----------------------------------
+  nim-asr:
+    <<: *nim
+    image: ${NIM_ASR_IMAGE:-nvcr.io/nim/nvidia/riva-asr:latest}  # verify tag + whisper selector
+    environment:
+      NGC_API_KEY: ${NGC_API_KEY:?NGC_API_KEY is required to pull NIM models}
+      NIM_CACHE_PATH: /opt/nim/.cache
+      NIM_TAGS_SELECTOR: ${NIM_ASR_TAGS:-name=whisper-large-v3}
+    ports:
+      - "${NIM_BIND_ADDRESS:-127.0.0.1}:9000:9000"
+      - "${NIM_BIND_ADDRESS:-127.0.0.1}:50051:50051"
+  nim-translate:
+    <<: *nim
+    image: ${NIM_TRANSLATE_IMAGE:-nvcr.io/nim/nvidia/riva-translate-4b-instruct-v2:latest}  # verify tag
+    ports: ["${NIM_BIND_ADDRESS:-127.0.0.1}:8060:8000"]
+
+volumes:
+  nim_cache:

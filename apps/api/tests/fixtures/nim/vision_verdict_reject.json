@@ -1,0 +1,15 @@
+{
+  "_meta": "UNVERIFIED: shape written from NIM VLM documentation on 2026-09-16; pin against the running container's GET /v1/openapi.json and replace with a recorded response.",
+  "id": "cmpl-v",
+  "object": "chat.completion",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"is_product_photo\": false, \"subject_id\": null, \"confidence\": 0.0, \"alt_text\": \"Şirket logosu.\", \"contains_text_overlay\": true}"
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

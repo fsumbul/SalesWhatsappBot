@@ -22,7 +22,7 @@ from time import perf_counter
 from typing import Any
 from uuid import UUID
 
-from src.integrations.embeddings import EmbeddingClient
+from src.integrations.embeddings import EmbeddingClient, embedding_profile
 from src.modules.agents.company_config import CompanyAgentConfig
 
 from .compiler import compile_search_document, content_hash, fact_codes, index_fingerprint
@@ -86,7 +86,8 @@ class KnowledgeIndexer:
         locale = config.agent.default_locale
         visible = [fact for fact in config.facts if fact.customer_visible and fact.customer_text]
         documents = [(fact.id, compile_search_document(config, fact)) for fact in visible]
-        fingerprint = index_fingerprint(documents, self.embeddings.model_name)
+        # Model name + dimension: a different embedding space always rebuilds.
+        fingerprint = index_fingerprint(documents, embedding_profile(self.embeddings))
 
         if not rebuild and await self.current_fingerprint(graph_name) == fingerprint:
             counts = await self.store.query(
@@ -179,7 +180,7 @@ class KnowledgeIndexer:
                     "search_document": document,
                     "search_terms": list(fact.search_terms),
                     "guidance": (fact.selection_guidance or {}).get(locale, ""),
-                    "content_hash": content_hash(document, self.embeddings.model_name),
+                    "content_hash": content_hash(document, embedding_profile(self.embeddings)),
                     "embedding": vector,
                 }
             )

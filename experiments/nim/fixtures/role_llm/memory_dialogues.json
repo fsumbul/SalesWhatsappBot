@@ -1,0 +1,13 @@
+{
+  "schema_version": "memory-dialogues/1.0",
+  "items": [
+    {"id": "m01", "turns": [{"role": "user", "content": "Merhaba, 320 mm döküm kasnak için fiyat alabilir miyim?"}], "subject_ids": ["cast_elevator_pulley"], "intent": "price"},
+    {"id": "m02", "turns": [{"role": "user", "content": "Naylon kasnaklarınız sessiz mi çalışıyor, bilgi verir misiniz?"}], "subject_ids": ["mc_nylon_pulley"], "intent": "information"},
+    {"id": "m03", "turns": [{"role": "assistant", "content": "Size nasıl yardımcı olabilirim?"}, {"role": "user", "content": "Palanga kasnağı için 20 adet teklif istiyorum, İstanbul'a teslim."}], "subject_ids": ["hoisting_pulley"], "intent": "quote"},
+    {"id": "m04", "turns": [{"role": "user", "content": "Geçen ay aldığım saptırma kasnağı ses yapıyor, ne yapmalıyım?"}], "subject_ids": ["deflection_pulley"], "intent": "support"},
+    {"id": "m05", "turns": [{"role": "user", "content": "Teşekkürler, iyi günler."}], "subject_ids": [], "intent": "social"},
+    {"id": "m06", "turns": [{"role": "user", "content": "Döküm kasnak ve yan destek birlikte alsam indirim olur mu?"}], "subject_ids": ["cast_elevator_pulley", "side_support"], "intent": "price"},
+    {"id": "m07", "turns": [{"role": "user", "content": "Siparişim iki haftadır gelmedi, çok kızgınım."}], "subject_ids": [], "intent": "complaint"},
+    {"id": "m08", "turns": [{"role": "user", "content": "MC naylon kasnaktan 5 adet almak istiyorum, sipariş verebilir miyim?"}], "subject_ids": ["mc_nylon_pulley"], "intent": "purchase"}
+  ]
+}

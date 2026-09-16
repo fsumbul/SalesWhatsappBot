@@ -95,8 +95,8 @@ async def setup(client, monkeypatch, role=UserRole.TENANT_OWNER):
                 return '{"template_id":"123"}'
             return '{"tool":"outreach","recipients":["+15550102030","+15550102031"],"purpose":"tanıtım"}'
 
-    monkeypatch.setattr(planner, "get_llm_client", lambda: LLM())
-    monkeypatch.setattr(outbound, "get_llm_client", lambda: LLM())
+    monkeypatch.setattr(planner, "get_llm_client", lambda *_args, **_kwargs: LLM())
+    monkeypatch.setattr(outbound, "get_llm_client", lambda *_args, **_kwargs: LLM())
     sid = (await client.post("/api/v1/admin-chat/sessions", headers=headers, json={})).json()["id"]
     return headers, tid, user.id, sender_id, sid
 
@@ -320,7 +320,7 @@ async def test_model_cannot_invent_recipient_or_execute_negated_send(monkeypatch
         async def complete(self, *args, **kwargs):
             return '{"tool":"outreach","recipients":["+19998887777"]}'
 
-    monkeypatch.setattr(planner, "get_llm_client", lambda: LLM())
+    monkeypatch.setattr(planner, "get_llm_client", lambda *_args, **_kwargs: LLM())
     with pytest.raises(ValueError):
         await planner.plan("+15550102030 numarasına gönder")
 
@@ -328,7 +328,7 @@ async def test_model_cannot_invent_recipient_or_execute_negated_send(monkeypatch
         async def complete(self, *args, **kwargs):
             return '{"tool":"send_outreach"}'
 
-    monkeypatch.setattr(planner, "get_llm_client", lambda: Wrong())
+    monkeypatch.setattr(planner, "get_llm_client", lambda *_args, **_kwargs: Wrong())
     intent, source = await planner.plan("Bu tanıtımı gönderme")
     assert intent.tool == "clarify"
 
