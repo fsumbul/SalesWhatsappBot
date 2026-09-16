@@ -37,7 +37,7 @@ def _parse_args() -> argparse.Namespace:
 async def _async_main(args: argparse.Namespace) -> None:
     retriever = build_fact_retriever()
     if retriever is None:
-        raise SystemExit("KNOWLEDGE_BACKEND=falkordb and EMBEDDING_PROVIDER=ollama are required")
+        raise SystemExit("KNOWLEDGE_BACKEND=falkordb and EMBEDDING_PROVIDER=ollama|nim are required")
 
     async def ask(question: str, anchors: tuple[str, ...] = ()) -> list[str]:
         result = await retriever.retrieve(

@@ -1,0 +1,13 @@
+{
+  "_meta": "UNVERIFIED: shape written from NeMo Retriever NIM documentation on 2026-09-16; pin against the running container's GET /v1/openapi.json and replace with a recorded response.",
+  "rankings": [
+    {
+      "index": 2,
+      "logit": 2.0
+    },
+    {
+      "index": 0,
+      "logit": -1.0
+    }
+  ]
+}

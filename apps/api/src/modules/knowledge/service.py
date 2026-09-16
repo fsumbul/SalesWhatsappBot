@@ -23,7 +23,7 @@ from .retrieval import FalkorGraphFactRetriever, ScopedFactRetriever
 
 def knowledge_enabled() -> bool:
     s = get_settings()
-    return s.knowledge_backend == "falkordb" and s.embedding_provider == "ollama"
+    return s.knowledge_backend == "falkordb" and s.embedding_provider in {"ollama", "nim"}
 
 
 def build_fact_retriever(store: GraphStore | None = None) -> FactRetriever | None:

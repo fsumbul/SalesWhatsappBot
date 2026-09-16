@@ -1,0 +1,247 @@
+{
+  "schema_version": "entailment-golden/1.0",
+  "locale": "tr",
+  "description": "ADR-003 cross-encoder entailment kapısı için Türkçe (iddia, kanıt, entailed) çiftleri (NIM plan WP4 eşik kalibrasyonu). Sentetik; Artı Kasnak ürün alanından.",
+  "items": [
+    {
+      "id": "e001",
+      "claim": "6211 rulman 55 mm mil çapına uygundur.",
+      "evidence": "6211 rulmanlı kasnaklar 55 mm mil çapı ile kullanılır.",
+      "entailed": true
+    },
+    {
+      "id": "e002",
+      "claim": "Döküm kasnak GG-25 pik dökümden üretilir.",
+      "evidence": "Döküm asansör kasnağı ürün grubunda GG-25 pik döküm ve GGG-50 sfero döküm seçenekleri bulunur.",
+      "entailed": true
+    },
+    {
+      "id": "e003",
+      "claim": "Standart çaplar 210, 240 ve 320 mm'dir.",
+      "evidence": "Döküm kasnak standart çapları 210, 240 ve 320 mm olarak üretilir.",
+      "entailed": true
+    },
+    {
+      "id": "e004",
+      "claim": "Kasnaklar balanslı olarak sevk edilir.",
+      "evidence": "Tüm kasnaklar dinamik balans yapılarak sevk edilir.",
+      "entailed": true
+    },
+    {
+      "id": "e005",
+      "claim": "Palanga kasnağı 2,5 m/sn hıza kadar çalışır.",
+      "evidence": "Palanga kasnağı GG-25 pik dökümden üretilir ve 2,5 m/sn hıza kadar balanslı çalışır.",
+      "entailed": true
+    },
+    {
+      "id": "e006",
+      "claim": "MC naylon kasnak sessiz çalışır.",
+      "evidence": "Captormal (MC naylon) kasnaklar çelik halatla temasında düşük gürültü üretir ve sessiz çalışma sağlar.",
+      "entailed": true
+    },
+    {
+      "id": "e007",
+      "claim": "Yan destekler 30 mm mil çapıyla sunulur.",
+      "evidence": "Yan destek ürünlerinde 30, 35 ve 40 mm mil çapı seçenekleri bulunur.",
+      "entailed": true
+    },
+    {
+      "id": "e008",
+      "claim": "Saptırma kasnağı halatın yönünü değiştirir.",
+      "evidence": "Saptırma kasnağı, tahrik kasnağından gelen halatın yönünü değiştirerek kabin ve karşı ağırlığa yönlendirir.",
+      "entailed": true
+    },
+    {
+      "id": "e009",
+      "claim": "Özel ölçü üretim yapılabilir.",
+      "evidence": "Teknik resim veya numuneye göre özel ölçülerde kasnak üretimi yapılmaktadır.",
+      "entailed": true
+    },
+    {
+      "id": "e010",
+      "claim": "Firma 1995'ten beri üretim yapmaktadır.",
+      "evidence": "Artı Kasnak 1995 yılından bu yana asansör kasnağı üretmektedir.",
+      "entailed": true
+    },
+    {
+      "id": "e011",
+      "claim": "Kasnak yatakları rulmanlıdır.",
+      "evidence": "Kasnaklar çift sıra bilyalı rulman yataklıdır.",
+      "entailed": true
+    },
+    {
+      "id": "e012",
+      "claim": "TS180118 kodlu kasnak 4 halat içindir.",
+      "evidence": "TS180118: tahrik kasnağı, 4 x 8 mm halat kanalı, 180 mm çap.",
+      "entailed": true
+    },
+    {
+      "id": "e013",
+      "claim": "Kasnak kanalları V veya U profildir.",
+      "evidence": "Halat kanalları müşteri talebine göre V (undercut) veya yarım yuvarlak U profil olarak işlenir.",
+      "entailed": true
+    },
+    {
+      "id": "e014",
+      "claim": "Sfero döküm seçeneği mevcuttur.",
+      "evidence": "Döküm asansör kasnağı ürün grubunda GG-25 pik döküm ve GGG-50 sfero döküm seçenekleri bulunur.",
+      "entailed": true
+    },
+    {
+      "id": "e015",
+      "claim": "Ürünler boyalı sevk edilir.",
+      "evidence": "Kasnaklar antipas astar ve son kat boya ile boyanarak sevk edilir.",
+      "entailed": true
+    },
+    {
+      "id": "e016",
+      "claim": "Halat çapı 8 mm için kanal işlenebilir.",
+      "evidence": "Halat çapı 6, 8 ve 10 mm için kanal işleme yapılır.",
+      "entailed": true
+    },
+    {
+      "id": "e017",
+      "claim": "Kasnaklar CE uyumlu üretilir.",
+      "evidence": "Üretim CE işaretleme gerekliliklerine uygun olarak yapılır.",
+      "entailed": true
+    },
+    {
+      "id": "e018",
+      "claim": "Ürün ağırlığı 500 mm çapta yaklaşık 38 kg'dır.",
+      "evidence": "500 mm çaplı döküm kasnağın net ağırlığı yaklaşık 38 kg'dır.",
+      "entailed": true
+    },
+    {
+      "id": "e019",
+      "claim": "Montaj için mil kaması gerekir.",
+      "evidence": "Kasnak mile kama ile sabitlenir; kama yuvası standart DIN 6885'e göre açılır.",
+      "entailed": true
+    },
+    {
+      "id": "e020",
+      "claim": "Kasnaklar 40'tan fazla ülkeye ihraç edilir.",
+      "evidence": "Ürünlerimiz kırktan fazla ülkeye ihraç edilmektedir.",
+      "entailed": true
+    },
+    {
+      "id": "e021",
+      "claim": "6211 rulman 60 mm mil çapına uygundur.",
+      "evidence": "6211 rulmanlı kasnaklar 55 mm mil çapı ile kullanılır.",
+      "entailed": false
+    },
+    {
+      "id": "e022",
+      "claim": "Döküm kasnak alüminyumdan üretilir.",
+      "evidence": "Döküm asansör kasnağı ürün grubunda GG-25 pik döküm ve GGG-50 sfero döküm seçenekleri bulunur.",
+      "entailed": false
+    },
+    {
+      "id": "e023",
+      "claim": "Standart çaplar 400 ve 450 mm'dir.",
+      "evidence": "Döküm kasnak standart çapları 210, 240 ve 320 mm olarak üretilir.",
+      "entailed": false
+    },
+    {
+      "id": "e024",
+      "claim": "Palanga kasnağı 4 m/sn hıza kadar çalışır.",
+      "evidence": "Palanga kasnağı GG-25 pik dökümden üretilir ve 2,5 m/sn hıza kadar balanslı çalışır.",
+      "entailed": false
+    },
+    {
+      "id": "e025",
+      "claim": "MC naylon kasnak gürültülü çalışır.",
+      "evidence": "Captormal (MC naylon) kasnaklar çelik halatla temasında düşük gürültü üretir ve sessiz çalışma sağlar.",
+      "entailed": false
+    },
+    {
+      "id": "e026",
+      "claim": "Yan destekler yalnız 50 mm mil çapıyla sunulur.",
+      "evidence": "Yan destek ürünlerinde 30, 35 ve 40 mm mil çapı seçenekleri bulunur.",
+      "entailed": false
+    },
+    {
+      "id": "e027",
+      "claim": "Saptırma kasnağı kabini tahrik eder.",
+      "evidence": "Saptırma kasnağı, tahrik kasnağından gelen halatın yönünü değiştirerek kabin ve karşı ağırlığa yönlendirir.",
+      "entailed": false
+    },
+    {
+      "id": "e028",
+      "claim": "Özel ölçü üretim yapılmaz.",
+      "evidence": "Teknik resim veya numuneye göre özel ölçülerde kasnak üretimi yapılmaktadır.",
+      "entailed": false
+    },
+    {
+      "id": "e029",
+      "claim": "Firma 2010'da kurulmuştur.",
+      "evidence": "Artı Kasnak 1995 yılından bu yana asansör kasnağı üretmektedir.",
+      "entailed": false
+    },
+    {
+      "id": "e030",
+      "claim": "Kasnak yatakları kaymalı yataktır.",
+      "evidence": "Kasnaklar çift sıra bilyalı rulman yataklıdır.",
+      "entailed": false
+    },
+    {
+      "id": "e031",
+      "claim": "TS180118 kodlu kasnak 6 halat içindir.",
+      "evidence": "TS180118: tahrik kasnağı, 4 x 8 mm halat kanalı, 180 mm çap.",
+      "entailed": false
+    },
+    {
+      "id": "e032",
+      "claim": "Kasnaklar teslimatta iki yıl garantilidir.",
+      "evidence": "Kasnaklar antipas astar ve son kat boya ile boyanarak sevk edilir.",
+      "entailed": false
+    },
+    {
+      "id": "e033",
+      "claim": "Ürün fiyatı 1.250 TL'dir.",
+      "evidence": "500 mm çaplı döküm kasnağın net ağırlığı yaklaşık 38 kg'dır.",
+      "entailed": false
+    },
+    {
+      "id": "e034",
+      "claim": "Kasnaklar stoktan hemen teslim edilir.",
+      "evidence": "Teknik resim veya numuneye göre özel ölçülerde kasnak üretimi yapılmaktadır.",
+      "entailed": false
+    },
+    {
+      "id": "e035",
+      "claim": "Halat çapı 16 mm için kanal işlenir.",
+      "evidence": "Halat çapı 6, 8 ve 10 mm için kanal işleme yapılır.",
+      "entailed": false
+    },
+    {
+      "id": "e036",
+      "claim": "Kasnaklar ISO 9001 belgelidir.",
+      "evidence": "Üretim CE işaretleme gerekliliklerine uygun olarak yapılır.",
+      "entailed": false
+    },
+    {
+      "id": "e037",
+      "claim": "Ürün ağırlığı 500 mm çapta 12 kg'dır.",
+      "evidence": "500 mm çaplı döküm kasnağın net ağırlığı yaklaşık 38 kg'dır.",
+      "entailed": false
+    },
+    {
+      "id": "e038",
+      "claim": "Montaj yapıştırıcı ile yapılır.",
+      "evidence": "Kasnak mile kama ile sabitlenir; kama yuvası standart DIN 6885'e göre açılır.",
+      "entailed": false
+    },
+    {
+      "id": "e039",
+      "claim": "Kasnaklar yalnız yurt içine satılır.",
+      "evidence": "Ürünlerimiz kırktan fazla ülkeye ihraç edilmektedir.",
+      "entailed": false
+    },
+    {
+      "id": "e040",
+      "claim": "Rakip firmanın kasnakları daha ucuzdur.",
+      "evidence": "Artı Kasnak 1995 yılından bu yana asansör kasnağı üretmektedir.",
+      "entailed": false
+    }
+  ]
+}

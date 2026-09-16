@@ -69,7 +69,7 @@ async def _live_versions(tenant_slug: str) -> list[tuple[UUID, UUID, CompanyAgen
 
 async def _async_main(args: argparse.Namespace) -> None:
     if not knowledge_enabled():
-        raise SystemExit("KNOWLEDGE_BACKEND=falkordb and EMBEDDING_PROVIDER=ollama are required")
+        raise SystemExit("KNOWLEDGE_BACKEND=falkordb and EMBEDDING_PROVIDER=ollama|nim are required")
     targets: list[tuple[UUID, UUID, CompanyAgentConfig]]
     if args.config is not None:
         if args.tenant_id is None or args.version_id is None:

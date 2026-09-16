@@ -22,7 +22,7 @@ from src.modules.guardrails.ports import GuardDecision, GuardVerdict, InputGuard
 
 from .chunking import chunk_text, content_hash
 from .crawler import WebsiteCrawler
-from .evidence import EvidenceGraph
+from .evidence import EmbeddingProfileMismatchError, EvidenceGraph
 from .extract import EXTRACTOR_VERSION, PageExtract, TextUnit, extract_document
 from .extraction import ValidatedExtraction, extract_chunk, subject_labels
 from .media import discover_images, fetch_image
@@ -111,6 +111,8 @@ class KnowledgeIngestService:
         self.settings = settings or get_settings()
         self.http_client = http_client
         self.stats: Counter[str] = Counter()
+        # Cleared when the tenant graph belongs to another embedding profile.
+        self._graph_ready = True
 
     # --- entry point ----------------------------------------------------------
 
@@ -131,7 +133,14 @@ class KnowledgeIngestService:
         try:
             if self.graph is not None:
                 assert config.agent is not None
-                await self.graph.ensure_indexes(tenant_id, config.agent.default_locale)
+                try:
+                    await self.graph.ensure_indexes(tenant_id, config.agent.default_locale)
+                except EmbeddingProfileMismatchError as exc:
+                    # Text, chunks and candidates still flow; only the graph waits
+                    # for ``knowledge-reembed``. Never mix embedding spaces.
+                    self._graph_ready = False
+                    self.stats["graph_profile_mismatch"] += 1
+                    logger.warning("knowledge.graph.profile_mismatch", error=str(exc)[:200])
             if source.kind == "document":
                 await self._sync_documents(tenant_id, source, config)
             elif source.kind == "website":
@@ -331,7 +340,7 @@ class KnowledgeIngestService:
             return previous
         if previous is not None:
             previous.status = "removed"
-            if self.graph is not None:
+            if self.graph is not None and self._graph_ready:
                 await self.graph.delete_snapshot(tenant_id, previous.id)
         snapshot = KnowledgeSnapshot(
             tenant_id=tenant_id,
@@ -380,7 +389,7 @@ class KnowledgeIngestService:
             await self._store_candidates(tenant_id, source, snapshot, row, extraction)
         if page is not None and page.product.get("name"):
             snapshot.meta = {**snapshot.meta, "product_page": True}
-        if self.graph is not None and rows:
+        if self.graph is not None and self._graph_ready and rows:
             try:
                 await self.graph.upsert_chunks(
                     tenant_id,

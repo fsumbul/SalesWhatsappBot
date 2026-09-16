@@ -289,15 +289,25 @@ class Settings(BaseSettings):
     falkordb_password: str = ""
     # Embedding profile. Only ``ollama`` is implemented; empty keeps embeddings
     # fail-closed (the graph retriever then reports itself unavailable).
-    embedding_provider: Literal["", "ollama"] = ""
+    # ``nim`` targets a self-hosted NeMo Retriever embedding container
+    # (``/v1/embeddings`` with ``input_type``); it needs an explicit base URL.
+    embedding_provider: Literal["", "ollama", "nim"] = ""
     embedding_model: str = "bge-m3"
-    # Empty derives the Ollama root from ``llm_base_url``.
+    # Empty derives the Ollama root from ``llm_base_url`` (Ollama only).
     embedding_base_url: str = ""
+    embedding_api_key: str = ""
+    # Part of every index fingerprint together with the model name: changing
+    # it rebuilds ``kb_*`` and requires ``make knowledge-reembed`` for ``kn_*``.
     embedding_dimension: int = 1024
-    # Cross-encoder rerank of the fused candidate pool (sentence-transformers).
+    # Cross-encoder rerank of the fused candidate pool: in-process
+    # sentence-transformers (``local``) or a NeMo Retriever reranking NIM
+    # (``nim``, ``/v1/ranking``; logits are mapped to [0, 1]).
     reranker_enabled: bool = False
+    reranker_provider: Literal["local", "nim"] = "local"
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
     reranker_device: str = "auto"
+    reranker_base_url: str = ""
+    reranker_api_key: str = ""
     retrieval_max_candidates: int = 12
     retrieval_rerank_pool: int = 24
     retrieval_timeout_seconds: float = 4.0
@@ -390,12 +400,28 @@ class Settings(BaseSettings):
                 )
             )
         if self.embedding_provider:
+            nim_embedding = self.embedding_provider == "nim"
             endpoints.append(
                 ModelEndpoint(
                     name="EMBEDDING_BASE_URL",
                     role="embedding",
-                    url=self.embedding_base_url or self.llm_base_url,
+                    url=(
+                        self.embedding_base_url
+                        if nim_embedding
+                        else self.embedding_base_url or self.llm_base_url
+                    ),
                     kind="embedding",
+                    nim=nim_embedding,
+                )
+            )
+        if self.reranker_enabled and self.reranker_provider == "nim":
+            endpoints.append(
+                ModelEndpoint(
+                    name="RERANKER_BASE_URL",
+                    role="reranker",
+                    url=self.reranker_base_url,
+                    kind="rerank",
+                    nim=True,
                 )
             )
         if self.guardrail_enabled:
@@ -503,8 +529,21 @@ class Settings(BaseSettings):
             errors.append("APP_DEBUG must be false")
         if self.llm_provider not in {"ollama", "chat_compatible"}:
             errors.append("LLM_PROVIDER must be ollama or chat_compatible")
-        if self.knowledge_backend == "falkordb" and self.embedding_provider != "ollama":
-            errors.append("EMBEDDING_PROVIDER must be ollama when KNOWLEDGE_BACKEND=falkordb")
+        if self.knowledge_backend == "falkordb" and self.embedding_provider not in {
+            "ollama",
+            "nim",
+        }:
+            errors.append(
+                "EMBEDDING_PROVIDER must be ollama or nim when KNOWLEDGE_BACKEND=falkordb"
+            )
+        if self.embedding_provider == "nim":
+            from src.integrations.embeddings import nim_embedding_dimension_error
+
+            dimension_error = nim_embedding_dimension_error(
+                self.embedding_model, self.embedding_dimension
+            )
+            if dimension_error:
+                errors.append(dimension_error)
         errors.extend(self.model_endpoint_boundary_errors())
         if self.guardrail_enabled and self.guardrail_fail_mode != "closed":
             errors.append("GUARDRAIL_FAIL_MODE must be closed in production")
