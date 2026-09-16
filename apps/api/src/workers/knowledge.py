@@ -92,12 +92,16 @@ def sync_knowledge_source(tenant_id: str, source_id: str) -> dict[str, Any]:
 
 
 async def _sync_knowledge_source(tenant_id: UUID, source_id: UUID) -> dict[str, Any]:
+    from src.modules.guardrails.service import build_ingest_guard
     from src.modules.knowledge.ingest import KnowledgeIngestService
     from src.modules.knowledge.service import build_evidence_graph
 
     async with session_scope(tenant_id) as session:
         service = KnowledgeIngestService(
-            session, llm=get_llm_client(), graph=build_evidence_graph()
+            session,
+            llm=get_llm_client(),
+            graph=build_evidence_graph(),
+            guard=build_ingest_guard(),
         )
         result = await service.sync_source(tenant_id, source_id)
     logger.info("knowledge.source.synced", source_id=str(source_id), **{k: v for k, v in result.items() if k != "publish"})

@@ -34,6 +34,9 @@ from src.modules.agents.runtime_models import AgentRuntimeJob, AgentRuntimeJobSt
 from src.modules.auth.models import Tenant, TenantStatus, User, UserRole
 from src.modules.compliance.models import OptOut
 from src.modules.discovery.models import ConsentStatus, LeadContact
+from src.modules.guardrails.ports import GuardVerdict, TopicContext
+from src.modules.guardrails.service import build_input_guard
+from src.modules.guardrails.turns import guardrail_blocked_turn
 from src.modules.knowledge.memory import CustomerMemory
 from src.modules.knowledge.ports import EvidenceSearch, KnowledgeRetriever
 from src.modules.outreach.models import (
@@ -596,6 +599,27 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             inbound,
             agent_version_id=version.id,
         )
+        # Guardrail gate (plan WP1): classify the customer message before the
+        # typing indicator, the selection flow and any model call. A block or
+        # an unavailable classifier (closed mode) yields an approved turn that
+        # travels through the normal durable send path below.
+        guard_verdict: GuardVerdict | None = None
+        guard_turn: RuntimeTurn | None = None
+        guard = build_input_guard()
+        if guard.available:
+            guard_verdict = await guard.check_customer_message(
+                inbound.body,
+                history=[(m.role, m.content) for m in history[-4:]],
+                topic=TopicContext.from_config(config),
+            )
+            guard_turn = guardrail_blocked_turn(config, guard_verdict)
+            if guard_turn is not None:
+                logger.info(
+                    "guardrail.blocked",
+                    job_id=str(job.id),
+                    decision=guard_verdict.decision.value,
+                    reason=guard_verdict.reason,
+                )
         typing_stats = {"attempts": 0, "successes": 0, "refreshes": 0}
         typing_refresh_task: asyncio.Task[None] | None = None
         if inbound.wa_message_id:
@@ -608,12 +632,12 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
         try:
             selection_request = None
             selection_confirmed = False
-            turn = None
+            turn = guard_turn
             customer_memory: CustomerMemory | None = None
             resume_prompt = None
             selection_side_handoff = False
             selection_processing_ms = None
-            if selection_active:
+            if turn is None and selection_active:
                 selection_started = perf_counter()
                 (
                     turn,
@@ -622,7 +646,7 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                     selection_confirmed,
                 ) = await selection_service.handle(session, config, conversation, inbound)
                 selection_processing_ms = round((perf_counter() - selection_started) * 1000, 2)
-            selection_deterministic = turn is not None
+            selection_deterministic = turn is not None and guard_turn is None
             if turn is None:
                 fact_retriever, customer_memory, evidence_search, verifier = await _knowledge_inputs(
                     tenant_id,
@@ -764,9 +788,14 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             job.used_fallback = turn.used_fallback
             job.status = AgentRuntimeJobStatus.SENDING.value
             job.audit = {
-                "model": "deterministic_selection"
-                if selection_deterministic
-                else settings.llm_model,
+                "model": (
+                    "guardrail"
+                    if guard_turn is not None
+                    else "deterministic_selection"
+                    if selection_deterministic
+                    else settings.llm_model
+                ),
+                "guardrail": guard_verdict.audit() if guard_verdict is not None else None,
                 "selection_request_id": str(selection_request.id) if selection_request else None,
                 "selection_confirmed": selection_confirmed,
                 "selection_processing_ms": selection_processing_ms,

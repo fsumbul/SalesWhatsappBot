@@ -30,7 +30,7 @@ from src.modules.agents.runtime_models import AgentRuntimeJob
 from src.modules.auth.models import Tenant, TenantStatus, User, UserRole
 from src.modules.outreach.channel import resolve_channel
 
-_EXPECTED_ALEMBIC_REVISION = "b7c4d9e2f013"
+_EXPECTED_ALEMBIC_REVISION = "c8d5e0f1a024"
 _WORKER_NAME = "agent-runtime@ashiraai"
 _SCHEDULED_TASKS = ["AshiraaiApi", "AshiraaiAgentWorker", "AshiraaiAgentRecovery"]
 _CPU_AVERAGE_BLOCK_PERCENT = 90

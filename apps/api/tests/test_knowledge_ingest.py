@@ -22,6 +22,7 @@ from src.core.db import session_scope
 from src.integrations.llm import LLMMessage
 from src.modules.agents.models import AgentVersion, AgentVersionStatus
 from src.modules.agents.service import AgentService
+from src.modules.guardrails.ports import GuardCheck, GuardDecision, GuardVerdict
 from src.modules.knowledge.ingest import KnowledgeIngestService
 from src.modules.knowledge.models import (
     KnowledgeCandidate,
@@ -393,3 +394,93 @@ async def test_website_ingest_respects_robots_and_publishes_product_image(
         live = await AgentService(session).get_live(tenant_id, agent_id)
         assert live is not None
         assert "cast_pulley" not in (live.company_config.get("whatsapp_presentation") or {}).get("offering_media", {})
+
+
+# --- guardrail gate on document chunks (NIM plan WP1) -------------------------------
+
+
+class _ChunkGuard:
+    """Blocks the chunk that talks about the palanga pulley, flags nothing else."""
+
+    available = True
+
+    def __init__(self, decision: GuardDecision = GuardDecision.BLOCK) -> None:
+        self.decision = decision
+        self.texts: list[str] = []
+
+    async def check_customer_message(self, text: str, **kwargs: Any) -> GuardVerdict:
+        raise AssertionError("ingestion must use the document check")
+
+    async def check_document_text(self, text: str) -> GuardVerdict:
+        self.texts.append(text)
+        if "Palanga" in text:
+            return GuardVerdict(
+                self.decision,
+                (GuardCheck("content_safety", self.decision, None, ("S16",), 12.0, "guard-model"),),
+                f"content_safety:{'S16' if self.decision == GuardDecision.BLOCK else 'S9'}",
+            )
+        return GuardVerdict(GuardDecision.ALLOW)
+
+
+async def _document_source(tenant_id: UUID, agent_id: UUID, uri: str) -> UUID:
+    async with session_scope(tenant_id) as session:
+        source = KnowledgeSource(
+            tenant_id=tenant_id, agent_id=agent_id, kind="document", display_name="katalog.md",
+            canonical_uri=uri, auto_publish=True,
+        )
+        session.add(source)
+        await session.flush()
+        session.add(
+            KnowledgeDocument(
+                tenant_id=tenant_id, source_id=source.id, filename="katalog.md", mime_type="text/markdown",
+                sha256=uri, size_bytes=len(_MARKDOWN), content=_MARKDOWN,
+            )
+        )
+        await session.commit()
+        return source.id
+
+
+@pytest.mark.asyncio
+async def test_document_ingest_never_extracts_or_embeds_guard_blocked_chunks(
+    runtime_database: None,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    get_settings.cache_clear()
+    tenant_id, _owner = await _seed_runtime_tenant(with_agent=True)
+    agent_id = await _install_live(tenant_id)
+    source_id = await _document_source(tenant_id, agent_id, "upload://guarded")
+    llm = _ExtractingLLM()
+    graph = _FakeGraph()
+    guard = _ChunkGuard()
+
+    async with session_scope(tenant_id) as session:
+        result = await KnowledgeIngestService(session, llm=llm, graph=graph, guard=guard).sync_source(tenant_id, source_id)  # type: ignore[arg-type]
+
+    assert result["status"] == "synced", result
+    assert result["stats"]["chunks"] == 2 and result["stats"]["chunks_blocked"] == 1
+    assert len(guard.texts) == 2
+    # Only the company chunk reached the model and the graph.
+    assert llm.calls == 1 and len(graph.rows) == 1
+    assert result["stats"].get("candidate_offerings", 0) == 0
+    async with session_scope(tenant_id) as session:
+        chunks = list((await session.execute(select(KnowledgeChunk).where(KnowledgeChunk.source_id == source_id))).scalars())
+        blocked = next(c for c in chunks if "Palanga" in c.text)
+        allowed = next(c for c in chunks if "Palanga" not in c.text)
+        assert blocked.guard["decision"] == "block" and blocked.guard["reason"] == "content_safety:S16"
+        assert blocked.extracted is False and blocked.embedded is False
+        assert "Palanga" not in json.dumps(blocked.guard)
+        assert allowed.guard == {} and allowed.extracted and allowed.embedded
+        candidates = list((await session.execute(select(KnowledgeCandidate).where(KnowledgeCandidate.source_id == source_id))).scalars())
+        assert {c.subject_id for c in candidates} == {"company"}
+
+    # Flagged chunks are processed but keep the verdict.
+    flagged_source = await _document_source(tenant_id, agent_id, "upload://flagged")
+    flag_guard = _ChunkGuard(GuardDecision.FLAG)
+    async with session_scope(tenant_id) as session:
+        result = await KnowledgeIngestService(session, llm=llm, graph=graph, guard=flag_guard).sync_source(tenant_id, flagged_source)  # type: ignore[arg-type]
+    assert result["stats"]["chunks_flagged"] == 1 and result["stats"].get("chunks_blocked", 0) == 0
+    assert result["stats"]["candidate_offerings"] == 1
+    async with session_scope(tenant_id) as session:
+        chunks = list((await session.execute(select(KnowledgeChunk).where(KnowledgeChunk.source_id == flagged_source))).scalars())
+        flagged = next(c for c in chunks if "Palanga" in c.text)
+        assert flagged.guard["decision"] == "flag" and flagged.extracted and flagged.embedded

@@ -18,6 +18,7 @@ from src.core.config import Settings, get_settings
 from src.integrations.llm import LLMClient
 from src.modules.agents.company_config import CompanyAgentConfig
 from src.modules.agents.models import AgentVersion, AgentVersionStatus
+from src.modules.guardrails.ports import GuardDecision, GuardVerdict, InputGuard
 
 from .chunking import chunk_text, content_hash
 from .crawler import WebsiteCrawler
@@ -38,6 +39,7 @@ from .publisher import KnowledgePublisher, PublishReport
 logger = structlog.get_logger(__name__)
 _MAX_CHUNKS_PER_SYNC = 400
 _EXTRACTION_CONCURRENCY = 2
+_GUARD_CONCURRENCY = 4
 
 
 async def agent_config_for(
@@ -90,10 +92,14 @@ class KnowledgeIngestService:
         graph: EvidenceGraph | None,
         settings: Settings | None = None,
         http_client: httpx.AsyncClient | None = None,
+        guard: InputGuard | None = None,
     ) -> None:
         self.session = session
         self.llm = llm
         self.graph = graph
+        # Guardrail gate (plan WP1): blocked chunks are stored with their
+        # verdict but never extracted or embedded.
+        self.guard = guard
         self.settings = settings or get_settings()
         self.http_client = http_client
         self.stats: Counter[str] = Counter()
@@ -311,6 +317,7 @@ class KnowledgeIngestService:
         await self.session.flush()
         self.stats["chunks"] += len(rows)
 
+        rows = await self._guard_chunks(rows)
         extractions = await self._extract_chunks(config, rows)
         for row, extraction in zip(rows, extractions, strict=True):
             if extraction is None:
@@ -345,6 +352,40 @@ class KnowledgeIngestService:
                 logger.warning("knowledge.graph.upsert_failed", error=type(exc).__name__)
         await self.session.commit()
         return snapshot
+
+    async def _guard_chunks(self, rows: list[KnowledgeChunk]) -> list[KnowledgeChunk]:
+        """Return the chunks that may be extracted and embedded.
+
+        Blocked chunks (and every chunk when a classifier is unavailable in
+        closed mode) keep their verdict in ``guard`` and stay unprocessed;
+        flagged chunks proceed with the verdict recorded. The sync itself never
+        fails because of the gate.
+        """
+
+        if self.guard is None or not self.guard.available or not rows:
+            return rows
+        guard = self.guard
+        semaphore = asyncio.Semaphore(_GUARD_CONCURRENCY)
+
+        async def one(row: KnowledgeChunk) -> GuardVerdict:
+            async with semaphore:
+                return await guard.check_document_text(row.text)
+
+        verdicts: list[GuardVerdict] = list(await asyncio.gather(*(one(row) for row in rows)))
+        active: list[KnowledgeChunk] = []
+        for row, verdict in zip(rows, verdicts, strict=True):
+            if verdict.decision == GuardDecision.ALLOW:
+                active.append(row)
+                continue
+            row.guard = verdict.audit()
+            if verdict.decision == GuardDecision.FLAG:
+                self.stats["chunks_flagged"] += 1
+                active.append(row)
+            elif verdict.decision == GuardDecision.BLOCK:
+                self.stats["chunks_blocked"] += 1
+            else:
+                self.stats["chunks_guard_unavailable"] += 1
+        return active
 
     async def _extract_chunks(
         self, config: CompanyAgentConfig, rows: list[KnowledgeChunk]

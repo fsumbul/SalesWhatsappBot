@@ -486,23 +486,41 @@ async def test_turn(
     saved = session.messages[-1].get("selection_state") if session.messages else None
     turn, selection_state, resume_prompt = preview_selection(config, saved, payload.text)
     handoff_requested = False
+    guard_verdict = None
     if turn is None:
         # Same GraphRAG retriever as the WhatsApp worker (ADR-002) so the web
         # test chat exercises the exact production candidate path. Test
         # sessions have no customer identity, so no memory graph is consulted.
         from src.modules.agents.grounded_audit import build_entailment_verifier
+
+        # Same guardrail gate as the WhatsApp worker (plan WP1).
+        from src.modules.guardrails.ports import TopicContext
+        from src.modules.guardrails.service import build_input_guard
+        from src.modules.guardrails.turns import guardrail_blocked_turn
         from src.modules.knowledge.service import (
             build_scoped_evidence_retriever,
             build_scoped_retriever,
         )
 
-        turn = await CompanyAgentRuntime(
-            config,
-            get_llm_client(),
-            fact_retriever=build_scoped_retriever(tenant_id=tid, agent_version_id=version.id),
-            evidence_retriever=build_scoped_evidence_retriever(tenant_id=tid),
-            entailment_verifier=build_entailment_verifier(),
-        ).reply(payload.text, history=history, context_fact_ids=context)
+        guard = build_input_guard()
+        blocked = None
+        if guard.available:
+            guard_verdict = await guard.check_customer_message(
+                payload.text,
+                history=[(m.role, m.content) for m in history[-4:]],
+                topic=TopicContext.from_config(config),
+            )
+            blocked = guardrail_blocked_turn(config, guard_verdict)
+        if blocked is not None:
+            turn = blocked
+        else:
+            turn = await CompanyAgentRuntime(
+                config,
+                get_llm_client(),
+                fact_retriever=build_scoped_retriever(tenant_id=tid, agent_version_id=version.id),
+                evidence_retriever=build_scoped_evidence_retriever(tenant_id=tid),
+                entailment_verifier=build_entailment_verifier(),
+            ).reply(payload.text, history=history, context_fact_ids=context)
         if resume_prompt:
             resume = as_turn(resume_prompt)
             handoff_requested = turn.action == CustomerReplyAction.HANDOFF
@@ -519,6 +537,7 @@ async def test_turn(
             "selection_state": selection_state,
             "handoff_requested": handoff_requested or turn.action == CustomerReplyAction.HANDOFF,
             "model": settings.llm_model,
+            "guardrail": guard_verdict.audit() if guard_verdict is not None else None,
             "latency_ms": round((time.monotonic() - started) * 1000),
         }
     )

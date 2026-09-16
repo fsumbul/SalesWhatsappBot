@@ -1667,6 +1667,20 @@ def safe_unknown_fact_turn(config: CompanyAgentConfig, reason: str | None = None
     )
 
 
+def safe_decline_turn(config: CompanyAgentConfig, reason: str | None = None) -> RuntimeTurn:
+    """Server-owned refusal (approved text, no facts); used by the guardrail gate."""
+
+    _require_runtime_config(config)
+    return RuntimeTurn(
+        action=CustomerReplyAction.DECLINE,
+        reply=_unknown_fact_reply(config, CustomerReplyAction.DECLINE),
+        fact_ids=(),
+        used_fallback=True,
+        response_source="fallback",
+        fallback_reason=reason,
+    )
+
+
 class CompanyAgentRuntime:
     """Execute a customer turn using an injected local LLM client.
 

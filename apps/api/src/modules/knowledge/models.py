@@ -150,6 +150,8 @@ class KnowledgeChunk(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
     subject_ids: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
     embedded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     extracted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Guardrail verdict (plan WP1): labels/scores only, never the chunk text.
+    guard: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
 
 class KnowledgeCandidate(Base, UUIDPrimaryKey, TenantScoped, Timestamped):

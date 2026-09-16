@@ -1,0 +1,15 @@
+{
+  "_meta": "UNVERIFIED: written from NVIDIA NIM documentation on 2026-09-16; confirm against the running container's GET /v1/openapi.json and replace with a recorded response.",
+  "id": "cmpl-4",
+  "object": "chat.completion",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "off-topic"
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

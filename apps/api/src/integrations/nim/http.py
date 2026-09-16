@@ -85,7 +85,9 @@ class NimHttp:
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
                 if status in {502, 503, 504}:
-                    raise NimUnavailableError(f"{self.name}: container not ready ({status})") from exc
+                    raise NimUnavailableError(
+                        f"{self.name}: container not ready ({status})"
+                    ) from exc
                 raise NimError(f"{self.name}: HTTP {status}") from exc
             except ValueError as exc:  # non-JSON body
                 raise NimError(f"{self.name}: response is not JSON") from exc

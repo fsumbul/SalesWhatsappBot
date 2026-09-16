@@ -215,6 +215,34 @@ class Settings(BaseSettings):
     nim_timeout_seconds: float = 10.0
     nim_public_host_denylist: str = "integrate.api.nvidia.com,ai.api.nvidia.com,api.nvcf.nvidia.com"
 
+    # --- Guardrail gate (plan WP1) ---
+    # Customer messages are classified before any model call, document chunks
+    # before extraction. ``closed`` means an unreachable classifier yields the
+    # approved safe turn instead of calling the model (mandatory in
+    # production). Topic control only flags by default: Turkish is not an
+    # officially supported language of the NemoGuard models and a wrongly
+    # blocked sales question costs more than a tolerated off-topic one.
+    guardrail_enabled: bool = False
+    guardrail_fail_mode: Literal["closed", "open"] = "closed"
+    guardrail_timeout_seconds: float = 2.5
+    guardrail_checks: str = "jailbreak,content_safety,topic_control"
+    guardrail_ingest_enabled: bool = True
+    guardrail_jailbreak_base_url: str = ""
+    guardrail_jailbreak_api_key: str = ""
+    # Signed score in [-1, 1]; positive means jailbreak. Raise to demand margin.
+    guardrail_jailbreak_threshold: float = 0.0
+    guardrail_content_safety_base_url: str = ""
+    guardrail_content_safety_model: str = "llama-3.1-nemoguard-8b-content-safety"
+    guardrail_content_safety_api_key: str = ""
+    # Aegis categories that block on their own; S9 (PII), S12 (profanity),
+    # S13/S14 and the political/advice categories only flag.
+    guardrail_block_categories: str = "S1,S2,S3,S4,S5,S6,S7,S8,S10,S11,S15,S16,S17,S22"
+    guardrail_topic_control_base_url: str = ""
+    guardrail_topic_control_model: str = "llama-3.1-nemoguard-8b-topic-control"
+    guardrail_topic_control_api_key: str = ""
+    guardrail_topic_control_mode: Literal["flag", "block"] = "flag"
+    guardrail_topic_min_tokens: int = 3
+
     # --- Knowledge retrieval / GraphRAG (ADR-002) ---
     # ``lexical`` keeps the in-process keyword retriever inside
     # ``company_runtime``. ``falkordb`` turns on the hybrid graph + vector +
@@ -306,6 +334,14 @@ class Settings(BaseSettings):
     def nim_public_host_denylist_list(self) -> list[str]:
         return [h.strip().lower() for h in self.nim_public_host_denylist.split(",") if h.strip()]
 
+    @property
+    def guardrail_checks_list(self) -> list[str]:
+        return [c.strip().lower() for c in self.guardrail_checks.split(",") if c.strip()]
+
+    @property
+    def guardrail_block_categories_list(self) -> list[str]:
+        return [c.strip().upper() for c in self.guardrail_block_categories.split(",") if c.strip()]
+
     def model_endpoints(self) -> list[ModelEndpoint]:
         """Every configured model service that may see customer or tenant data.
 
@@ -329,6 +365,38 @@ class Settings(BaseSettings):
                     kind="embedding",
                 )
             )
+        if self.guardrail_enabled:
+            checks = self.guardrail_checks_list
+            if "jailbreak" in checks:
+                endpoints.append(
+                    ModelEndpoint(
+                        name="GUARDRAIL_JAILBREAK_BASE_URL",
+                        role="guardrail.jailbreak",
+                        url=self.guardrail_jailbreak_base_url,
+                        kind="classify",
+                        nim=True,
+                    )
+                )
+            if "content_safety" in checks:
+                endpoints.append(
+                    ModelEndpoint(
+                        name="GUARDRAIL_CONTENT_SAFETY_BASE_URL",
+                        role="guardrail.content_safety",
+                        url=self.guardrail_content_safety_base_url,
+                        kind="llm",
+                        nim=True,
+                    )
+                )
+            if "topic_control" in checks:
+                endpoints.append(
+                    ModelEndpoint(
+                        name="GUARDRAIL_TOPIC_CONTROL_BASE_URL",
+                        role="guardrail.topic_control",
+                        url=self.guardrail_topic_control_base_url,
+                        kind="llm",
+                        nim=True,
+                    )
+                )
         return endpoints
 
     def nim_endpoints(self) -> list[ModelEndpoint]:
@@ -375,6 +443,8 @@ class Settings(BaseSettings):
         if self.knowledge_backend == "falkordb" and self.embedding_provider != "ollama":
             errors.append("EMBEDDING_PROVIDER must be ollama when KNOWLEDGE_BACKEND=falkordb")
         errors.extend(self.model_endpoint_boundary_errors())
+        if self.guardrail_enabled and self.guardrail_fail_mode != "closed":
+            errors.append("GUARDRAIL_FAIL_MODE must be closed in production")
         version = self.whatsapp_graph_api_version
         if not (
             version.startswith("v")
