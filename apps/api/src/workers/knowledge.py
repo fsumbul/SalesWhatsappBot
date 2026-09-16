@@ -96,6 +96,7 @@ async def _sync_knowledge_source(tenant_id: UUID, source_id: UUID) -> dict[str, 
     from src.modules.knowledge.ingest import KnowledgeIngestService
     from src.modules.knowledge.ocr import build_document_ocr
     from src.modules.knowledge.service import build_evidence_graph
+    from src.modules.knowledge.vision import build_media_verifier
 
     async with session_scope(tenant_id) as session:
         service = KnowledgeIngestService(
@@ -104,6 +105,7 @@ async def _sync_knowledge_source(tenant_id: UUID, source_id: UUID) -> dict[str, 
             graph=build_evidence_graph(),
             guard=build_ingest_guard(),
             ocr=build_document_ocr(),
+            vision=build_media_verifier(),
         )
         result = await service.sync_source(tenant_id, source_id)
     logger.info("knowledge.source.synced", source_id=str(source_id), **{k: v for k, v in result.items() if k != "publish"})

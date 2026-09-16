@@ -261,6 +261,21 @@ class Settings(BaseSettings):
     knowledge_ocr_max_pages_per_document: int = 60
     knowledge_ocr_min_confidence: float = 0.3
 
+    # --- Vision verification of product images (plan WP3) ---
+    # A vision-language NIM on the operator's GPU host confirms that a
+    # discovered image shows an approved offering, may override the guessed
+    # subject and proposes Turkish alt text (sanitized before use). Disabled
+    # keeps the heuristic-only discovery of ADR-003.
+    knowledge_vision_enabled: bool = False
+    knowledge_vision_base_url: str = ""
+    knowledge_vision_api_key: str = ""
+    knowledge_vision_model: str = "meta/llama-3.2-11b-vision-instruct"
+    knowledge_vision_schema_mode: Literal["nvext_guided_json", "response_format"] = (
+        "nvext_guided_json"
+    )
+    knowledge_vision_min_confidence: float = 0.6
+    knowledge_vision_max_edge: int = 1024
+
     # --- Knowledge retrieval / GraphRAG (ADR-002) ---
     # ``lexical`` keeps the in-process keyword retriever inside
     # ``company_runtime``. ``falkordb`` turns on the hybrid graph + vector +
@@ -435,6 +450,16 @@ class Settings(BaseSettings):
                         nim=True,
                     )
                 )
+        if self.knowledge_vision_enabled:
+            endpoints.append(
+                ModelEndpoint(
+                    name="KNOWLEDGE_VISION_BASE_URL",
+                    role="knowledge.vision",
+                    url=self.knowledge_vision_base_url,
+                    kind="vision",
+                    nim=True,
+                )
+            )
         return endpoints
 
     def nim_endpoints(self) -> list[ModelEndpoint]:

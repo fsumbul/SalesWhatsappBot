@@ -231,3 +231,5 @@ class KnowledgeMedia(Base, UUIDPrimaryKey, TenantScoped, Timestamped):
         ForeignKey("agent_versions.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Vision verification trail (plan WP3): decision/confidence/model, no pixels.
+    verification: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)

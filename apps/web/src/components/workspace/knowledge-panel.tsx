@@ -317,6 +317,13 @@ export default function KnowledgePanel({
                 <span className={styles.statusPill}>{label(m.status)}</span>{" "}
                 <small>
                   {m.subject_id ?? "ürün seçilmedi"} · {m.width}×{m.height}
+                  {m.verification?.status === "verified" && (
+                    <span title={`Görsel modeli: ${m.verification.model ?? ""}`}>
+                      {" "}· Doğrulandı · {(m.verification.confidence ?? 0).toFixed(2)}
+                      {m.verification.decision === "overridden" ? " (ürün düzeltildi)" : ""}
+                    </span>
+                  )}
+                  {m.verification?.status === "unavailable" && <span> · Görsel modeli kapalı</span>}
                 </small>
               </div>
               {canEdit && (

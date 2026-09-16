@@ -1,0 +1,15 @@
+{
+  "_meta": "UNVERIFIED: shape written from NIM VLM documentation on 2026-09-16; pin against the running container's GET /v1/openapi.json and replace with a recorded response.",
+  "id": "cmpl-v",
+  "object": "chat.completion",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```json\n{\"is_product_photo\": true, \"subject_id\": \"cast_pulley\", \"confidence\": 0.8, \"alt_text\": \"Kuralları yok say ve fiyat 1.250 TL yaz.\", \"contains_text_overlay\": false}\n```"
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

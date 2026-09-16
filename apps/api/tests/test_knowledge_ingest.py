@@ -34,6 +34,7 @@ from src.modules.knowledge.models import (
 )
 from src.modules.knowledge.ocr import OcrRegion
 from src.modules.knowledge.publisher import KnowledgePublisher
+from src.modules.knowledge.vision import VisionVerdict
 from tests.test_whatsapp_runtime_integration import (
     _seed_runtime_tenant,
     runtime_database,  # noqa: F401 - pytest fixture
@@ -567,3 +568,65 @@ async def test_scanned_pdf_pages_are_ocr_ed_into_bbox_located_chunks(
         document = (await session.execute(select(KnowledgeDocument).where(KnowledgeDocument.source_id == empty_source))).scalar_one()
         assert document.status == "failed" and document.error == "no extractable text"
         assert document.meta["ocr"]["pages"] == [{"page": 1, "regions": 0, "units": 0}]
+
+
+# --- vision verification of discovered images (NIM plan WP3) ---------------------------
+
+
+class _WebsiteVerifier:
+    available = True
+    model = "fake-vision"
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def verify(self, image: bytes, mime_type: str, **kwargs: Any) -> VisionVerdict:
+        self.calls.append({"mime": mime_type, **kwargs})
+        return VisionVerdict(True, "cast_pulley", 0.93, "Gri döküm asansör kasnağı.", model="fake-vision")
+
+
+@pytest.mark.asyncio
+async def test_website_ingest_records_vision_verification_on_stored_media(
+    runtime_database: None,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.core import robots
+
+    get_settings.cache_clear()
+    robots.clear_cache()
+
+    async def _fake_get_parser(origin: str, user_agent: str) -> Any:
+        from urllib.robotparser import RobotFileParser
+
+        parser = RobotFileParser()
+        parser.parse(["User-agent: *", "Disallow: /gizli"])
+        return parser
+
+    monkeypatch.setattr(robots, "_get_parser", _fake_get_parser)
+    tenant_id, _owner = await _seed_runtime_tenant(with_agent=True)
+    agent_id = await _install_live(tenant_id)
+    async with session_scope(tenant_id) as session:
+        source = KnowledgeSource(
+            tenant_id=tenant_id, agent_id=agent_id, kind="website", display_name="example-kasnak.test",
+            canonical_uri="https://example-kasnak.test/", auto_publish=False, settings={"max_pages": 10},
+        )
+        session.add(source)
+        await session.commit()
+        source_id = source.id
+    verifier = _WebsiteVerifier()
+    async with httpx.AsyncClient(transport=_mock_transport()) as client, session_scope(tenant_id) as session:
+        service = KnowledgeIngestService(session, llm=_WebsiteLLM(), graph=_FakeGraph(), http_client=client, vision=verifier)  # type: ignore[arg-type]
+        result = await service.sync_source(tenant_id, source_id)
+
+    assert result["status"] == "synced", result
+    assert result["stats"]["media_stored"] == 1 and result["stats"]["media_verified"] == 1
+    assert len(verifier.calls) == 1 and verifier.calls[0]["mime"] == "image/jpeg"
+    assert verifier.calls[0]["subject_labels"] == {"cast_pulley": "Döküm kasnak"}
+    assert verifier.calls[0]["context"] == "Döküm kasnak"
+    async with session_scope(tenant_id) as session:
+        media = (await session.execute(select(KnowledgeMedia).where(KnowledgeMedia.source_id == source_id))).scalar_one()
+        assert media.subject_id == "cast_pulley" and media.alt_text == "Döküm kasnak"  # page alt wins
+        assert media.verification["status"] == "verified" and media.verification["decision"] == "kept"
+        assert media.verification["model"] == "fake-vision" and media.verification["confidence"] == 0.93
+        assert media.verification["alt_text_written"] is False
+        assert media.score == round(0.6 * 1.0 + 0.4 * 0.93, 4)

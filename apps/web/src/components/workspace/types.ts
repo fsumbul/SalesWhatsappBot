@@ -107,6 +107,14 @@ export type KnowledgeMedia = {
   score: number;
   status: string;
   asset_id: string | null;
+  /** Vision verification trail (NIM plan WP3); empty object when the model is off. */
+  verification: {
+    status?: "verified" | "unavailable";
+    decision?: "kept" | "overridden" | "rejected";
+    confidence?: number;
+    model?: string;
+    flags?: string[];
+  };
   public_url: string | null;
 };
 export type Session = {

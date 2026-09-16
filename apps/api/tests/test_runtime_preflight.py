@@ -19,7 +19,7 @@ def _healthy_result() -> dict[str, object]:
             "tenant_found": True,
             "tenant_status": "active",
             "tenant_waba_bound": True,
-            "alembic_revision": "c8d5e0f1a024",
+            "alembic_revision": "d9e6f1a2b035",
             "runtime_table_present": True,
             "runtime_role_superuser": False,
             "runtime_role_bypassrls": False,

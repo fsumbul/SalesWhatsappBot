@@ -36,6 +36,7 @@ from .models import (
 )
 from .ocr import DocumentOcr, ocr_pdf_pages, pages_without_text
 from .publisher import KnowledgePublisher, PublishReport
+from .vision import MediaVerifier, verify_media
 
 logger = structlog.get_logger(__name__)
 _MAX_CHUNKS_PER_SYNC = 400
@@ -95,10 +96,13 @@ class KnowledgeIngestService:
         http_client: httpx.AsyncClient | None = None,
         guard: InputGuard | None = None,
         ocr: DocumentOcr | None = None,
+        vision: MediaVerifier | None = None,
     ) -> None:
         self.session = session
         self.llm = llm
         self.graph = graph
+        # Vision verification (plan WP3): confirms/overrides the image subject.
+        self.vision = vision
         # OCR chain (plan WP2): scanned PDF pages become bbox-located units.
         self.ocr = ocr
         # Guardrail gate (plan WP1): blocked chunks are stored with their
@@ -578,6 +582,25 @@ class KnowledgeIngestService:
             if duplicate is not None:
                 per_subject[subject] += 1
                 continue
+            decision = await verify_media(
+                candidate,
+                image,
+                subject_labels=all_labels,
+                verifier=self.vision,
+                min_confidence=self.settings.knowledge_vision_min_confidence,
+                max_edge=self.settings.knowledge_vision_max_edge,
+                context=page.title or "",
+            )
+            if decision.verification:
+                self.stats["media_verified"] += 1
+            if not decision.store:
+                self.stats["media_rejected_vision"] += 1
+                continue
+            if decision.subject_id is not None and decision.subject_id != subject:
+                self.stats["media_subject_overridden"] += 1
+                subject = decision.subject_id
+                if per_subject[subject] >= self.settings.knowledge_media_max_per_subject:
+                    continue
             self.session.add(
                 KnowledgeMedia(
                     tenant_id=tenant_id,
@@ -591,8 +614,9 @@ class KnowledgeIngestService:
                     size_bytes=len(image.content),
                     content=image.content,
                     subject_id=subject,
-                    alt_text=(candidate.alt or candidate.context or None),
-                    score=candidate.score,
+                    alt_text=decision.alt_text,
+                    score=decision.score,
+                    verification=dict(decision.verification),
                 )
             )
             per_subject[subject] += 1
