@@ -31,3 +31,14 @@
 
 - **Compliance ASLA "unknown = allow" yapmaz.** İYS erişimi yoksa uyarı log'lanır ama TR gönderimi güvenli sayılmaz — production'da İYS partneri zorunludur.
 - Cooldown süresini sektöre göre uzatmak isterseniz `_COOLDOWN_DAYS` sabitini sektöre bağlı hale getirin.
+
+## NIM harness ajanları ve veri sınırı (ADR-004)
+
+- Guardrail, OCR, görsel doğrulama, embedding/rerank ve rol bazlı LLM çağrıları yalnız operatörün
+  kendi GPU sunucusundaki konteynerlere gider; public build.nvidia.com uçları üretimde reddedilir.
+- Guardrail kararları (`agent_runtime_jobs.audit.guardrail`, `knowledge_chunks.guard`) ve görsel
+  doğrulama izi (`knowledge_media.verification`) yalnız etiket/skor/model/süre içerir; müşteri
+  metni, görsel veya sağlayıcı yanıt gövdesi saklanmaz.
+- Bloklanan mesaj için müşteriye yalnız onaylı ret/handoff metni gider; ham model çıktısı hiçbir
+  koşulda müşteriye ulaşmaz.
+

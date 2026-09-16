@@ -90,6 +90,25 @@ Sık sorunlar:
 - `EMBEDDING_PROVIDER must be ollama when KNOWLEDGE_BACKEND=falkordb` → üretim boot kapısı; iki ayarı birlikte verin.
 - macOS'ta aynı makinede Docker içinde bir Ollama da çalışıyorsa `localhost:11434` IPv6 üzerinden konteynere gidebilir; `http://127.0.0.1:11434` kullanın.
 
+## NVIDIA NIM harness ajanları (ADR-004)
+
+Tüm NIM özellikleri `.env`'de kapalı başlar; yalnız etkinleştirdiğiniz özelliğin `*_BASE_URL`
+alanlarını doldurun. Konteynerler GPU sunucusunda `infra/docker-compose.nim.yml` ile çalışır
+(`docs/model-sunucusu-rehberi.md` §10).
+
+| Özellik | Ayar | Operasyon notu |
+|---|---|---|
+| Guardrail | `GUARDRAIL_ENABLED=true`, `GUARDRAIL_*_BASE_URL` | Üretimde `GUARDRAIL_FAIL_MODE=closed` zorunlu; bloklu tur `job.audit.guardrail` + `model=guardrail`; konteyner düşerse turlar güvenli handoff olur — alarm kur |
+| OCR/tablo | `KNOWLEDGE_OCR_ENABLED=true`, `KNOWLEDGE_OCR_BASE_URL`, isteğe bağlı `KNOWLEDGE_LAYOUT_BASE_URL` | Daha önce "no extractable text" olan PDF'ler bir sonraki sync'te yeniden işlenir; rapor `knowledge_documents.meta.ocr` |
+| Vision | `KNOWLEDGE_VISION_ENABLED=true`, `KNOWLEDGE_VISION_BASE_URL` | Sonuç `knowledge_media.verification`; model kapalıyken heuristik davranış aynen |
+| Embedding | `EMBEDDING_PROVIDER=nim`, `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL=nvidia/nemotron-3-embed-1b`, `EMBEDDING_DIMENSION=2048` | Profil değişince `kb_*` kendini kurar; `make knowledge-reembed TENANT=<slug>` ile `kn_*` yeniden embed edilir (uyuşmazlıkta ingest grafa yazmaz, `stats.graph_profile_mismatch`) |
+| Rerank | `RERANKER_PROVIDER=nim`, `RERANKER_BASE_URL` | Skorlar [0,1]; entailment eşiğini `experiments/nim/retrieval_ab.py` raporuna göre ayarlayın |
+| Rol LLM | `LLM_ROLE_<ROLE>_*` | `customer` her zaman `LLM_*`; NIM için `..._SCHEMA_MODE=nvext_guided_json`; `job.audit.models` hangi modelin kullanıldığını gösterir |
+
+Kontrol: `python scripts/runtime_preflight.py --tenant-slug <tenant> --require-llm --require-nim`
+(`result.nim` her uç için `ready`). Sık sorun: `must not point at a public model endpoint` →
+`integrate.api.nvidia.com` gibi bir host ayarlanmış; yalnız özel ağ adresleri kabul edilir.
+
 ## Taşınabilir model sunucusu kurulumu
 
 Uygulama, modelin Arch Linux'ta veya aynı makinede olmasını gerektirmez.

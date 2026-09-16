@@ -80,7 +80,7 @@ apps/web/src/components/workspace/knowledge-panel.tsx  Bilgi kaynakları sekmesi
 
 ## 5. Açık işler
 
-- OCR'lı taranmış PDF'ler (yalnızca metin katmanı okunur).
+- ~~OCR'lı taranmış PDF'ler (yalnızca metin katmanı okunur).~~ **2026-09-16 (ADR-004/WP2):** metin katmanı boş sayfalar pypdfium2 ile rasterize edilip NeMo Retriever page-elements/OCR/table-structure zincirinden geçer; locator `dosya.pdf#page=N&bbox=…`. Ayrıca chunk'lar guardrail'den geçer (WP1) ve görseller vision modeliyle doğrulanır (WP3); alt metin `sanitize_alt_text` ile temizlenir.
 - Periyodik yeniden tarama (`sync_policy` kaydedilir; beat girdisi henüz yok, `POST /sources/{id}/sync` ile tetiklenir).
 - JavaScript ile render edilen siteler için Playwright fallback (mevcut lead crawler'ından uyarlanabilir).
 - Chunk kanıtı için LIMITATION_NOTICE davranışının Türkçe golden set ile ölçülmesi (`experiments/`).

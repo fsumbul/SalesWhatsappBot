@@ -447,3 +447,19 @@ WP0 ──► WP1 ──► WP2 ──► WP3 ──► WP4 ──► WP5 ──
 Her WP sonunda: `make lint && make test`, ilgili `experiments/nim/*-report.json`, ADR/architecture notu
 ve `docs/runbook.md`'ye ayar/operasyon satırı. WP1–WP5 tamamlandığında ADR-004
 ("NIM harness ajanları ve veri sınırı") yazılır; WP6 ayrı ADR gerektirmez.
+
+## 10. Uygulama durumu (2026-09-16)
+
+| WP | Commit | Durum |
+|---|---|---|
+| WP0 | `d05f07f` | Uygulandı: NimHttp, ModelEndpoint kaydı + sınır kapısı, compose profili, preflight `--require-nim` |
+| WP1 | `8ae1e7e` | Uygulandı: guardrail kapısı (worker + workspace + ingest), migration `c8d5e0f1a024`, golden set 128 kayıt |
+| WP2 | `cbdcc06` | Uygulandı: OCR/tablo zinciri, `EXTRACTOR_VERSION 2026.09.2`, pypdfium2 |
+| WP3 | `5fee08e` | Uygulandı: vision doğrulama, migration `d9e6f1a2b035`, panel rozeti |
+| WP4 | `da7eee7` | Uygulandı: NIM embedding/rerank, profil parmak izi, `knowledge-reembed`, entailment golden 40 çift |
+| WP5 | `a3924a1` | Uygulandı: `get_llm_client(role)`, `nvext.guided_json`, `generation_llm`, audit `models` |
+| WP6 | — | Ayrı onay bekliyor |
+
+GPU sunucusu bu oturumda erişilebilir olmadığı için `tests/fixtures/nim/*.json` "UNVERIFIED" ve
+`experiments/nim/*-report.json` üretilmedi; scriptler ve kabul eşikleri hazır.
+
