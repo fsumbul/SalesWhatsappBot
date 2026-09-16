@@ -4,6 +4,8 @@ from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid5
 
+from src.modules.discovery.models import Lead, LeadContact
+
 from . import (
     planner,
     service,
@@ -76,8 +78,8 @@ async def read(
             }
         conv = await workflow_inbox.own(db, user, cid)
         if step.tool == "delivery":
-            contact = await db.get(workflow_inbox.LeadContact, conv.contact_id)
-            lead = await db.get(workflow_inbox.Lead, conv.lead_id)
+            contact = await db.get(LeadContact, conv.contact_id)
+            lead = await db.get(Lead, conv.lead_id)
             return {
                 "subject": {
                     "name": lead.person_name if lead else "",

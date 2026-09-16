@@ -202,6 +202,9 @@ async def submit(
         row.fields
     ) != row.state.get("submission"):
         raise HTTPException(409, "Önizleme veya WhatsApp bağlantısı değişti. Yeniden inceleyin.")
+    waba_id = sender.business_account_id
+    if not waba_id:
+        raise HTTPException(409, "WhatsApp iş hesabı bağlantısı eksik. Yeniden inceleyin.")
     submission = row.state["submission"]
     row.status, row.step = "running", "result"
     row.result = {
@@ -215,7 +218,7 @@ async def submit(
     try:
         response = await WhatsAppClient(
             phone_number_id=sender.phone_number_id
-        ).create_template_once(sender.business_account_id, submission)
+        ).create_template_once(waba_id, submission)
         if not str(response.get("id", "")).isdigit():
             raise ValueError("Missing Meta template ID")
         status = str(response.get("status", "PENDING"))

@@ -317,7 +317,7 @@ async def execute(
                 ),
             }
             payload = bounded_context(payload)
-            truncated = truncated or payload.get("data_truncated", False)
+            truncated = truncated or bool(payload.get("data_truncated", False))
             step = await asyncio.wait_for(model(SYSTEM, payload, TaskStep), timeout=remaining)
             attempts += 1
             if step.goal >= len(goals):

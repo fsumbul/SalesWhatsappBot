@@ -162,3 +162,32 @@ yeniden başlatmak yeterlidir.
 - [ ] `runtime_preflight.py --require-llm` geçti.
 - [ ] Önceki üç LLM ayarı geri dönüş için saklandı.
 - [ ] İlk üretim saatinde loglar ve fallback oranı izlenecek.
+
+## 10. NVIDIA NIM harness ajanları (GPU sunucusu)
+
+Guardrail, OCR/tablo, görsel doğrulama, embedding/rerank, arka plan LLM ve ses/çeviri
+adaptörleri NVIDIA NIM konteynerlerine bağlanır. Kural değişmez: **müşteri mesajı, tenant
+dokümanı/görseli/ses notu yalnızca sizin işlettiğiniz GPU sunucusundaki konteynere gider.**
+build.nvidia.com "Free Endpoint" (`integrate.api.nvidia.com` vb.) girdileri kaydeder; uygulama
+üretimde bu host'lara işaret eden her ayarı reddeder (`NIM_PUBLIC_HOST_DENYLIST`,
+`runtime_preflight.py` → `production_configuration_errors`).
+
+Kurulum (Linux + NVIDIA sürücü + NVIDIA Container Toolkit):
+
+```bash
+# GPU sunucusunda; NGC_API_KEY yalnız bu sunucunun .env dosyasında
+NIM_BIND_ADDRESS=10.20.30.40 docker compose -f infra/docker-compose.nim.yml --profile nim up -d nim-guard-jailbreak
+curl -s http://10.20.30.40:8011/v1/health/ready
+curl -s http://10.20.30.40:8011/v1/openapi.json | head -c 400
+```
+
+- Portlar yalnız özel arayüze (`NIM_BIND_ADDRESS`) bağlanır; uygulama sunucusu VPN/özel VLAN
+  veya mevcut Ollama tüneli deseniyle erişir. İnternete açık, kimlik doğrulamasız NIM portu bırakmayın.
+- Her konteynerin gerçek istek/yanıt sözleşmesi `GET /v1/openapi.json` ile doğrulanır; adaptör
+  fixture'ları (`apps/api/tests/fixtures/nim/`) bu çıktıya göre güncellenir.
+- Uygulama tarafında yalnız etkinleştirdiğiniz özelliğin `*_BASE_URL` alanlarını doldurun; boş
+  alan = özellik kapalı. Ortak `NIM_API_KEY` isteğe bağlıdır.
+- Üretim kapısı: `python scripts/runtime_preflight.py --tenant-slug <tenant> --require-llm --require-nim`
+  her yapılandırılmış NIM ucu `ready` değilse çıkış kodu 1 verir.
+- VRAM planı ve servis/port listesi `infra/docker-compose.nim.yml` başındaki yorumdadır; iş paketi
+  sırasına göre kademeli açın (plan: `docs/nvidia-nim-harness-agents-plan-2026-09-16.md` §7).

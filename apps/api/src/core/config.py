@@ -6,8 +6,10 @@ All configuration goes through `Settings`. Do NOT read env vars directly elsewhe
 import math
 import re
 from collections import Counter
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, PostgresDsn, RedisDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -70,6 +72,38 @@ def _app_secret_key_security(value: str) -> dict[str, bool | int]:
         "low_entropy_detected": low_entropy_detected,
         "production_acceptable": not placeholder_detected and not low_entropy_detected,
     }
+
+
+ModelEndpointKind = Literal[
+    "llm", "embedding", "rerank", "classify", "ocr", "layout", "vision", "asr", "translate"
+]
+
+
+@dataclass(frozen=True)
+class ModelEndpoint:
+    """One model service that receives customer or tenant data.
+
+    ``name`` is the environment variable that configures it, ``role`` a stable
+    key used by preflight output and audit trails, ``nim`` whether the service
+    is a self-hosted NVIDIA NIM container (which exposes ``/v1/health/ready``).
+    """
+
+    name: str
+    role: str
+    url: str
+    kind: ModelEndpointKind
+    nim: bool = False
+
+    @property
+    def host(self) -> str:
+        return (urlparse(self.url).hostname or "").lower()
+
+
+def host_is_denied(host: str, denylist: list[str]) -> bool:
+    """Exact or parent-domain match against the public-endpoint denylist."""
+
+    host = host.lower().rstrip(".")
+    return any(host == denied or host.endswith("." + denied) for denied in denylist if denied)
 
 
 class Settings(BaseSettings):
@@ -169,6 +203,18 @@ class Settings(BaseSettings):
     # every hybrid tenant behaves exactly like strict.
     hybrid_generation_enabled: bool = True
 
+    # --- NVIDIA NIM harness agents (self-hosted) ---
+    # Guardrail, OCR, vision, embedding, rerank, ASR and translation adapters
+    # talk to NIM containers the operator runs on their own GPU host. The
+    # public build.nvidia.com trial endpoints log their inputs, so every
+    # endpoint that receives customer or tenant data is refused when it points
+    # at one of the hosts below (``model_endpoint_boundary_errors``). The
+    # shared key is optional; per-feature ``*_API_KEY`` fields take precedence.
+    # See docs/nvidia-nim-harness-agents-plan-2026-09-16.md.
+    nim_api_key: str = ""
+    nim_timeout_seconds: float = 10.0
+    nim_public_host_denylist: str = "integrate.api.nvidia.com,ai.api.nvidia.com,api.nvcf.nvidia.com"
+
     # --- Knowledge retrieval / GraphRAG (ADR-002) ---
     # ``lexical`` keeps the in-process keyword retriever inside
     # ``company_runtime``. ``falkordb`` turns on the hybrid graph + vector +
@@ -256,6 +302,54 @@ class Settings(BaseSettings):
 
         return _app_secret_key_security(self.app_secret_key)
 
+    @property
+    def nim_public_host_denylist_list(self) -> list[str]:
+        return [h.strip().lower() for h in self.nim_public_host_denylist.split(",") if h.strip()]
+
+    def model_endpoints(self) -> list[ModelEndpoint]:
+        """Every configured model service that may see customer or tenant data.
+
+        Feature packages append their endpoints here so the boundary gate and
+        the preflight probe never fall out of sync with the settings.
+        """
+
+        endpoints: list[ModelEndpoint] = []
+        if self.llm_provider in {"ollama", "chat_compatible"}:
+            endpoints.append(
+                ModelEndpoint(
+                    name="LLM_BASE_URL", role="llm.customer", url=self.llm_base_url, kind="llm"
+                )
+            )
+        if self.embedding_provider:
+            endpoints.append(
+                ModelEndpoint(
+                    name="EMBEDDING_BASE_URL",
+                    role="embedding",
+                    url=self.embedding_base_url or self.llm_base_url,
+                    kind="embedding",
+                )
+            )
+        return endpoints
+
+    def nim_endpoints(self) -> list[ModelEndpoint]:
+        return [endpoint for endpoint in self.model_endpoints() if endpoint.nim]
+
+    def model_endpoint_boundary_errors(self) -> list[str]:
+        """Names of endpoints that are missing or point at a public trial host."""
+
+        errors: list[str] = []
+        denylist = self.nim_public_host_denylist_list
+        for endpoint in self.model_endpoints():
+            if not endpoint.url.strip():
+                errors.append(f"{endpoint.name} is required")
+                continue
+            if host_is_denied(endpoint.host, denylist):
+                errors.append(
+                    f"{endpoint.name} must not point at a public model endpoint "
+                    "(customer and tenant data stay on self-hosted services)"
+                )
+        return errors
+
     def production_runtime_errors(self) -> list[str]:
         """Return only missing/invalid key names, never secret values."""
 
@@ -280,6 +374,7 @@ class Settings(BaseSettings):
             errors.append("LLM_PROVIDER must be ollama or chat_compatible")
         if self.knowledge_backend == "falkordb" and self.embedding_provider != "ollama":
             errors.append("EMBEDDING_PROVIDER must be ollama when KNOWLEDGE_BACKEND=falkordb")
+        errors.extend(self.model_endpoint_boundary_errors())
         version = self.whatsapp_graph_api_version
         if not (
             version.startswith("v")

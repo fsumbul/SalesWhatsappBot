@@ -92,3 +92,56 @@ def test_invalid_graph_api_version_is_rejected() -> None:
     errors = _settings(whatsapp_graph_api_version="latest").production_runtime_errors()
 
     assert "WHATSAPP_GRAPH_API_VERSION must look like v20.0" in errors
+
+
+# --- NIM data-boundary gate (docs/nvidia-nim-harness-agents-plan-2026-09-16.md §3.1) ---
+
+
+def test_model_endpoint_registry_lists_configured_services() -> None:
+    settings = _settings(embedding_provider="ollama", embedding_base_url="")
+
+    endpoints = settings.model_endpoints()
+
+    assert [e.role for e in endpoints] == ["llm.customer", "embedding"]
+    # An empty embedding base URL derives the Ollama root from LLM_BASE_URL.
+    assert endpoints[1].url == settings.llm_base_url
+    assert endpoints[1].host == "127.0.0.1"
+    assert settings.nim_endpoints() == []
+    assert settings.production_runtime_errors() == []
+
+
+def test_public_trial_hosts_are_refused_for_customer_data_endpoints() -> None:
+    errors = _settings(
+        llm_provider="chat_compatible",
+        llm_base_url="https://integrate.api.nvidia.com/v1",
+    ).production_runtime_errors()
+
+    assert any(e.startswith("LLM_BASE_URL must not point at a public model endpoint") for e in errors)
+    assert all("integrate.api.nvidia.com" not in e for e in errors)
+
+
+def test_denylist_matches_subdomains_but_not_lookalikes() -> None:
+    from src.core.config import host_is_denied
+
+    denylist = _settings().nim_public_host_denylist_list
+    assert host_is_denied("api.nvcf.nvidia.com", denylist)
+    assert host_is_denied("eu.integrate.api.nvidia.com", denylist)
+    assert not host_is_denied("gpu.internal", denylist)
+    assert not host_is_denied("notintegrate.api.nvidia.com", denylist)
+
+    errors = _settings(
+        embedding_provider="ollama",
+        embedding_base_url="https://ai.api.nvidia.com/v1",
+    ).production_runtime_errors()
+    assert any(e.startswith("EMBEDDING_BASE_URL must not point at") for e in errors)
+
+
+def test_boundary_gate_is_production_only() -> None:
+    settings = _settings(
+        app_env="development",
+        llm_provider="chat_compatible",
+        llm_base_url="https://integrate.api.nvidia.com/v1",
+    )
+    assert settings.production_runtime_errors() == []
+    # The registry itself still reports the violation for tooling.
+    assert settings.model_endpoint_boundary_errors()

@@ -8,7 +8,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from src.integrations.llm import LLMMessage, get_llm_client
+from src.integrations.llm import LLMMessage
+from src.integrations.llm import get_llm_client as get_llm_client
 from src.modules.selection.engine import normalize
 
 from .task_schema import TaskGoal

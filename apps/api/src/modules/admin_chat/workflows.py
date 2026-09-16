@@ -659,6 +659,8 @@ async def act(
     if action == "launch":
         if row.kind not in {"records", "conversation", "outreach"}:
             raise HTTPException(422, "Bu işlem bu eylemi desteklemiyor.")
+        kind: str
+        values: dict[str, str]
         if row.kind == "outreach":
             if payload.fields != {"operation": "create_template"}:
                 raise HTTPException(422, "Geçersiz şablon işlemi.")
