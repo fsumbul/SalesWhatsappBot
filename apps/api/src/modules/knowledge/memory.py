@@ -23,6 +23,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.core.runtime_timing import timed_stage
 from src.integrations.llm import LLMClient, LLMMessage
 from src.modules.agents.company_config import CompanyAgentConfig
 
@@ -248,6 +249,7 @@ class ConversationMemoryStore:
             )
         return True
 
+    @timed_stage("memory.load")
     async def customer_memory(
         self, *, tenant_id: UUID, key: str, subject_limit: int = 3, requirement_limit: int = 8
     ) -> CustomerMemory:

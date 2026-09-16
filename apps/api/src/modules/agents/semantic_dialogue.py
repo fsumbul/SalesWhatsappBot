@@ -17,6 +17,7 @@ from typing import Any, Literal
 from pydantic import Field
 
 from src.core.config import get_settings
+from src.core.runtime_timing import timed_stage
 from src.integrations.llm import LLMClient, LLMMessage
 from src.modules.knowledge.memory import CustomerMemory
 from src.modules.knowledge.ports import EvidenceSearch, KnowledgeRetriever, RetrievalResult
@@ -106,6 +107,7 @@ def planner_context(
     }
 
 
+@timed_stage("llm.intent")
 async def interpret_requests(
     config: CompanyAgentConfig,
     llm: LLMClient,
@@ -221,6 +223,7 @@ def request_candidates(
     return scoped[:8]
 
 
+@timed_stage("llm.evidence_decision")
 async def decide_evidence(
     config: CompanyAgentConfig, llm: LLMClient, plan: RequestPlan,
     ranked: dict[int, tuple[str, ...]] | None = None,
@@ -402,6 +405,7 @@ def compose_reply(
 _UNRETRIEVED_TOPICS = {"social", "visuals"}
 
 
+@timed_stage("retrieval.plan")
 async def retrieve_for_plan(
     retriever: KnowledgeRetriever | None,
     config: CompanyAgentConfig,
@@ -461,6 +465,7 @@ async def retrieve_for_plan(
     return ranked, audit
 
 
+@timed_stage("runtime.semantic")
 async def reply_to_requests(
     config: CompanyAgentConfig, llm: LLMClient, message: str, *,
     history: list[LLMMessage], context_fact_ids: tuple[str, ...],

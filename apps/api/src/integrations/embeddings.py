@@ -14,6 +14,7 @@ from typing import Literal, Protocol
 import httpx
 
 from src.core.config import get_settings
+from src.core.runtime_timing import timed_stage
 
 _BATCH_SIZE = 32
 
@@ -119,6 +120,7 @@ class OllamaEmbeddingClient:
             vectors.extend(await self._embed(texts[start : start + _BATCH_SIZE]))
         return vectors
 
+    @timed_stage("embedding.http")
     async def _embed(self, inputs: list[str]) -> list[list[float]]:
         if not inputs:
             return []
@@ -190,6 +192,7 @@ class NimEmbeddingClient:
             vectors.extend(await self._embed(texts[start : start + _BATCH_SIZE], "passage"))
         return vectors
 
+    @timed_stage("embedding.http")
     async def _embed(
         self, inputs: list[str], input_type: Literal["query", "passage"]
     ) -> list[list[float]]:

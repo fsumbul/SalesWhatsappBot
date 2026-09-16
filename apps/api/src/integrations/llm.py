@@ -24,6 +24,7 @@ from typing import Literal, Protocol
 import httpx
 
 from src.core.config import LLMRole, SchemaMode, Settings, get_settings
+from src.core.runtime_timing import timed_stage
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,7 @@ class LLMClient(Protocol):
 class NullLLMClient:
     """Every call raises instead of returning a fake/empty completion."""
 
+    @timed_stage("llm.http")
     async def complete(
         self,
         messages: list[LLMMessage],
@@ -92,6 +94,7 @@ class OllamaLLMClient:
         self.model = model
         self.num_ctx = num_ctx
 
+    @timed_stage("llm.http")
     async def complete(
         self,
         messages: list[LLMMessage],
@@ -179,6 +182,7 @@ class ChatCompletionsLLMClient:
         # JSON schema; ``response_format`` is the OpenAI-style contract.
         self.schema_mode: SchemaMode = schema_mode
 
+    @timed_stage("llm.http")
     async def complete(
         self,
         messages: list[LLMMessage],
@@ -324,6 +328,7 @@ class MockOnboardingLLMClient:
     beyond what AgentBuilderService already persists.
     """
 
+    @timed_stage("llm.http")
     async def complete(
         self,
         messages: list[LLMMessage],

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import UTC, datetime
+from time import perf_counter
 from typing import Any
 from uuid import UUID
 
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import get_settings
 from src.core.db import session_scope, set_tenant_context
+from src.core.runtime_timing import timing_event
 from src.integrations.whatsapp import WhatsAppClient
 from src.modules.agents.runtime_models import AgentRuntimeJob, AgentRuntimeJobStatus
 from src.modules.auth.models import Tenant, TenantStatus
@@ -217,6 +219,8 @@ async def receive_webhook(
     request: Request,
     x_hub_signature_256: str | None = Header(default=None, alias="X-Hub-Signature-256"),
 ) -> dict[str, Any]:
+    webhook_received_at = datetime.now(UTC)
+    webhook_started = perf_counter()
     raw = await request.body()
     settings = get_settings()
     wa = WhatsAppClient()
@@ -260,21 +264,33 @@ async def receive_webhook(
                     raise HTTPException(status_code=403, detail="sender binding mismatch")
                 await _handle_statuses(session, tenant.id, value.get("statuses", []))
                 runtime_job_ids.extend(
-                    await _handle_messages(session, tenant.id, value.get("messages", []))
+                    await _handle_messages(session, tenant.id, value.get("messages", []),
+                                           webhook_received_at=webhook_received_at)
                 )
         await session.commit()
 
     # The webhook must return to Meta quickly. Jobs are durable in Postgres;
     # the periodic recovery dispatcher will enqueue them if Redis is briefly
     # unavailable here.
+    webhook_persist_ms = round((perf_counter() - webhook_started) * 1000, 2)
     if runtime_job_ids:
         from src.workers.agent_runtime import process_runtime_job
 
         for job_id in dict.fromkeys(runtime_job_ids):
+            dispatch_started = perf_counter()
+            dispatch_status = "enqueued"
             try:
                 process_runtime_job.delay(str(tenant.id), str(job_id))
             except Exception as exc:
+                dispatch_status = "deferred"
                 logger.warning("agent_runtime_enqueue_deferred", job_id=str(job_id), error=str(exc))
+            finally:
+                if settings.runtime_timing_enabled:
+                    timing_event("runtime.webhook.timing", job_id=str(job_id),
+                                webhook_received_at=webhook_received_at.isoformat(),
+                                persist_ms=webhook_persist_ms,
+                                dispatch_ms=round((perf_counter() - dispatch_started) * 1000, 2),
+                                status=dispatch_status)
     return {"ok": True}
 
 
@@ -333,7 +349,7 @@ async def _handle_statuses(
                     select(AgentRuntimeJob).where(
                         AgentRuntimeJob.tenant_id == tenant_id,
                         AgentRuntimeJob.outbound_wa_message_id == wa_id,
-                    )
+                    ).with_for_update()
                 )
             ).scalar_one_or_none()
             if runtime_job is not None:
@@ -401,7 +417,8 @@ async def _cancel_runtime_jobs_for_opt_out(
 
 
 async def _handle_messages(
-    session: AsyncSession, tenant_id: UUID, messages: list[dict[str, Any]]
+    session: AsyncSession, tenant_id: UUID, messages: list[dict[str, Any]],
+    *, webhook_received_at: datetime | None = None,
 ) -> list[UUID]:
     runtime_job_ids: list[UUID] = []
     for m in messages:
@@ -627,7 +644,8 @@ async def _handle_messages(
                 inbound_message_id=inbound.id,
                 conversation_id=conv.id,
                 status=AgentRuntimeJobStatus.PENDING.value,
-                audit={"wa_message_type": msg_type},
+                audit={"wa_message_type": msg_type,
+                       "webhook_received_at": (webhook_received_at or received_at).isoformat()},
                 created_at=received_at,
             )
             session.add(runtime_job)

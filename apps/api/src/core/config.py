@@ -145,6 +145,8 @@ class Settings(BaseSettings):
 
     # --- App ---
     app_env: Literal["development", "staging", "production", "test"] = "development"
+    runtime_timing_enabled: bool = True
+
     app_debug: bool = False
     app_secret_key: str = Field(min_length=32)
     app_base_url: str = "http://localhost:8000"

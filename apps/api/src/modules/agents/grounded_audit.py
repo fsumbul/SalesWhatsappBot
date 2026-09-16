@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from src.core.config import get_settings
+from src.core.runtime_timing import timed_stage
 from src.integrations.reranker import Reranker, get_reranker
 from src.modules.knowledge.compiler import extract_codes, normalize_text, query_tokens
 
@@ -167,6 +168,7 @@ def build_entailment_verifier() -> EntailmentVerifier:
     return CrossEncoderEntailment(reranker) if reranker.available else NullEntailment()
 
 
+@timed_stage("generation.audit")
 async def audit_content_plan(
     plan: ContentPlan,
     evidence: dict[str, EvidenceItem],

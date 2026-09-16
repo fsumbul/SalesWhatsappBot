@@ -14,6 +14,7 @@ import httpx
 from sqlalchemy import func, select
 
 from src.core.config import get_settings
+from src.core.runtime_timing import timed_stage
 from src.modules.agents.company_runtime import (
     CustomerReplyAction,
     RuntimeInteraction,
@@ -62,6 +63,7 @@ def intake_mode(body: str) -> str | None:
     return None
 
 
+@timed_stage("selection.applicable")
 async def applicable(session: Any, config: Any, conversation: Any, inbound: Any) -> bool:
     if (inbound.body or "").strip() == "[flow_response]":
         return False
@@ -120,6 +122,7 @@ def state_of(row: Any) -> State:
     )
 
 
+@timed_stage("selection.media_download")
 async def download_media(raw: dict[str, Any]) -> tuple[str, str, bytes]:
     """Fetch only Meta-owned media, bounded in memory. Never trust caption or filename."""
     kind = str(raw.get("type", ""))
@@ -174,6 +177,7 @@ async def download_media(raw: dict[str, Any]) -> tuple[str, str, bytes]:
     return name, mime, bytes(content)
 
 
+@timed_stage("selection.handle")
 async def handle(
     session: Any, config: Any, conversation: Any, inbound: Any
 ) -> tuple[RuntimeTurn | None, dict[str, Any] | None, SelectionRequest | None, bool]:

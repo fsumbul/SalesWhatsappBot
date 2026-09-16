@@ -1041,6 +1041,10 @@ async def test_handoff_pauses_new_jobs_until_manual_inbox_reply_resolves_it(
         assert job is not None
         assert job.status == AgentRuntimeJobStatus.HANDOFF.value
         assert job.audit["typing_indicator_sent"] is True
+        timing = job.audit["timing"]
+        assert timing["queue_ms"] >= 0
+        assert timing["flags"]["result_status"] == "handoff"
+        assert any(s["stage"] == "whatsapp.send" and s["status"] == "ok" for s in timing["spans"])
         assert job.audit["manual_review_required"] is True
         assert conversation is not None
         assert conversation.assigned_to == owner_id
@@ -1245,6 +1249,10 @@ async def test_ambiguous_meta_post_is_attempted_once_and_requires_manual_review(
         assert job.audit["external_send_attempts"] == 1
         assert job.audit["manual_review_required"] is True
         assert job.audit["retry_suppressed"] is True
+        timing = job.audit["timing"]
+        assert timing["flags"]["attempt"] == 1
+        assert timing["flags"]["retryable"] is False
+        assert any(s["stage"] == "whatsapp.send" and s["status"] == "error" for s in timing["spans"])
         assert job.outbound_message_id is None
         assert customer_visible_outbound == 0
         assert internal_review_messages == 1

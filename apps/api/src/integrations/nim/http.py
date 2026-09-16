@@ -12,6 +12,8 @@ from typing import Any
 
 import httpx
 
+from src.core.runtime_timing import timed_stage
+
 
 class NimError(RuntimeError):
     """The NIM container answered, but not with a usable result."""
@@ -61,6 +63,7 @@ class NimHttp:
     def url(self, path: str) -> str:
         return f"{self.root}/{path.lstrip('/')}"
 
+    @timed_stage("nim.http")
     async def _send(self, build: Any, *, timeout_seconds: float | None) -> dict[str, Any]:
         """Run one request with a single retry on connection errors only."""
 

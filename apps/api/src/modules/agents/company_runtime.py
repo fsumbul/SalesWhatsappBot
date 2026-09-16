@@ -19,6 +19,7 @@ from enum import StrEnum
 
 from pydantic import Field, ValidationError
 
+from src.core.runtime_timing import timed_stage
 from src.integrations.llm import LLMClient, LLMMessage
 from src.modules.knowledge.memory import CustomerMemory
 from src.modules.knowledge.ports import EvidenceSearch, KnowledgeRetriever, RetrievalResult
@@ -1717,6 +1718,7 @@ class CompanyAgentRuntime:
         self.evidence_retriever = evidence_retriever
         self.entailment_verifier = entailment_verifier
 
+    @timed_stage("retrieval.facts")
     async def _retrieve_candidates(
         self,
         customer_message: str,
@@ -1750,6 +1752,7 @@ class CompanyAgentRuntime:
             audit["memory_subjects"] = list(memory_subjects)
         return result.fact_ids, audit
 
+    @timed_stage("runtime.reply")
     async def reply(
         self,
         customer_message: str,

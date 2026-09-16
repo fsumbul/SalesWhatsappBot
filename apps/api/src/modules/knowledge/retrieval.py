@@ -23,6 +23,7 @@ from time import perf_counter
 from typing import Any
 from uuid import UUID
 
+from src.core.runtime_timing import timed_stage
 from src.integrations.embeddings import EmbeddingClient
 from src.integrations.reranker import Reranker
 
@@ -91,6 +92,7 @@ class FalkorGraphFactRetriever:
         self.timeout_seconds = timeout_seconds
         self.channel_weights = channel_weights or _DEFAULT_WEIGHTS
 
+    @timed_stage("retrieval.graph")
     async def retrieve(self, request: RetrievalRequest) -> RetrievalResult:
         started = perf_counter()
         graph = self.store.kb_graph_name(request.tenant_id, request.agent_version_id)
@@ -217,6 +219,7 @@ class FalkorGraphFactRetriever:
         finally:
             timings[name] = (perf_counter() - started) * 1000
 
+    @timed_stage("retrieval.vector")
     async def _vector(self, graph: str, query: str, limit: int) -> list[str]:
         vector = await self.embeddings.embed_query(query)
         rows = await self.store.query(
@@ -227,6 +230,7 @@ class FalkorGraphFactRetriever:
         )
         return [str(row[0]) for row in rows]
 
+    @timed_stage("retrieval.fulltext")
     async def _fulltext(self, graph: str, fts: str, limit: int) -> list[str]:
         if not fts:
             return []
@@ -238,6 +242,7 @@ class FalkorGraphFactRetriever:
         )
         return [str(row[0]) for row in rows]
 
+    @timed_stage("retrieval.exact")
     async def _exact(self, graph: str, codes: tuple[str, ...]) -> list[str]:
         if not codes:
             return []
@@ -249,6 +254,7 @@ class FalkorGraphFactRetriever:
         )
         return [str(row[0]) for row in rows]
 
+    @timed_stage("retrieval.locality")
     async def _locality(self, graph: str, subjects_in: tuple[str, ...]) -> list[str]:
         """Facts attached to the subjects, then to their inheritance lineage."""
 
@@ -273,6 +279,7 @@ class FalkorGraphFactRetriever:
                     ordered.append(fact_id)
         return ordered
 
+    @timed_stage("retrieval.documents")
     async def _documents(self, graph: str, fact_ids: list[str]) -> dict[str, str]:
         rows = await self.store.query(
             graph,
@@ -300,6 +307,7 @@ class ScopedFactRetriever:
     def backend(self) -> str:
         return self._retriever.backend
 
+    @timed_stage("retrieval.graph")
     async def retrieve(
         self,
         query: str,

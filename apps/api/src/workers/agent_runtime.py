@@ -18,6 +18,16 @@ from sqlalchemy import and_, case, or_, select, text
 from src.core.agent_celery_app import agent_celery_app as celery_app
 from src.core.config import get_settings
 from src.core.db import session_scope
+from src.core.runtime_timing import (
+    RuntimeTiming,
+    current_timing,
+    timed_await,
+    timed_stage,
+    timing_context,
+    timing_event,
+    timing_flags,
+    timing_span,
+)
 from src.integrations.llm import LLMMessage, get_llm_client, role_llm_client
 from src.integrations.whatsapp import WhatsAppClient
 from src.modules.agents.company_config import CompanyAgentConfig
@@ -148,6 +158,7 @@ def _interaction_audit(turn: RuntimeTurn) -> dict[str, Any] | None:
     }
 
 
+@timed_stage("whatsapp.send")
 async def _send_runtime_turn_once(to: str, turn: RuntimeTurn) -> tuple[dict[str, Any], str]:
     """Cross the at-most-once Meta boundary with the planned message shape."""
 
@@ -242,6 +253,7 @@ async def _send_runtime_turn_once(to: str, turn: RuntimeTurn) -> tuple[dict[str,
     return response, f"interactive:{interaction.kind.value}"
 
 
+@timed_stage("whatsapp.typing")
 async def _send_typing_indicator_best_effort(message_id: str | None) -> bool:
     """Show WhatsApp's native typing UI without making replies depend on it."""
 
@@ -334,6 +346,7 @@ async def _dispatch_pending_runtime_jobs() -> dict[str, int]:
                     job.status = AgentRuntimeJobStatus.FAILED.value
                     job.completed_at = datetime.now(UTC)
                     job.error = "stale send outcome is unknown; automatic retry suppressed"
+                    timing_flags(exit_reason="stale send outcome is unknown; automatic retry suppressed")
                     job.audit = {
                         **(job.audit or {}),
                         "manual_review_required": True,
@@ -378,13 +391,43 @@ async def _dispatch_pending_runtime_jobs() -> dict[str, int]:
 
 
 async def _process_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
+    timing = RuntimeTiming(str(job_id)) if get_settings().runtime_timing_enabled else None
+    with timing_context(timing):
+        try:
+            result = await _process_runtime_job_instrumented(tenant_id, job_id)
+            timing_flags(result_status=result.get("status"), retryable=result.get("retryable", False))
+            return result
+        finally:
+            if timing is not None:
+                report = timing.snapshot()
+                # Duplicate/deferred deliveries must not overwrite the claimed attempt.
+                if timing.claimed:
+                    try:
+                        async with asyncio.timeout(2):
+                            async with session_scope(tenant_id) as session:
+                                await session.execute(
+                                    text("UPDATE agent_runtime_jobs SET audit = jsonb_set("
+                                         "COALESCE(audit, '{}'::jsonb), '{timing}', CAST(:report AS jsonb)) "
+                                         "WHERE id = :job_id AND tenant_id = :tenant_id"),
+                                    {"report": json.dumps(report), "job_id": job_id, "tenant_id": tenant_id},
+                                )
+                                await session.commit()
+                    except Exception as exc:
+                        # A telemetry write must never turn a successful send into a retry.
+                        timing_event("runtime.timing.persist_failed", job_id=str(job_id),
+                                       error_type=type(exc).__name__)
+                timing_event("runtime.timing", job_id=str(job_id), **report)
+
+
+@timed_stage("worker.claim_and_run")
+async def _process_runtime_job_instrumented(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
     async with session_scope(tenant_id) as session:
         job = (
-            await session.execute(
+            await timed_await('db.execute', session.execute(
                 select(AgentRuntimeJob)
                 .where(AgentRuntimeJob.id == job_id)
                 .with_for_update(skip_locked=True)
-            )
+            ))
         ).scalar_one_or_none()
         if job is None:
             return {"status": "locked"}
@@ -411,14 +454,24 @@ async def _process_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
         job.attempts += 1
         job.started_at = datetime.now(UTC)
         job.error = None
-        await session.commit()
+        timing = current_timing()
+        if timing is not None:
+            timing.queue_ms = round(max(0, (timing.started_at - job.created_at).total_seconds() * 1000), 2)
+            received = (job.audit or {}).get("webhook_received_at")
+            if received:
+                with contextlib.suppress(ValueError, TypeError):
+                    timing.inbound_to_worker_ms = round(max(0, (timing.started_at - datetime.fromisoformat(received)).total_seconds() * 1000), 2)
+            timing_flags(attempt=job.attempts)
+        await timed_await('db.commit', session.commit())
+        if timing is not None:
+            timing.claimed = True
 
     try:
         return await _execute_runtime_job(tenant_id, job_id)
     except Exception as exc:
         logger.exception("agent_runtime_job_failed", job_id=str(job_id), error=str(exc))
         async with session_scope(tenant_id) as session:
-            job = await session.get(AgentRuntimeJob, job_id)
+            job = await timed_await('db.get', session.get(AgentRuntimeJob, job_id))
             if job is not None:
                 job.error = str(exc)[:2000]
                 send_outcome_unknown = job.status == AgentRuntimeJobStatus.SENDING.value
@@ -434,7 +487,7 @@ async def _process_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                         "manual_review_required": True,
                         "retry_suppressed": send_outcome_unknown,
                     }
-                    conversation = await session.get(Conversation, job.conversation_id)
+                    conversation = await timed_await('db.get', session.get(Conversation, job.conversation_id))
                     if conversation is not None:
                         reason = (
                             "WhatsApp gönderim sonucu belirsiz; otomatik tekrar kapatıldı. Manuel kontrol gerekli."
@@ -442,7 +495,7 @@ async def _process_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                             else "Bot yanıtı beş denemede hazırlanamadı. Manuel yanıt gerekli."
                         )
                         await _queue_human_review(session, tenant_id, job, conversation, reason)
-                await session.commit()
+                await timed_await('db.commit', session.commit())
         return {
             "status": "failed",
             "retryable": bool(
@@ -451,6 +504,7 @@ async def _process_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
         }
 
 
+@timed_stage("knowledge.setup")
 async def _knowledge_inputs(
     tenant_id: UUID,
     agent_version_id: UUID,
@@ -490,6 +544,8 @@ async def _knowledge_inputs(
         except Exception as exc:
             logger.warning("knowledge.memory.unavailable", error=type(exc).__name__)
             memory = None
+    timing_flags(graph_retrieval_enabled=retriever is not None, memory_loaded=memory is not None,
+                 evidence_search_enabled=evidence is not None, entailment_enabled=verifier is not None)
     return retriever, memory, evidence, verifier
 
 
@@ -510,9 +566,10 @@ def _enqueue_memory_enrichment(tenant_id: UUID, job_id: UUID) -> bool:
         return False
 
 
+@timed_stage("worker.execute")
 async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
     async with session_scope(tenant_id) as session:
-        tenant = await session.get(Tenant, tenant_id)
+        tenant = await timed_await('db.get', session.get(Tenant, tenant_id))
         settings = get_settings()
         if (
             tenant is None
@@ -522,20 +579,21 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             raise RuntimeError("tenant or WhatsApp sender binding is inactive")
         from src.modules.outreach.channel import resolve_channel
         sender = await resolve_channel(session, tenant_id)
-        job = await session.get(AgentRuntimeJob, job_id)
+        job = await timed_await('db.get', session.get(AgentRuntimeJob, job_id))
         if job is None:
             return {"status": "missing"}
-        inbound = await session.get(Message, job.inbound_message_id)
-        conversation = await session.get(Conversation, job.conversation_id)
+        inbound = await timed_await('db.get', session.get(Message, job.inbound_message_id))
+        conversation = await timed_await('db.get', session.get(Conversation, job.conversation_id))
         if inbound is None or conversation is None or not inbound.body:
             job.status = AgentRuntimeJobStatus.SKIPPED.value
             job.completed_at = datetime.now(UTC)
             job.error = "inbound message has no text body"
-            await session.commit()
+            timing_flags(exit_reason="inbound message has no text body")
+            await timed_await('db.commit', session.commit())
             return {"status": job.status}
 
         blocking_handoff = (
-            await session.execute(
+            await timed_await('db.execute', session.execute(
                 select(AgentRuntimeJob.id)
                 .where(
                     AgentRuntimeJob.tenant_id == tenant_id,
@@ -549,17 +607,18 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                     ),
                 )
                 .limit(1)
-            )
+            ))
         ).scalar_one_or_none()
         if blocking_handoff is not None:
             job.status = AgentRuntimeJobStatus.SKIPPED.value
             job.completed_at = datetime.now(UTC)
             job.error = "conversation is paused for human review"
+            timing_flags(exit_reason="conversation is paused for human review")
             job.audit = {
                 **(job.audit or {}),
                 "blocking_handoff_job_id": str(blocking_handoff),
             }
-            await session.commit()
+            await timed_await('db.commit', session.commit())
             return {"status": job.status}
 
         version = await _resolve_live_version(session, tenant_id)
@@ -584,29 +643,31 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             job.status = AgentRuntimeJobStatus.SKIPPED.value
             job.completed_at = datetime.now(UTC)
             job.error = "coalesced into a newer inbound turn"
+            timing_flags(exit_reason="coalesced into a newer inbound turn")
             job.audit = {
                 **(job.audit or {}),
                 "coalesced_into_job_id": str(newer_job_id),
             }
-            await session.commit()
+            await timed_await('db.commit', session.commit())
             return {"status": job.status}
 
-        contact = await session.get(LeadContact, conversation.contact_id)
+        contact = await timed_await('db.get', session.get(LeadContact, conversation.contact_id))
         if contact is None:
             raise RuntimeError("runtime contact is missing")
         opted_out = (
-            await session.execute(
+            await timed_await('db.execute', session.execute(
                 select(OptOut.id).where(
                     OptOut.tenant_id == tenant_id,
                     OptOut.phone_e164 == contact.normalized_value,
                 )
-            )
+            ))
         ).scalar_one_or_none()
         if str(contact.consent_status) == ConsentStatus.OPT_OUT.value or opted_out is not None:
             job.status = AgentRuntimeJobStatus.SKIPPED.value
             job.completed_at = datetime.now(UTC)
             job.error = "contact opted out"
-            await session.commit()
+            timing_flags(exit_reason="contact opted out")
+            await timed_await('db.commit', session.commit())
             return {"status": job.status}
 
         history, context_fact_ids = await _conversation_history_with_context(
@@ -622,6 +683,7 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
         guard_verdict: GuardVerdict | None = None
         guard_turn: RuntimeTurn | None = None
         guard = build_input_guard()
+        timing_flags(guardrail_enabled=guard.available, selection_active=selection_active)
         if guard.available:
             guard_verdict = await guard.check_customer_message(
                 inbound.body,
@@ -663,6 +725,7 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 ) = await selection_service.handle(session, config, conversation, inbound)
                 selection_processing_ms = round((perf_counter() - selection_started) * 1000, 2)
             selection_deterministic = turn is not None and guard_turn is None
+            timing_flags(guardrail_blocked=guard_turn is not None, selection_deterministic=selection_deterministic)
             if turn is None:
                 fact_retriever, customer_memory, evidence_search, verifier = await _knowledge_inputs(
                     tenant_id,
@@ -701,6 +764,13 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 with contextlib.suppress(asyncio.CancelledError):
                     await typing_refresh_task
 
+        timing_flags(
+            action=turn.action.value, response_source=turn.response_source,
+            answer_origin=turn.answer_origin, used_fallback=turn.used_fallback,
+            retrieval_status=(turn.retrieval or {}).get("status"),
+            generation_status=(turn.generation or {}).get("status"),
+        )
+
         # A second customer message may arrive while the local model is
         # deciding. Prefer one reply to the latest turn instead of sending a
         # stale answer followed immediately by another bot message.
@@ -718,11 +788,12 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             job.status = AgentRuntimeJobStatus.SKIPPED.value
             job.completed_at = datetime.now(UTC)
             job.error = "coalesced into a newer inbound turn"
+            timing_flags(exit_reason="coalesced into a newer inbound turn")
             job.audit = {
                 **(job.audit or {}),
                 "coalesced_into_job_id": str(newer_job_id),
             }
-            await session.commit()
+            await timed_await('db.commit', session.commit())
             return {"status": job.status}
 
         # Serialize the final send boundary with inbound processing for this
@@ -732,32 +803,32 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
         # until this already-claimed send has completed. A separate connection
         # is required because committing SENDING must not release the guard.
         async with session_scope(tenant_id) as guard_session:
-            await guard_session.execute(
+            await timed_await('db.send_lock', guard_session.execute(
                 text("SELECT pg_advisory_xact_lock(hashtextextended(:identity, 0))"),
                 {"identity": f"{tenant_id}:{contact.normalized_value}"},
-            )
+            ))
 
             # The model call may have taken long enough for STOP, suspension,
             # or a sender-binding change to commit in another transaction.
             # Refresh every decision input after acquiring the shared identity
             # lock; never trust the ORM snapshots loaded before the model call.
-            await session.refresh(job)
-            await session.refresh(tenant)
-            await session.refresh(contact)
+            await timed_await('db.refresh', session.refresh(job))
+            await timed_await('db.refresh', session.refresh(tenant))
+            await timed_await('db.refresh', session.refresh(contact))
             if job.status != AgentRuntimeJobStatus.PROCESSING.value:
                 result_status = job.status
                 if selection_request is not None and (job.audit or {}).get("cancelled_by_opt_out"):
                     request_id = selection_request.id
                     # STOP skips locked drafts to avoid a lock inversion with this
                     # send guard. Discard the uncommitted answer before cancelling.
-                    await session.rollback()
+                    await timed_await('db.rollback', session.rollback())
                     from src.modules.selection.models import SelectionRequest
 
-                    draft = await session.get(SelectionRequest, request_id)
+                    draft = await timed_await('db.get', session.get(SelectionRequest, request_id))
                     if draft is not None and draft.status == "draft":
                         draft.status = "cancelled"
                         draft.revision += 1
-                        await session.commit()
+                        await timed_await('db.commit', session.commit())
                 return {"status": result_status}
             try:
                 boundary_sender = await resolve_channel(session, tenant_id)
@@ -772,28 +843,30 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 job.status = AgentRuntimeJobStatus.SKIPPED.value
                 job.completed_at = datetime.now(UTC)
                 job.error = "tenant or WhatsApp sender binding became inactive before send"
+                timing_flags(exit_reason="tenant or WhatsApp sender binding became inactive before send")
                 job.audit = {**(job.audit or {}), "send_boundary_rejected": "tenant_binding"}
-                await session.commit()
+                await timed_await('db.commit', session.commit())
                 return {"status": job.status}
 
             boundary_opted_out = (
-                await session.execute(
+                await timed_await('db.execute', session.execute(
                     select(OptOut.id).where(
                         OptOut.tenant_id == tenant_id,
                         OptOut.phone_e164 == contact.normalized_value,
                     )
-                )
+                ))
             ).scalar_one_or_none()
             if str(contact.consent_status) == ConsentStatus.OPT_OUT.value or boundary_opted_out is not None:
                 job.status = AgentRuntimeJobStatus.SKIPPED.value
                 job.completed_at = datetime.now(UTC)
                 job.error = "contact opted out before outbound send"
+                timing_flags(exit_reason="contact opted out before outbound send")
                 job.audit = {
                     **(job.audit or {}),
                     "cancelled_by_opt_out": True,
                     "send_boundary_rejected": "opt_out",
                 }
-                await session.commit()
+                await timed_await('db.commit', session.commit())
                 return {"status": job.status}
 
             # Persist the transition before the only external POST. If the
@@ -805,6 +878,8 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
             job.used_fallback = turn.used_fallback
             job.status = AgentRuntimeJobStatus.SENDING.value
             job.audit = {
+                **(job.audit or {}),
+                **({"timing": current_timing().snapshot()} if current_timing() is not None else {}),
                 "model": (
                     "guardrail"
                     if guard_turn is not None
@@ -858,12 +933,13 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                     "Müşteri seçim özetini onayladı; teknik/satış incelemesi bekliyor.",
                 )
                 selection_request.assigned_to = conversation.assigned_to
-            await session.commit()
+            await timed_await('db.commit', session.commit())
 
             response, transport_type = await _send_runtime_turn_once(
                 contact.normalized_value,
                 turn,
             )
+            timing_flags(transport_type=transport_type, meta_accepted=True)
             wa_id: str | None = None
             with contextlib.suppress(KeyError, IndexError, TypeError):
                 wa_id = response.get("messages", [{}])[0].get("id")
@@ -894,7 +970,7 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 },
             )
             session.add(outbound)
-            await session.flush()
+            await timed_await('db.flush', session.flush())
             conversation.last_message_at = datetime.now(UTC)
             job.outbound_message_id = outbound.id
             job.outbound_wa_message_id = wa_id
@@ -916,13 +992,15 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                     conversation,
                     "Bot bu talebi otomatik yanıtlayamadı. İnsan incelemesi ve gerekirse manuel yanıt gerekli.",
                 )
-            await session.commit()
+            await timed_await('db.commit', session.commit())
             # The turn is durable: enrich the customer's memory graph off the
             # critical path (knowledge queue), never before the Meta POST.
-            _enqueue_memory_enrichment(tenant_id, job.id)
+            with timing_span("memory.enqueue"):
+                timing_flags(memory_enqueued=_enqueue_memory_enrichment(tenant_id, job.id))
             return {"status": job.status, "wa_message_id": wa_id}
 
 
+@timed_stage("handoff.queue")
 async def _queue_human_review(
     session: Any,
     tenant_id: UUID,
@@ -971,6 +1049,7 @@ async def _queue_human_review(
     )
 
 
+@timed_stage("db.order_check")
 async def _ordered_conversation_job(
     session: Any,
     job: AgentRuntimeJob,
@@ -1018,6 +1097,7 @@ async def _ordered_conversation_job(
     return result
 
 
+@timed_stage("db.live_version")
 async def _resolve_live_version(session: Any, tenant_id: UUID) -> AgentVersion | None:
     stmt = (
         select(AgentVersion)
@@ -1078,6 +1158,7 @@ def _trusted_runtime_context_fact_ids(
     return tuple(fact_ids)
 
 
+@timed_stage("db.history")
 async def _conversation_history_with_context(
     session: Any,
     conversation_id: UUID,

@@ -14,6 +14,7 @@ from uuid import UUID
 from falkordb import FalkorDB
 
 from src.core.config import get_settings
+from src.core.runtime_timing import timed_stage
 
 
 class GraphStore:
@@ -71,6 +72,7 @@ class GraphStore:
 
     # --- async surface --------------------------------------------------------
 
+    @timed_stage("graph.query")
     async def query(
         self, graph_name: str, cypher: str, params: dict[str, Any] | None = None
     ) -> list[list[Any]]:

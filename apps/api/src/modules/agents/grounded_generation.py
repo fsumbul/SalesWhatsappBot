@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from src.core.runtime_timing import timed_stage
 from src.integrations.llm import LLMClient, LLMMessage
 from src.modules.knowledge.memory import CustomerMemory
 from src.modules.knowledge.ports import EvidenceSearch
@@ -162,6 +163,7 @@ def sanitize_passage(text: str, *, max_chars: int) -> str | None:
     return cleaned or None
 
 
+@timed_stage("retrieval.evidence")
 async def gather_evidence(
     config: CompanyAgentConfig,
     plan: RequestPlan,
@@ -360,6 +362,7 @@ def parse_content_plan(raw: str, generated_indexes: set[int], refs: set[str]) ->
     return plan
 
 
+@timed_stage("generation")
 async def generate_answers(
     config: CompanyAgentConfig,
     llm: LLMClient,

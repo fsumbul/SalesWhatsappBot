@@ -18,6 +18,7 @@ from time import perf_counter
 from typing import Any
 from uuid import UUID
 
+from src.core.runtime_timing import timed_stage
 from src.integrations.embeddings import EmbeddingClient, embedding_profile
 from src.integrations.reranker import Reranker
 
@@ -210,6 +211,7 @@ class EvidenceRetriever:
         self.reranker = reranker
         self.timeout_seconds = timeout_seconds
 
+    @timed_stage("retrieval.document_evidence")
     async def retrieve(
         self,
         tenant_id: UUID,
@@ -325,6 +327,7 @@ class ScopedEvidenceRetriever:
         self._retriever = retriever
         self._tenant_id = tenant_id
 
+    @timed_stage("retrieval.document_evidence")
     async def retrieve(
         self,
         query: str,

@@ -10,6 +10,7 @@ from time import perf_counter
 import structlog
 
 from src.core.config import Settings, get_settings
+from src.core.runtime_timing import timed_stage
 
 from .policy import (
     GuardPolicy,
@@ -53,6 +54,7 @@ class CompositeInputGuard:
         self.content_safety = content_safety if "content_safety" in policy.checks else None
         self.topic = topic if "topic_control" in policy.checks else None
 
+    @timed_stage("guardrail.input")
     async def check_customer_message(
         self,
         text: str,
@@ -87,16 +89,19 @@ class CompositeInputGuard:
 
     # --- individual checks -------------------------------------------------
 
+    @timed_stage("guardrail.jailbreak")
     async def _jailbreak(self, text: str) -> GuardCheck:
         assert self.jailbreak is not None
         jailbreak, score = await self.jailbreak.classify(text)
         return jailbreak_check(jailbreak, score, self.policy, model=self.jailbreak.model)
 
+    @timed_stage("guardrail.content")
     async def _content(self, text: str) -> GuardCheck:
         assert self.content_safety is not None
         result = await self.content_safety.classify(text)
         return content_safety_check(result, self.policy, model=self.content_safety.model)
 
+    @timed_stage("guardrail.topic")
     async def _topic(
         self, text: str, context: TopicContext, history: Sequence[tuple[str, str]]
     ) -> GuardCheck:

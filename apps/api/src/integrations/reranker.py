@@ -16,6 +16,7 @@ from functools import lru_cache
 from typing import Any, Protocol
 
 from src.core.config import get_settings
+from src.core.runtime_timing import timed_stage
 
 
 class RerankError(RuntimeError):
@@ -36,6 +37,7 @@ class NullReranker:
     model_name = ""
     available = False
 
+    @timed_stage("reranker")
     async def rerank(self, query: str, documents: list[str]) -> list[float]:
         return [0.0 for _ in documents]
 
@@ -92,6 +94,7 @@ class CrossEncoderReranker:
             )
         return [float(score) for score in scores]
 
+    @timed_stage("reranker")
     async def rerank(self, query: str, documents: list[str]) -> list[float]:
         if not documents:
             return []
@@ -122,6 +125,7 @@ class NimReranker:
         )
         self.model_name = model
 
+    @timed_stage("reranker")
     async def rerank(self, query: str, documents: list[str]) -> list[float]:
         if not documents:
             return []
