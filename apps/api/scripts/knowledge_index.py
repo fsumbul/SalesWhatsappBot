@@ -62,9 +62,14 @@ async def _live_versions(tenant_slug: str) -> list[tuple[UUID, UUID, CompanyAgen
                     )
                 )
             ).scalars().all()
+            # Reset rolls back the transaction and expires ORM attributes.
+            # Materialize the immutable indexing inputs before that boundary.
+            return [
+                (tenant.id, row.id, CompanyAgentConfig.model_validate(row.company_config))
+                for row in rows
+            ]
         finally:
             await reset_tenant_context(session)
-        return [(tenant.id, row.id, CompanyAgentConfig.model_validate(row.company_config)) for row in rows]
 
 
 async def _async_main(args: argparse.Namespace) -> None:
