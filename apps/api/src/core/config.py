@@ -106,6 +106,35 @@ def host_is_denied(host: str, denylist: list[str]) -> bool:
     return any(host == denied or host.endswith("." + denied) for denied in denylist if denied)
 
 
+LLMRole = Literal["customer", "generation", "extraction", "memory", "admin"]
+LLM_ROLES: tuple[LLMRole, ...] = ("customer", "generation", "extraction", "memory", "admin")
+SchemaMode = Literal["response_format", "nvext_guided_json"]
+
+
+@dataclass(frozen=True)
+class LLMEndpoint:
+    """Resolved model endpoint for one role (plan WP5).
+
+    ``customer`` (planner, evidence decision, strict decision) always uses the
+    base ``LLM_*`` profile. Other roles fall back to it field by field, so a
+    deployment can move extraction/memory to a NIM container while customer
+    turns stay on the local model.
+    """
+
+    role: str
+    provider: str
+    model: str
+    base_url: str
+    api_key: str
+    schema_mode: SchemaMode
+    num_ctx: int
+    override: bool
+
+    @property
+    def nim(self) -> bool:
+        return self.schema_mode == "nvext_guided_json"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -199,6 +228,37 @@ class Settings(BaseSettings):
     # Context window requested from Ollama. Hybrid generation with several
     # evidence chunks needs 8192; strict decisions fit comfortably in 4096.
     llm_num_ctx: int = 4096
+    # JSON-schema transport for chat_compatible servers: ``response_format``
+    # (vLLM, LocalAI, OpenAI-style) or ``nvext.guided_json`` (NVIDIA NIM).
+    llm_schema_mode: SchemaMode = "response_format"
+    # Role overrides (plan WP5). Empty = inherit the base LLM_* profile.
+    # generation: model-written hybrid answers (Turkish customer prose);
+    # extraction: knowledge-source chunk extraction; memory: per-customer
+    # memory summaries (enum-only output); admin: admin chat / builder.
+    llm_role_generation_provider: str = ""
+    llm_role_generation_model: str = ""
+    llm_role_generation_base_url: str = ""
+    llm_role_generation_api_key: str = ""
+    llm_role_generation_schema_mode: Literal["", "response_format", "nvext_guided_json"] = ""
+    llm_role_generation_num_ctx: int = 0
+    llm_role_extraction_provider: str = ""
+    llm_role_extraction_model: str = ""
+    llm_role_extraction_base_url: str = ""
+    llm_role_extraction_api_key: str = ""
+    llm_role_extraction_schema_mode: Literal["", "response_format", "nvext_guided_json"] = ""
+    llm_role_extraction_num_ctx: int = 0
+    llm_role_memory_provider: str = ""
+    llm_role_memory_model: str = ""
+    llm_role_memory_base_url: str = ""
+    llm_role_memory_api_key: str = ""
+    llm_role_memory_schema_mode: Literal["", "response_format", "nvext_guided_json"] = ""
+    llm_role_memory_num_ctx: int = 0
+    llm_role_admin_provider: str = ""
+    llm_role_admin_model: str = ""
+    llm_role_admin_base_url: str = ""
+    llm_role_admin_api_key: str = ""
+    llm_role_admin_schema_mode: Literal["", "response_format", "nvext_guided_json"] = ""
+    llm_role_admin_num_ctx: int = 0
     # Kill switch for model-written descriptive answers (ADR-003). Off means
     # every hybrid tenant behaves exactly like strict.
     hybrid_generation_enabled: bool = True
@@ -385,6 +445,45 @@ class Settings(BaseSettings):
     def guardrail_block_categories_list(self) -> list[str]:
         return [c.strip().upper() for c in self.guardrail_block_categories.split(",") if c.strip()]
 
+    def llm_endpoint(self, role: LLMRole = "customer") -> LLMEndpoint:
+        """Resolve the model endpoint of a role, inheriting unset fields from ``LLM_*``."""
+
+        base = LLMEndpoint(
+            role="customer",
+            provider=self.llm_provider,
+            model=self.llm_model,
+            base_url=self.llm_base_url,
+            api_key=self.llm_api_key,
+            schema_mode=self.llm_schema_mode,
+            num_ctx=self.llm_num_ctx,
+            override=False,
+        )
+        if role == "customer":
+            return base
+        provider = str(getattr(self, f"llm_role_{role}_provider"))
+        model = str(getattr(self, f"llm_role_{role}_model"))
+        base_url = str(getattr(self, f"llm_role_{role}_base_url"))
+        api_key = str(getattr(self, f"llm_role_{role}_api_key"))
+        schema_mode = str(getattr(self, f"llm_role_{role}_schema_mode"))
+        num_ctx = int(getattr(self, f"llm_role_{role}_num_ctx"))
+        override = bool(provider or model or base_url)
+        resolved_schema: SchemaMode = (
+            "nvext_guided_json" if schema_mode == "nvext_guided_json" else "response_format"
+        )
+        return LLMEndpoint(
+            role=role,
+            provider=provider or base.provider,
+            model=model or base.model,
+            base_url=base_url or base.base_url,
+            api_key=api_key or (base.api_key if not base_url else ""),
+            schema_mode=resolved_schema if schema_mode else base.schema_mode,
+            num_ctx=num_ctx or base.num_ctx,
+            override=override,
+        )
+
+    def llm_role_overrides(self) -> list[LLMEndpoint]:
+        return [self.llm_endpoint(role) for role in LLM_ROLES if self.llm_endpoint(role).override]
+
     def model_endpoints(self) -> list[ModelEndpoint]:
         """Every configured model service that may see customer or tenant data.
 
@@ -396,7 +495,23 @@ class Settings(BaseSettings):
         if self.llm_provider in {"ollama", "chat_compatible"}:
             endpoints.append(
                 ModelEndpoint(
-                    name="LLM_BASE_URL", role="llm.customer", url=self.llm_base_url, kind="llm"
+                    name="LLM_BASE_URL",
+                    role="llm.customer",
+                    url=self.llm_base_url,
+                    kind="llm",
+                    nim=self.llm_schema_mode == "nvext_guided_json",
+                )
+            )
+        for endpoint in self.llm_role_overrides():
+            if endpoint.provider not in {"ollama", "chat_compatible"}:
+                continue
+            endpoints.append(
+                ModelEndpoint(
+                    name=f"LLM_ROLE_{endpoint.role.upper()}_BASE_URL",
+                    role=f"llm.{endpoint.role}",
+                    url=endpoint.base_url,
+                    kind="llm",
+                    nim=endpoint.nim,
                 )
             )
         if self.embedding_provider:
@@ -529,6 +644,13 @@ class Settings(BaseSettings):
             errors.append("APP_DEBUG must be false")
         if self.llm_provider not in {"ollama", "chat_compatible"}:
             errors.append("LLM_PROVIDER must be ollama or chat_compatible")
+        for endpoint in self.llm_role_overrides():
+            if endpoint.provider not in {"ollama", "chat_compatible"}:
+                errors.append(
+                    f"LLM_ROLE_{endpoint.role.upper()}_PROVIDER must be ollama or chat_compatible"
+                )
+            if not endpoint.model.strip():
+                errors.append(f"LLM_ROLE_{endpoint.role.upper()}_MODEL is required")
         if self.knowledge_backend == "falkordb" and self.embedding_provider not in {
             "ollama",
             "nim",

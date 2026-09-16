@@ -163,7 +163,7 @@ async def test_worker_uses_graph_retrieval_and_memory_then_enqueues_enrichment(
     retriever = _StubScopedRetriever()
     fake_store = _FakeGraphStore()
     enqueued: list[tuple[str, str]] = []
-    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda: llm)
+    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda *_args, **_kwargs: llm)
     monkeypatch.setattr(knowledge_service, "build_scoped_retriever", lambda **kwargs: retriever)
     memory_store = ConversationMemoryStore(fake_store)  # type: ignore[arg-type]
     monkeypatch.setattr(knowledge_service, "build_memory_store", lambda store=None: memory_store)
@@ -212,7 +212,7 @@ async def test_worker_uses_graph_retrieval_and_memory_then_enqueues_enrichment(
                 }
             )
 
-    monkeypatch.setattr(knowledge_worker, "get_llm_client", lambda: _ExtractingLLM())
+    monkeypatch.setattr(knowledge_worker, "get_llm_client", lambda *_args, **_kwargs: _ExtractingLLM())
     summary = await knowledge_worker._enrich_conversation_memory(tenant_id, job_id)
 
     assert summary == {
@@ -240,7 +240,7 @@ async def test_worker_keeps_lexical_path_when_knowledge_backend_is_off(
     tenant_id, _owner_id = await _seed_runtime_tenant(with_agent=True)
     await _install_live_version(tenant_id)
     job_id, _conversation_id = await _create_inbound_job(tenant_id, "wamid.knowledge-lexical-one")
-    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda: _SelectingLLM())
+    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda *_args, **_kwargs: _SelectingLLM())
     enqueued: list[tuple[str, str]] = []
     monkeypatch.setattr(
         knowledge_worker.enrich_conversation_memory,
@@ -310,7 +310,7 @@ async def test_worker_guardrail_block_skips_the_model_and_sends_approved_decline
         )
     )
     monkeypatch.setattr(runtime_worker, "build_input_guard", lambda: guard)
-    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda: _RefusingLLM())
+    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda *_args, **_kwargs: _RefusingLLM())
     monkeypatch.setattr(WhatsAppClient, "send_text_once", _send_ok)
 
     result = await runtime_worker._process_runtime_job(tenant_id, job_id)
@@ -350,7 +350,7 @@ async def test_worker_guardrail_unavailable_in_closed_mode_is_a_safe_handoff(
     job_id, _conversation_id = await _create_inbound_job(tenant_id, "wamid.guardrail-down")
     guard = _FakeGuard(GuardVerdict(GuardDecision.UNAVAILABLE, reason="unavailable:content_safety"))
     monkeypatch.setattr(runtime_worker, "build_input_guard", lambda: guard)
-    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda: _RefusingLLM())
+    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda *_args, **_kwargs: _RefusingLLM())
     monkeypatch.setattr(WhatsAppClient, "send_text_once", _send_ok)
 
     result = await runtime_worker._process_runtime_job(tenant_id, job_id)
@@ -383,7 +383,7 @@ async def test_worker_guardrail_allow_and_flag_reach_the_model(
     )
     llm = _SelectingLLM()
     monkeypatch.setattr(runtime_worker, "build_input_guard", lambda: guard)
-    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda: llm)
+    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda *_args, **_kwargs: llm)
     monkeypatch.setattr(WhatsAppClient, "send_text_once", _send_ok)
 
     result = await runtime_worker._process_runtime_job(tenant_id, job_id)
@@ -394,5 +394,6 @@ async def test_worker_guardrail_allow_and_flag_reach_the_model(
         job = await session.get(AgentRuntimeJob, job_id)
         assert job is not None
         assert job.audit["model"] == "qwen3:8b"
+        assert job.audit["models"] == {"customer": {"provider": "ollama", "model": "qwen3:8b"}, "generation": None}
         assert job.audit["guardrail"] == guard.verdict.audit()
         assert job.fact_ids == ["support-contact"]

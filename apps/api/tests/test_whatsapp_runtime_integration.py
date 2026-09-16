@@ -1003,7 +1003,7 @@ async def test_handoff_pauses_new_jobs_until_manual_inbox_reply_resolves_it(
 ) -> None:
     tenant_id, owner_id = await _seed_runtime_tenant(with_agent=True)
     job_id, conversation_id = await _create_inbound_job(tenant_id, "wamid.integration-handoff-one")
-    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda: _HandoffLLM())
+    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda *_args, **_kwargs: _HandoffLLM())
 
     sent_ids = iter(["wamid.integration-bot-handoff", "wamid.integration-manual"])
 
@@ -1106,7 +1106,7 @@ async def test_new_inbound_preserves_handoff_without_active_reviewer(
     job_id, _ = await _create_inbound_job(
         tenant_id, "wamid.integration-handoff-no-reviewer-one"
     )
-    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda: _HandoffLLM())
+    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda *_args, **_kwargs: _HandoffLLM())
 
     async def send_success(
         _client: WhatsAppClient,
@@ -1200,7 +1200,7 @@ async def test_ambiguous_meta_post_is_attempted_once_and_requires_manual_review(
 ) -> None:
     tenant_id, owner_id = await _seed_runtime_tenant(with_agent=True)
     job_id, conversation_id = await _create_inbound_job(tenant_id, "wamid.integration-ambiguous")
-    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda: _HandoffLLM())
+    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda *_args, **_kwargs: _HandoffLLM())
     attempts = 0
 
     async def ambiguous_send(
@@ -1269,7 +1269,7 @@ async def test_stop_during_model_call_terminalizes_all_jobs_before_meta_post(
             await release_model.wait()
             return '{"action":"handoff","fact_ids":[]}'
 
-    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda: _BlockingLLM())
+    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda *_args, **_kwargs: _BlockingLLM())
     sends = 0
 
     async def send_success(
@@ -1414,7 +1414,7 @@ async def test_rapid_inbound_turns_are_ordered_and_coalesced_to_one_reply(
         await session.commit()
     assert len(job_ids) == 2
 
-    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda: _HandoffLLM())
+    monkeypatch.setattr(runtime_worker, "get_llm_client", lambda *_args, **_kwargs: _HandoffLLM())
     sends = 0
 
     async def send_success(

@@ -476,7 +476,7 @@ async def execute(db: Any, user: Any, session: Any, intent: Any) -> tuple[str, l
         "additionalProperties": False,
     }
     raw = await asyncio.wait_for(
-        get_llm_client().complete(
+        get_llm_client("admin").complete(
             [
                 LLMMessage(
                     role="user",

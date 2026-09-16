@@ -148,7 +148,7 @@ async def test_model_template_creation_opens_separate_workflow(monkeypatch, text
                 {"tool": "workflow", "workflow_kind": "create_template", "workflow_action": "start"}
             )
 
-    monkeypatch.setattr(planner, "get_llm_client", lambda: Model())
+    monkeypatch.setattr(planner, "get_llm_client", lambda *_args, **_kwargs: Model())
     intent, source = await planner.plan(text)
     assert intent.workflow_kind == "create_template" and source == "model"
 
@@ -190,7 +190,7 @@ async def test_template_choice_is_grounded_in_meta_options(monkeypatch):
                 }
             )
 
-    monkeypatch.setattr(planner, "get_llm_client", lambda: Model())
+    monkeypatch.setattr(planner, "get_llm_client", lambda *_args, **_kwargs: Model())
     intent, _ = await planner.plan(
         "ilk şablonu seç",
         workflow_context=[{"kind": "outreach", "template_choices": {"123": "intro · tr"}}],

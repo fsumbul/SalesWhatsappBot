@@ -25,6 +25,7 @@ from src.integrations.llm import (
     LLMMessage,
     LLMNotConfiguredError,
     get_llm_client,
+    role_llm_client,
 )
 from src.modules.compliance.models import AuditLog
 
@@ -368,7 +369,7 @@ Current configuration excerpt (not complete; omitted records still exist):\n""" 
     )
     history = [LLMMessage(role=m["role"], content=m["content"]) for m in session.messages[-6:]]
     try:
-        raw = await get_llm_client().complete(
+        raw = await get_llm_client("admin").complete(
             [*history, LLMMessage(role="user", content=text)], system=system, max_tokens=1500
         )
         raw = raw.strip()
@@ -516,10 +517,11 @@ async def test_turn(
         else:
             turn = await CompanyAgentRuntime(
                 config,
-                get_llm_client(),
+                get_llm_client("customer"),
                 fact_retriever=build_scoped_retriever(tenant_id=tid, agent_version_id=version.id),
                 evidence_retriever=build_scoped_evidence_retriever(tenant_id=tid),
                 entailment_verifier=build_entailment_verifier(),
+                generation_llm=role_llm_client("generation"),
             ).reply(payload.text, history=history, context_fact_ids=context)
         if resume_prompt:
             resume = as_turn(resume_prompt)

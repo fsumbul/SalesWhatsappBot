@@ -101,7 +101,7 @@ async def _sync_knowledge_source(tenant_id: UUID, source_id: UUID) -> dict[str, 
     async with session_scope(tenant_id) as session:
         service = KnowledgeIngestService(
             session,
-            llm=get_llm_client(),
+            llm=get_llm_client("extraction"),
             graph=build_evidence_graph(),
             guard=build_ingest_guard(),
             ocr=build_document_ocr(),
@@ -298,7 +298,7 @@ async def _enrich_conversation_memory(tenant_id: UUID, job_id: UUID) -> dict[str
         if outbound is not None and outbound.body:
             turns.append(LLMMessage(role="assistant", content=outbound.body))
 
-    extraction = await extract_memory(get_llm_client(), config, turns)
+    extraction = await extract_memory(get_llm_client("memory"), config, turns)
     recorded = await memory_store.record_turn(
         tenant_id=tenant_id,
         key=key,

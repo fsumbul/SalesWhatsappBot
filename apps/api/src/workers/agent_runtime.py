@@ -18,7 +18,7 @@ from sqlalchemy import and_, case, or_, select, text
 from src.core.agent_celery_app import agent_celery_app as celery_app
 from src.core.config import get_settings
 from src.core.db import session_scope
-from src.integrations.llm import LLMMessage, get_llm_client
+from src.integrations.llm import LLMMessage, get_llm_client, role_llm_client
 from src.integrations.whatsapp import WhatsAppClient
 from src.modules.agents.company_config import CompanyAgentConfig
 from src.modules.agents.company_runtime import (
@@ -97,6 +97,22 @@ def _tenant_whatsapp_capabilities(tenant_id: UUID) -> RuntimeWhatsAppCapabilitie
         )
     except (AttributeError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None
+
+
+def _model_audit(settings: Any) -> dict[str, Any]:
+    """Provider/model per LLM role used by a customer turn (plan WP5); no URLs, no keys."""
+
+    audit: dict[str, Any] = {}
+    for role in ("customer", "generation"):
+        try:
+            endpoint = settings.llm_endpoint(role)
+        except AttributeError:  # settings doubles in tests
+            return audit
+        if role == "generation" and not endpoint.override:
+            audit[role] = None
+            continue
+        audit[role] = {"provider": endpoint.provider, "model": endpoint.model}
+    return audit
 
 
 def _interaction_audit(turn: RuntimeTurn) -> dict[str, Any] | None:
@@ -655,12 +671,13 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                 )
                 turn = await CompanyAgentRuntime(
                     config,
-                    get_llm_client(),
+                    get_llm_client("customer"),
                     whatsapp_capabilities=_tenant_whatsapp_capabilities(tenant_id),
                     fact_retriever=fact_retriever,
                     customer_memory=customer_memory,
                     evidence_retriever=evidence_search,
                     entailment_verifier=verifier,
+                    generation_llm=role_llm_client("generation"),
                 ).reply(inbound.body, history=history, context_fact_ids=context_fact_ids)
                 if resume_prompt is not None and turn.action in {
                     CustomerReplyAction.REPLY,
@@ -796,6 +813,7 @@ async def _execute_runtime_job(tenant_id: UUID, job_id: UUID) -> dict[str, Any]:
                     else settings.llm_model
                 ),
                 "guardrail": guard_verdict.audit() if guard_verdict is not None else None,
+                "models": _model_audit(settings),
                 "selection_request_id": str(selection_request.id) if selection_request else None,
                 "selection_confirmed": selection_confirmed,
                 "selection_processing_ms": selection_processing_ms,

@@ -97,7 +97,7 @@ async def model(system: str, payload: Any, schema: Any) -> Any:
     for attempt in range(2):
         try:
             raw = await asyncio.wait_for(
-                planner.get_llm_client().complete(
+                planner.get_llm_client("admin").complete(
                     [LLMMessage(role="user", content=json.dumps(payload, ensure_ascii=False))],
                     system=system,
                     max_tokens=1000 if schema is TaskStep else 400,

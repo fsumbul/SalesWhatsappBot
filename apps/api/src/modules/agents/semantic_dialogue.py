@@ -469,6 +469,7 @@ async def reply_to_requests(
     customer_memory: CustomerMemory | None = None,
     evidence_retriever: EvidenceSearch | None = None,
     entailment_verifier: EntailmentVerifier | None = None,
+    generation_llm: LLMClient | None = None,
 ) -> RuntimeTurn:
     plan = await interpret_requests(
         config, llm, message, history, context_fact_ids, customer_memory=customer_memory,
@@ -483,7 +484,7 @@ async def reply_to_requests(
         # Fail-open by construction: generate_answers never raises; every
         # failure leaves the request on the literal path.
         generated, generation_trace = await generate_answers(
-            config, llm, plan, decision, history=history,
+            config, generation_llm or llm, plan, decision, history=history,
             evidence_search=evidence_retriever, customer_memory=customer_memory,
             verifier=entailment_verifier,
         )

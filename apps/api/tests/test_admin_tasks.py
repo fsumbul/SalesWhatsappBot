@@ -46,7 +46,7 @@ def script(monkeypatch, message, kinds, steps, *, check=True, prepare=None):
                 raise result
             return json.dumps(result)
 
-    monkeypatch.setattr(planner, "get_llm_client", lambda: Model())
+    monkeypatch.setattr(planner, "get_llm_client", lambda *_args, **_kwargs: Model())
     return calls
 
 
@@ -435,7 +435,7 @@ async def test_inference_retry_does_not_reexecute_capabilities(monkeypatch):
                 raise TimeoutError
             return '{"tool":"delivery","ref":"r1"}'
 
-    monkeypatch.setattr(planner, "get_llm_client", lambda: TransientModel())
+    monkeypatch.setattr(planner, "get_llm_client", lambda *_args, **_kwargs: TransientModel())
     result = await task_runner.model("test", {"goals": []}, TaskStep)
     assert calls == 2 and result.tool == "delivery"
 
